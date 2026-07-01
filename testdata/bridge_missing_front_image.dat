@@ -1,0 +1,4 @@
+obj=bridge
+name=BrokenBridgeMissingFrontImage
+waytype=road
+cost=1000

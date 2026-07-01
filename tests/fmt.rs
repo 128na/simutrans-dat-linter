@@ -87,6 +87,25 @@ mapcolor=255
 }
 
 #[test]
+fn reorder_bridge_matches_expected_output() {
+    let parsed = formatter::parse_entries(&read("fmt_bridge_example.dat"));
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "bridge");
+    let expected = "\
+obj=bridge
+name=Skyway
+copyright=fuga
+waytype=road
+cost=1000
+
+cursor=road_icon.png.0.0
+icon=road_icon.png.0.0
+
+frontimage[ns]=bridge.png.0.0
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
 fn reorder_vehicle_matches_expected_output() {
     let parsed = formatter::parse_entries(&read("fmt_vehicle_example.dat"));
     let (out, _warnings) = formatter::format_reordered(&parsed.entries, "vehicle");

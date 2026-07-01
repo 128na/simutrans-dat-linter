@@ -1,0 +1,5 @@
+obj=bridge
+name=BrokenBridgeClampedRange
+waytype=road
+cost=1000
+pillar_asymmetric=5

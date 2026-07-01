@@ -1,0 +1,4 @@
+obj=bridge
+name=BrokenBridgeUnknownWaytype
+waytype=nonexistent_waytype
+cost=1000

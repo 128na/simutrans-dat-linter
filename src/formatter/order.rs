@@ -25,6 +25,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
         "vehicle" => Some(&VEHICLE_ORDER),
         "way" => Some(&WAY_ORDER),
         "good" => Some(&GOOD_ORDER),
+        "bridge" => Some(&BRIDGE_ORDER),
         _ => None,
     }
 }
@@ -172,4 +173,59 @@ const GOOD_NAMED: &[&str] = &[
 
 static GOOD_ORDER: OrderSpec = OrderSpec {
     sections: &[Section::Named(GOOD_NAMED), Section::Unknown],
+};
+
+// bridge dat の「慣習的な並び」。bridge_writer.cc:101-115のフィールド読み取り順
+// （waytype -> topspeed -> cost -> maintenance -> pillar_distance ->
+// pillar_asymmetric -> max_lenght/max_length -> max_height -> axle_load ->
+// clip_below -> intro/retire）、続けてwrite_name_and_copyrightでname/copyright
+// （bridge_writer.cc:139,155）、その後write_bridge_images内でcursor/icon
+// （season<=0のときのみ、bridge_writer.cc:85-89）とimage系キー
+// （bridge_writer.cc:25-43のnames配列順）が書かれる、という順序から導出。
+const BRIDGE_NAMED: &[&str] = &[
+    "obj",
+    "name",
+    "copyright",
+    "waytype",
+    "topspeed",
+    "cost",
+    "maintenance",
+    "pillar_distance",
+    "pillar_asymmetric",
+    "max_lenght",
+    "max_length",
+    "max_height",
+    "axle_load",
+    "clip_below",
+    "intro_year",
+    "intro_month",
+    "retire_year",
+    "retire_month",
+];
+const BRIDGE_CURSOR_ICON: &[&str] = &["cursor", "icon"];
+
+static BRIDGE_ORDER: OrderSpec = OrderSpec {
+    sections: &[
+        Section::Named(BRIDGE_NAMED),
+        Section::Named(BRIDGE_CURSOR_ICON),
+        Section::Unknown,
+        Section::Bracket(&[
+            "backimage[",
+            "frontimage[",
+            "backstart[",
+            "frontstart[",
+            "backramp[",
+            "frontramp[",
+            "backpillar[",
+            "frontpillar[",
+            "backimage2[",
+            "frontimage2[",
+            "backstart2[",
+            "frontstart2[",
+            "backramp2[",
+            "frontramp2[",
+            "backpillar2[",
+            "frontpillar2[",
+        ]),
+    ],
 };
