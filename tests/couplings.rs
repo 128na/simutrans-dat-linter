@@ -1,8 +1,8 @@
 //! `vehicle` モジュール（連結制約解析）の統合テスト。
 //! testdata の ok / broken / dangling の3ディレクトリで挙動を確認する。
 
+use dat_linter::couplings as vehicle;
 use dat_linter::diagnostics::Severity;
-use dat_linter::vehicle;
 use std::path::{Path, PathBuf};
 
 fn testdata(sub: &str) -> PathBuf {

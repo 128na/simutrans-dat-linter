@@ -13,3 +13,12 @@ categories = ["command-line-utilities", "development-tools"]
 # Simutrans の画像は常に PNG。デフォルトの全フォーマット（AVIF エンコーダ rav1e 等の
 # 重い依存を含む）は不要なので PNG デコードのみに絞る。
 image = { version = "0.25", default-features = false, features = ["png"] }
+# color/suggestions機能（anstream/is-terminal/colorchoice/strsim等）は不要なため
+# デフォルト機能を無効化し、CLI構築に必要な最小機能のみ有効化する。
+clap = { version = "4", default-features = false, features = [
+    "std",
+    "derive",
+    "help",
+    "usage",
+    "error-context",
+] }

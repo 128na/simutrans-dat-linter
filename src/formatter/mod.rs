@@ -1,5 +1,8 @@
 use crate::parser::format_key;
 
+pub mod order;
+use order::{Section, order_for};
+
 /// 1行をパースした結果。tabfile_t::read()/read_line() の挙動に合わせて分類する:
 /// - `#`または行頭スペースで始まる行は、実際のmakeobjでも丸ごと無視される
 ///   （read_line(): `while(*dest=='#' || *dest==' ')`でスキップされ続ける）。
@@ -50,6 +53,15 @@ pub fn parse_entries(text: &str) -> ParsedDat {
     ParsedDat { entries, warnings }
 }
 
+/// パース済みentriesから`obj=`の値を取り出す。`format_reordered`が二重パースせずに
+/// obj種別ごとの並び順テーブルを選べるようにするためのヘルパー。
+pub fn obj_of(entries: &[Entry]) -> Option<&str> {
+    entries.iter().find_map(|e| match e {
+        Entry::Pair { key, value } if key == "obj" => Some(value.trim()),
+        _ => None,
+    })
+}
+
 /// 既存の行順を保ったまま、Pair行だけ `key=value`（=前後の空白なし、値は前後トリムのみ）
 /// に正規化する。コメント・スキップ行・不正行は原文のまま通す（意味を変えない）。
 pub fn format_preserve_order(entries: &[Entry]) -> String {
@@ -72,47 +84,20 @@ pub fn format_preserve_order(entries: &[Entry]) -> String {
     out
 }
 
-// building dat の「慣習的な並び」。tabfile_t::objinfo はハッシュテーブルであり
-// makeobjの動作上は記述順に意味は無い（技術的な必須要件ではない）。この順序は
-// try-out/station_test/station_cube.dat の実例と building_writer.cc 内で
-// obj.get(...)が呼ばれる順序を参考にしたスタイル上の慣習。
-const CANONICAL_ORDER: &[&str] = &[
-    "obj",
-    "name",
-    "copyright",
-    "type",
-    "waytype",
-    "enables_pax",
-    "enables_post",
-    "enables_ware",
-    "level",
-    "noinfo",
-    "noconstruction",
-    "needs_ground",
-    "climates",
-    "dims",
-    "chance",
-    "animation_time",
-    "intro_year",
-    "intro_month",
-    "retire_year",
-    "retire_month",
-    "preservation_year",
-    "preservation_month",
-    "capacity",
-    "station_capacity",
-    "maintenance",
-    "station_maintenance",
-    "cost",
-    "station_price",
-    "allow_underground",
-];
-const CURSOR_ICON_ORDER: &[&str] = &["cursor", "icon"];
-
-/// `--reorder`: 慣習的な並び順に再構成する。コメント・空行・スキップ行・不正行は
-/// 並び替えとの整合が取れないため出力には含めない（dropした件数をwarningsで返す）。
-pub fn format_reordered(entries: &[Entry]) -> (String, Vec<String>) {
+/// `--reorder`: `obj=`の値に応じた慣習的な並び順（`order`モジュール参照）に再構成する。
+/// コメント・空行・スキップ行・不正行は並び替えとの整合が取れないため出力には
+/// 含めない（dropした件数をwarningsで返す）。`obj`が未対応の値の場合は並び替えを
+/// 行わず、元の行順を保ったまま（`format_preserve_order`相当）出力する。
+pub fn format_reordered(entries: &[Entry], obj: &str) -> (String, Vec<String>) {
     let mut warnings = Vec::new();
+
+    let Some(spec) = order_for(obj) else {
+        warnings.push(format!(
+            "--reorder: obj={obj} は並び替えに未対応です。元の順序のまま出力します"
+        ));
+        return (format_preserve_order(entries), warnings);
+    };
+
     let mut pairs: Vec<(&String, &String)> = Vec::new();
     let mut dropped = 0usize;
 
@@ -129,32 +114,48 @@ pub fn format_reordered(entries: &[Entry]) -> (String, Vec<String>) {
         ));
     }
 
-    let mut known: Vec<(&String, &String)> = Vec::new();
-    let mut cursor_icon: Vec<(&String, &String)> = Vec::new();
-    let mut unknown: Vec<(&String, &String)> = Vec::new();
-    let mut images: Vec<(&String, &String)> = Vec::new();
+    let unknown_idx = spec
+        .sections
+        .iter()
+        .position(|s| matches!(s, Section::Unknown));
+
+    let mut groups: Vec<Vec<(&String, &String)>> =
+        (0..spec.sections.len()).map(|_| Vec::new()).collect();
 
     for (k, v) in &pairs {
-        if CANONICAL_ORDER.contains(&k.as_str()) {
-            known.push((k, v));
-        } else if CURSOR_ICON_ORDER.contains(&k.as_str()) {
-            cursor_icon.push((k, v));
-        } else if k.starts_with("frontimage[") || k.starts_with("backimage[") {
-            images.push((k, v));
-        } else {
-            unknown.push((k, v));
+        let mut placed = false;
+        for (i, section) in spec.sections.iter().enumerate() {
+            let matched = match section {
+                Section::Named(names) => names.contains(&k.as_str()),
+                Section::Bracket(prefixes) => prefixes.iter().any(|p| k.starts_with(p)),
+                Section::Unknown => false,
+            };
+            if matched {
+                groups[i].push((k, v));
+                placed = true;
+                break;
+            }
+        }
+        if !placed && let Some(i) = unknown_idx {
+            groups[i].push((k, v));
         }
     }
 
-    known.sort_by_key(|(k, _)| CANONICAL_ORDER.iter().position(|c| c == k).unwrap());
-    cursor_icon.sort_by_key(|(k, _)| CURSOR_ICON_ORDER.iter().position(|c| c == k).unwrap());
-    images.sort_by_key(|(k, _)| (bracket_indices(k), (*k).clone()));
-    // unknown はパース順を保持（安定ソート不要、挿入順のまま）
+    for (i, section) in spec.sections.iter().enumerate() {
+        match section {
+            Section::Named(names) => {
+                groups[i].sort_by_key(|(k, _)| names.iter().position(|n| n == k).unwrap());
+            }
+            Section::Bracket(_) => {
+                groups[i].sort_by_key(|(k, _)| (bracket_indices(k), (*k).clone()));
+            }
+            Section::Unknown => {} // 挿入順（パース順）を保持
+        }
+    }
 
     let mut out = String::new();
-    let groups: [&[(&String, &String)]; 4] = [&known, &cursor_icon, &unknown, &images];
     let mut first_group = true;
-    for group in groups {
+    for group in &groups {
         if group.is_empty() {
             continue;
         }

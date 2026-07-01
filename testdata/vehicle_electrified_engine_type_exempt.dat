@@ -1,0 +1,15 @@
+obj=vehicle
+name=ElectrifiedExempt
+waytype=electrified_track
+engine_type=totally_bogus_value
+speed=100
+power=1000
+weight=10
+cost=1000
+runningcost=10
+maintenance=10
+intro_year=2000
+freight=Passagiere
+payload=10
+length=8
+emptyimage[s]=station_cube.png.0.0

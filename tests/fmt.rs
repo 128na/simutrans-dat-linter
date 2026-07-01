@@ -17,7 +17,7 @@ fn read(file: &str) -> String {
 #[test]
 fn reorder_matches_expected_output() {
     let parsed = formatter::parse_entries(&read("fmt_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries);
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "building");
     // 慣習順（obj, name, copyright, type, enables_pax）に並び替わり、
     // キーは小文字化、`Name = Hoge` の値は "Hoge" にトリムされる。
     let expected = "obj=building\nname=Hoge\ncopyright=fuga\ntype=station\nenables_pax=1\n";
@@ -35,7 +35,39 @@ fn preserve_order_is_idempotent() {
 #[test]
 fn reorder_is_idempotent() {
     let text = read("roundtrip_test.dat");
-    let (once, _) = formatter::format_reordered(&formatter::parse_entries(&text).entries);
-    let (twice, _) = formatter::format_reordered(&formatter::parse_entries(&once).entries);
+    let (once, _) =
+        formatter::format_reordered(&formatter::parse_entries(&text).entries, "building");
+    let (twice, _) =
+        formatter::format_reordered(&formatter::parse_entries(&once).entries, "building");
     assert_eq!(once, twice, "並び替えフォーマットは冪等であるべき");
+}
+
+#[test]
+fn reorder_unsupported_obj_falls_back_to_preserve_order() {
+    let text = read("roundtrip_test.dat");
+    let parsed = formatter::parse_entries(&text);
+    let (out, warnings) = formatter::format_reordered(&parsed.entries, "way");
+    let preserved = formatter::format_preserve_order(&parsed.entries);
+    assert_eq!(out, preserved);
+    assert!(warnings.iter().any(|w| w.contains("obj=way")));
+}
+
+#[test]
+fn reorder_vehicle_matches_expected_output() {
+    let parsed = formatter::parse_entries(&read("fmt_vehicle_example.dat"));
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "vehicle");
+    let expected = "\
+obj=vehicle
+name=Loco
+copyright=fuga
+cost=1000
+speed=100
+waytype=track
+engine_type=electric
+freight=Passagiere
+
+constraint[next][0]=Wagon
+constraint[prev][0]=none
+";
+    assert_eq!(out, expected);
 }

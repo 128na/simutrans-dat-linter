@@ -36,10 +36,18 @@ impl fmt::Display for Severity {
     }
 }
 
+/// 診断が指す`.dat`内の位置。全ての診断がこれを持つわけではない
+/// （Dimsサイズ0のようなファイル全体・複数キー由来の診断には自然な単一行が無い）。
+pub struct Location {
+    pub line: usize,
+    pub key: String,
+}
+
 pub struct Diagnostic {
     pub severity: Severity,
     pub code: &'static str,
     pub message: String,
+    pub location: Option<Location>,
 }
 
 impl Diagnostic {
@@ -48,6 +56,7 @@ impl Diagnostic {
             severity: Severity::Error,
             code,
             message: message.into(),
+            location: None,
         }
     }
 
@@ -56,6 +65,7 @@ impl Diagnostic {
             severity: Severity::Warning,
             code,
             message: message.into(),
+            location: None,
         }
     }
 
@@ -64,6 +74,7 @@ impl Diagnostic {
             severity: Severity::Info,
             code,
             message: message.into(),
+            location: None,
         }
     }
 
@@ -72,12 +83,29 @@ impl Diagnostic {
             severity: Severity::Debug,
             code,
             message: message.into(),
+            location: None,
         }
+    }
+
+    /// この診断が指す行・キーを付与する（builder）。
+    pub fn at(mut self, line: usize, key: impl Into<String>) -> Self {
+        self.location = Some(Location {
+            line,
+            key: key.into(),
+        });
+        self
     }
 }
 
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}] {}: {}", self.severity, self.code, self.message)
+        match &self.location {
+            Some(loc) => write!(
+                f,
+                "[{}] {} (line {}): {}",
+                self.severity, self.code, loc.line, self.message
+            ),
+            None => write!(f, "[{}] {}: {}", self.severity, self.code, self.message),
+        }
     }
 }

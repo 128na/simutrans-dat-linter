@@ -1,0 +1,10 @@
+Obj=vehicle
+freight=Passagiere
+constraint[prev][0]=none
+Name = Loco
+engine_type=electric
+constraint[next][0]=Wagon
+copyright=fuga
+speed=100
+waytype=track
+cost=1000
