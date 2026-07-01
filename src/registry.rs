@@ -38,6 +38,7 @@ impl RuleSet {
             "crossing" => Some(RuleSet::new(crate::rules::crossing::all())),
             "way-object" => Some(RuleSet::new(crate::rules::way_obj::all())),
             "ground_obj" => Some(RuleSet::new(crate::rules::groundobj::all())),
+            "tree" => Some(RuleSet::new(crate::rules::tree::all())),
             _ => None,
         }
     }

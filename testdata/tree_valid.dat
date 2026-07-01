@@ -1,0 +1,12 @@
+obj=tree
+name=ValidTree
+copyright=fuga
+climates=temperate,tundra
+seasons=1
+distributionweight=25
+
+image[0][0]=station_cube.png.0.0
+image[1][0]=station_cube.png.0.0
+image[2][0]=station_cube.png.0.0
+image[3][0]=station_cube.png.0.0
+image[4][0]=station_cube.png.0.0

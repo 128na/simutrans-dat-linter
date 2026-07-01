@@ -46,14 +46,16 @@ fn reorder_is_idempotent() {
 fn reorder_unsupported_obj_falls_back_to_preserve_order() {
     let text = read("roundtrip_test.dat");
     let parsed = formatter::parse_entries(&text);
-    // "tree" は本ツールがまだ対応していないobj種別の例
-    // （かつては "wayobj" -> "groundobj" の順で使っていたが、obj=way-object /
-    // obj=ground_obj としてそれぞれway-object/ground_objをサポートしたため、
-    // 真に未対応の別のobj種別文字列に更新した）。
-    let (out, warnings) = formatter::format_reordered(&parsed.entries, "tree");
+    // "citycar" は本ツールがまだ対応していないobj種別の例
+    // （かつては "wayobj" -> "groundobj" -> "tree" の順で使っていたが、
+    // obj=way-object / obj=ground_obj / obj=tree としてそれぞれサポートしたため、
+    // 真に未対応の別のobj種別文字列に更新した。citycar_writer_t::get_type_name()
+    // （citycar_writer.h）は"citycar"を返し、registry::RuleSet::for_obj_typeの
+    // match armにまだ存在しないことを確認済み）。
+    let (out, warnings) = formatter::format_reordered(&parsed.entries, "citycar");
     let preserved = formatter::format_preserve_order(&parsed.entries);
     assert_eq!(out, preserved);
-    assert!(warnings.iter().any(|w| w.contains("obj=tree")));
+    assert!(warnings.iter().any(|w| w.contains("obj=citycar")));
 }
 
 #[test]
@@ -197,6 +199,22 @@ copyright=fuga
 climates=rocky,tundra
 
 image[0][0]=rock.png.0.0
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn reorder_tree_matches_expected_output() {
+    let parsed = formatter::parse_entries(&read("fmt_tree_example.dat"));
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "tree");
+    let expected = "\
+obj=tree
+name=Oak
+copyright=fuga
+climates=temperate,tundra
+seasons=1
+
+image[0][0]=tree.png.0.0
 ";
     assert_eq!(out, expected);
 }

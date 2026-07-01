@@ -6,7 +6,7 @@ Simutrans アドオンの `.dat`（オブジェクト定義ファイル）を **
 → 原因調査に時間がかかる、という問題があります。このツールは makeobj の C++ ソース
 （`building_writer.cc` / `vehicle_writer.cc` / `way_writer.cc` / `good_writer.cc` / `bridge_writer.cc` /
 `tunnel_writer.cc` / `roadsign_writer.cc` / `crossing_writer.cc` / `way_obj_writer.cc` /
-`groundobj_writer.cc` / `get_waytype.cc` / `get_climate.cc` /
+`groundobj_writer.cc` / `tree_writer.cc` / `get_waytype.cc` / `get_climate.cc` /
 `image_writer.cc` / `imagelist_writer.cc` / `imagelist2d_writer.cc` / `xref_writer.cc` /
 `skin_writer.cc` / `tabfile.cc`）を精読し、
 **makeobj が黙って見逃す／FATAL ERROR にする項目**を、Blender→PNG→pak のフルパイプラインを回さずに
@@ -49,7 +49,7 @@ dat_linter --help
 dat_linter lint --help
 ```
 
-### `lint` — 静的検証（`obj=building` / `obj=vehicle` / `obj=way` / `obj=good` / `obj=bridge` / `obj=tunnel` / `obj=roadsign` / `obj=crossing` / `obj=way-object` / `obj=ground_obj`）
+### `lint` — 静的検証（`obj=building` / `obj=vehicle` / `obj=way` / `obj=good` / `obj=bridge` / `obj=tunnel` / `obj=roadsign` / `obj=crossing` / `obj=way-object` / `obj=ground_obj` / `obj=tree`）
 
 ```
 dat_linter lint <path/to/file.dat>
@@ -246,6 +246,36 @@ building/vehicle/way と異なり **makeobj時点でfatal/warningになる分岐
 > `obj=ground_obj`が使われていることを確認済み（`obj=groundobj`のGitHub code
 > search結果は0件でした）。
 
+**tree**（樹木の景観オブジェクト。`.dat`に実際に書く`obj=`の値は`tree`）で検出する
+主な項目（`tree_writer.cc` / `tree_writer.h` / `get_climate.cc` / `imagelist2d_writer.cc` /
+`imagelist_writer.cc` / `image_writer.cc` / `obj_writer.cc` / `tabfile.cc` で裏付け済み）:
+
+- 画像は`age`（0..4の固定5段階）×`season`（`seasons`で指定した`0..number_of_seasons-1`、
+  既定値1）の全組み合わせで`image[<age>][<season>]`が必須です。1つでも空文字列
+  （キー欠落含む）だと FATAL ERROR（`"Missing image[<age>][<season>]!"`）になります。
+  groundobjのようなphase単位の早期終了は無く、常に5段階×seasons分がまるごと必須です
+- 画像キーが実際に画像を指す場合、参照画像が見つからない／サイズが128の倍数でない
+  → FATAL ERROR（building/way/bridge/tunnel/roadsign/crossing/way-object/ground_objと
+  同じ`check_image_ref`を共有）
+- treeは`get_int_clamped`を一切使わない（`seasons`/`distributionweight`は全て
+  無条件フォールバック）ため、bridgeのようなクランプ系警告ルールは無い（詳細は
+  `src/rules/tree.rs`冒頭のREJECTEDコメント参照）
+- `climates`未指定時に`printf("WARNING: old syntax without climates!\n")`という分岐が
+  ソース上に存在するが、`tabfileobj_t::get()`は欠落キーにもNULLではなく空文字列を
+  返すため実行時にこの分岐へ到達しない（ground_objの`climates`警告と全く同じ理由）。
+  よってclimates未指定の警告ルールは追加していません
+- treeには`cursor`/`icon`/`waytype`フィールドへの言及がソース上に一つも無いため、
+  crossing/ground_objと同様にcursor/icon関連のルールは存在せず、goodと同様に
+  waytype関連のルールも存在しません（樹木はビルドメニューから選択して建てるもの
+  ではなく、マップ生成時に自動配置されるscenery objectのため）
+
+> **`obj=`文字列について**: `tree_writer_t::get_type_name()`（`tree_writer.h`）は
+> `return "tree";`を返し、ファイル名`tree_writer.cc`から素直に導ける文字列と一致
+> していました（way-object・ground_objのようなファイル名からの単純な類推が外れる
+> 前例があったため、今回も念のため実際に確認しています）。pak128・
+> pak144.Excentrique・Pak192.Comic等の公開`.dat`ファイルでも`obj=tree`が
+> 使われていることを確認済みです。
+
 **obj種別を問わず**: 同一キーの重複定義（`duplicate-key`, WARNING）。makeobj は重複キーを
 **先勝ち**で無音に無視するため（`tabfileobj_t::put()`）、後から書いた値は意図せず捨てられます。
 
@@ -261,7 +291,7 @@ dat_linter fmt --write   <file.dat>    # ファイルに上書き（-w も可）
 壊しうる操作は行いません。並び替え（`--reorder`）はスタイル上の慣習であり makeobj の動作には影響しないため、
 オプトインです（コメント・空行は並び替え後の位置が一意に決まらないため出力から除外し件数を警告します）。
 並び順は `obj=` の値ごとに定義されており（`building`/`vehicle`/`way`/`good`/`bridge`/`tunnel`/`roadsign`/
-`crossing`/`way-object`/`ground_obj` に対応）、未対応の obj 種別では並び替えを行わず元の順序のまま出力します。
+`crossing`/`way-object`/`ground_obj`/`tree` に対応）、未対応の obj 種別では並び替えを行わず元の順序のまま出力します。
 
 ### `couplings` — 車両連結制約の静的解析
 
@@ -293,21 +323,21 @@ dat_linter couplings <path/to/vehicle_dat_dir>
 各ルールは makeobj の C++ ソースで根拠を確認しています（詳細は `src/rules/mod.rs` /
 `src/rules/vehicle.rs` / `src/rules/way.rs` / `src/rules/good.rs` / `src/rules/bridge.rs` /
 `src/rules/tunnel.rs` / `src/rules/roadsign.rs` / `src/rules/crossing.rs` /
-`src/rules/way_obj.rs` / `src/rules/groundobj.rs` 冒頭コメント参照）。
+`src/rules/way_obj.rs` / `src/rules/groundobj.rs` / `src/rules/tree.rs` 冒頭コメント参照）。
 building のルールは vanilla Simutrans と OTRP（Simutrans-Extended 系フォーク）の該当ファイルを diff し、
 両者で一致することも確認済みです。vehicle・way・good・bridge・tunnel・roadsign・crossing・way-object・
-ground_obj のルールは vanilla Simutrans のみで確認済みで、OTRP との個別 diff はまだ行っていません。
+ground_obj・tree のルールは vanilla Simutrans のみで確認済みで、OTRP との個別 diff はまだ行っていません。
 
 対応範囲は現状:
 
 - `lint`: `obj=building`（`type=extension` / `stop` / `depot` 系）、`obj=vehicle`、`obj=way`、`obj=good`、
-  `obj=bridge`、`obj=tunnel`、`obj=roadsign`、`obj=crossing`、`obj=way-object`、`obj=ground_obj`
+  `obj=bridge`、`obj=tunnel`、`obj=roadsign`、`obj=crossing`、`obj=way-object`、`obj=ground_obj`、`obj=tree`
 - `couplings`: `obj=vehicle` の `constraint[prev]` / `constraint[next]`
 
 ### 既知の制限（意図的に非対応）
 
-- building/vehicle/way/good/bridge/tunnel/roadsign/crossing/way-object/ground_obj 以外の obj 種別
-  （例: `obj=tree`、`obj=citycar` など）
+- building/vehicle/way/good/bridge/tunnel/roadsign/crossing/way-object/ground_obj/tree 以外の obj 種別
+  （例: `obj=citycar`、`obj=pedestrian`、`obj=factory` など）
 - good の `name` 未指定・`catg`/`value`/`speed_bonus`/`weight_per_unit`/`mapcolor` の妥当性検証。
   `good_writer.cc`はこれらを全て`get_int`/`get_int64`/`text_writer_t`経由で無条件フォールバックさせるのみで、
   fatal/warningになる分岐が無いため対象外（詳細は`src/rules/good.rs`冒頭のREJECTEDコメント参照）
@@ -401,6 +431,20 @@ ground_obj のルールは vanilla Simutrans のみで確認済みで、OTRP と
 - ground_obj の `cursor`/`icon` 未指定検証。`groundobj_writer.cc`全文に`cursor`/`icon`への
   言及が一つも無く、`cursorskin_writer_t`も呼ばれない（crossingと同様、そもそも対象
   フィールドが存在しない）
+- tree の `climates` 未指定の警告。ソース上に該当する`printf("WARNING: old syntax
+  without climates!\n")`呼び出しは存在するが、`tabfileobj_t::get()`が欠落キーにも
+  空文字列（非NULL）を返すため実行時にこの分岐へ到達しない（詳細は
+  `src/rules/tree.rs`冒頭のREJECTEDコメント参照）
+- tree の `seasons`/`distributionweight` の妥当性検証。`tree_writer.cc`はこれら
+  2フィールドを全て`get_int`の無条件フォールバックのみで読み、`get_int_clamped`は
+  一度も呼ばれていないため対象外
+- tree の `cursor`/`icon`/`waytype` 未指定検証。`tree_writer.cc`全文にこれらの
+  フィールドへの言及が一つも無く、`cursorskin_writer_t`も`get_waytype()`も
+  呼ばれない（crossing/ground_objのcursor/iconパターン、goodのwaytypeパターンと
+  同様、そもそも対象フィールドが存在しない）
+- tree のage段階数（5固定）を`.dat`側でカスタマイズできるかの検証。
+  `for (unsigned int age = 0; age < 5; age++)`はソースコード上のハードコードされた
+  定数であり、`.dat`側にage数を指定するキー自体が存在しない
 - 実際の `tabfile_t::read()` がサポートするパラメータ／範囲展開構文
   （`key[0-4]=value` や `key[n,s,w]=value`）。現行パーサは最初の `=` で単純に分割するのみのため、
   この構文を使った `.dat` はキーが期待通りに展開されず、意図しない結果になる可能性があります
@@ -441,6 +485,7 @@ src/
     crossing.rs                      obj=crossing のRule実装
     way_obj.rs                        obj=way-object のRule実装
     groundobj.rs                       obj=ground_obj のRule実装
+    tree.rs                             obj=tree のRule実装
     common.rs                          共有定数・ヘルパー（KNOWN_WAYTYPES等）・duplicate-key検出
   couplings.rs              vehicle連結制約のグラフ解析（lintとは別スコープ）
   formatter/

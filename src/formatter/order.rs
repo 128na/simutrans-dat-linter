@@ -31,6 +31,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
         "crossing" => Some(&CROSSING_ORDER),
         "way-object" => Some(&WAY_OBJ_ORDER),
         "ground_obj" => Some(&GROUNDOBJ_ORDER),
+        "tree" => Some(&TREE_ORDER),
         _ => None,
     }
 }
@@ -409,6 +410,30 @@ const GROUNDOBJ_NAMED: &[&str] = &[
 static GROUNDOBJ_ORDER: OrderSpec = OrderSpec {
     sections: &[
         Section::Named(GROUNDOBJ_NAMED),
+        Section::Unknown,
+        Section::Bracket(&["image["]),
+    ],
+};
+
+// tree dat の「慣習的な並び」。tree_writer.cc:17-69のフィールド読み取り順
+// （climates -> seasons -> distributionweight、その後age(0..4固定)×season走査で
+// image[<age>][<season>]系キーを読む。write_name_and_copyrightの呼び出し自体は
+// フィールド読み取りループの後（tree_writer.cc:58）だが、他obj種別と同様に
+// name/copyrightはobj直後に配置する慣習に揃えた）という順序から導出。
+// tree_writer.cc全文にcursor/iconフィールドへの言及が無いため、他obj種別と
+// 異なりCURSOR_ICONセクションは無い（crossing/ground_objと同じパターン）。
+const TREE_NAMED: &[&str] = &[
+    "obj",
+    "name",
+    "copyright",
+    "climates",
+    "seasons",
+    "distributionweight",
+];
+
+static TREE_ORDER: OrderSpec = OrderSpec {
+    sections: &[
+        Section::Named(TREE_NAMED),
         Section::Unknown,
         Section::Bracket(&["image["]),
     ],

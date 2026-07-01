@@ -1,0 +1,6 @@
+Obj=tree
+image[0][0]=tree.png.0.0
+seasons=1
+climates=temperate,tundra
+Name = Oak
+copyright=fuga
