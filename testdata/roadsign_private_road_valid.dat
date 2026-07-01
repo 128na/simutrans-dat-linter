@@ -1,0 +1,9 @@
+obj=roadsign
+name=ValidPrivateRoadSign
+waytype=road
+cost=1000
+is_private=1
+image[ns][0]=station_cube.png.0.0
+image[ew][0]=station_cube.png.0.0
+image[ns][1]=station_cube.png.0.0
+image[ew][1]=station_cube.png.0.0

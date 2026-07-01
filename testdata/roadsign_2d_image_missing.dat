@@ -1,0 +1,7 @@
+obj=roadsign
+name=BrokenRoadsign2dImageMissing
+waytype=road
+cost=1000
+image[n][0]=station_cube.png.0.0
+image[w][0]=station_cube.png.0.0
+image[e][0]=station_cube.png.0.0

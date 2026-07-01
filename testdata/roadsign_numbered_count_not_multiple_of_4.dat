@@ -1,0 +1,7 @@
+obj=roadsign
+name=BrokenRoadsignNumberedCount
+waytype=road
+cost=1000
+image[0]=station_cube.png.0.0
+image[1]=station_cube.png.0.0
+image[2]=station_cube.png.0.0

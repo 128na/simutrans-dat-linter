@@ -1,0 +1,7 @@
+obj=roadsign
+name=BrokenPrivateRoadSignMissingState1
+waytype=road
+cost=1000
+is_private=1
+image[ns][0]=station_cube.png.0.0
+image[ew][0]=station_cube.png.0.0

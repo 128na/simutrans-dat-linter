@@ -125,6 +125,25 @@ frontimage[n][0]=tunnel.png.0.0
 }
 
 #[test]
+fn reorder_roadsign_matches_expected_output() {
+    let parsed = formatter::parse_entries(&read("fmt_roadsign_example.dat"));
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "roadsign");
+    let expected = "\
+obj=roadsign
+name=Signal
+copyright=fuga
+cost=1000
+waytype=track
+
+image[n][0]=signal.png.0.0
+
+cursor=signal_icon.png.0.0
+icon=signal_icon.png.0.0
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
 fn reorder_vehicle_matches_expected_output() {
     let parsed = formatter::parse_entries(&read("fmt_vehicle_example.dat"));
     let (out, _warnings) = formatter::format_reordered(&parsed.entries, "vehicle");

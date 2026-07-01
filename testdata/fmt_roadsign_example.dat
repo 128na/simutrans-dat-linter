@@ -1,0 +1,8 @@
+Obj=roadsign
+image[n][0]=signal.png.0.0
+waytype=track
+Name = Signal
+cursor=signal_icon.png.0.0
+copyright=fuga
+cost=1000
+icon=signal_icon.png.0.0

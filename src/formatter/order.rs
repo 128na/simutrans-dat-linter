@@ -27,6 +27,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
         "good" => Some(&GOOD_ORDER),
         "bridge" => Some(&BRIDGE_ORDER),
         "tunnel" => Some(&TUNNEL_ORDER),
+        "roadsign" => Some(&ROADSIGN_ORDER),
         _ => None,
     }
 }
@@ -259,5 +260,46 @@ static TUNNEL_ORDER: OrderSpec = OrderSpec {
         Section::Named(TUNNEL_CURSOR_ICON),
         Section::Unknown,
         Section::Bracket(&["frontimage[", "backimage["]),
+    ],
+};
+
+// roadsign dat の「慣習的な並び」。roadsign_writer.cc:83-132のフィールド読み取り・
+// 書き込み順（cost -> maintenance -> min_speed -> offset_left -> waytype ->
+// is_signal/free_route/is_presignal/is_prioritysignal/is_longblocksignal/
+// single_way/is_private/no_foreground/end_of_choose -> intro/retire）、
+// 続けてwrite_name_and_copyrightでname/copyright（roadsign_writer.cc:134）、
+// その後image[...]系キー（roadsign_writer.cc:139-149）とcursor/icon
+// （roadsign_writer.cc:152-158、*c||*iのときのみ）が書かれる、という順序から導出。
+const ROADSIGN_NAMED: &[&str] = &[
+    "obj",
+    "name",
+    "copyright",
+    "cost",
+    "maintenance",
+    "min_speed",
+    "offset_left",
+    "waytype",
+    "is_signal",
+    "free_route",
+    "is_presignal",
+    "is_prioritysignal",
+    "is_longblocksignal",
+    "single_way",
+    "is_private",
+    "no_foreground",
+    "end_of_choose",
+    "intro_year",
+    "intro_month",
+    "retire_year",
+    "retire_month",
+];
+const ROADSIGN_CURSOR_ICON: &[&str] = &["cursor", "icon"];
+
+static ROADSIGN_ORDER: OrderSpec = OrderSpec {
+    sections: &[
+        Section::Named(ROADSIGN_NAMED),
+        Section::Unknown,
+        Section::Bracket(&["image["]),
+        Section::Named(ROADSIGN_CURSOR_ICON),
     ],
 };
