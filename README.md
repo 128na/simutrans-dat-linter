@@ -6,7 +6,8 @@ Simutrans アドオンの `.dat`（オブジェクト定義ファイル）を **
 → 原因調査に時間がかかる、という問題があります。このツールは makeobj の C++ ソース
 （`building_writer.cc` / `vehicle_writer.cc` / `way_writer.cc` / `good_writer.cc` / `bridge_writer.cc` /
 `tunnel_writer.cc` / `roadsign_writer.cc` / `crossing_writer.cc` / `way_obj_writer.cc` /
-`groundobj_writer.cc` / `tree_writer.cc` / `citycar_writer.cc` / `get_waytype.cc` / `get_climate.cc` /
+`groundobj_writer.cc` / `tree_writer.cc` / `citycar_writer.cc` / `pedestrian_writer.cc` /
+`get_waytype.cc` / `get_climate.cc` /
 `image_writer.cc` / `imagelist_writer.cc` / `imagelist2d_writer.cc` / `xref_writer.cc` /
 `skin_writer.cc` / `tabfile.cc`）を精読し、
 **makeobj が黙って見逃す／FATAL ERROR にする項目**を、Blender→PNG→pak のフルパイプラインを回さずに
@@ -49,7 +50,7 @@ dat_linter --help
 dat_linter lint --help
 ```
 
-### `lint` — 静的検証（`obj=building` / `obj=vehicle` / `obj=way` / `obj=good` / `obj=bridge` / `obj=tunnel` / `obj=roadsign` / `obj=crossing` / `obj=way-object` / `obj=ground_obj` / `obj=tree` / `obj=citycar`）
+### `lint` — 静的検証（`obj=building` / `obj=vehicle` / `obj=way` / `obj=good` / `obj=bridge` / `obj=tunnel` / `obj=roadsign` / `obj=crossing` / `obj=way-object` / `obj=ground_obj` / `obj=tree` / `obj=citycar` / `obj=pedestrian`）
 
 ```
 dat_linter lint <path/to/file.dat>
@@ -301,6 +302,42 @@ building/vehicle/way と異なり **makeobj時点でfatal/warningになる分岐
 - citycarには`cursor`/`icon`フィールドへの言及がソース上に一つも無いため、
   crossing/ground_obj/treeと同様にcursor/icon関連のルールは存在しない
 
+**pedestrian**（プレイヤー非所有のNPC歩行者。街路上に自動で出現する。`.dat`に実際に書く
+`obj=`の値は`pedestrian`）で検出する主な項目（`pedestrian_writer.cc` / `pedestrian_writer.h` /
+`pedestrian_desc.h` / `imagelist_writer.cc` / `imagelist2d_writer.cc` / `image_writer.cc` /
+`obj_writer.cc` / `tabfile.cc` で裏付け済み）:
+
+- pedestrianはcitycarと同じくNPC的なobj種別だが、画像は**静止画像**と
+  **アニメーション画像**の2つの排他的な分岐を持つ。8方向
+  （`s`/`w`/`sw`/`se`/`n`/`e`/`ne`/`nw`）のいずれかで`image[<dir>][0]`が
+  非空なら「アニメーション画像あり」と判定され、全体がアニメーション分岐になる
+  （方向ごとに個別選択できるわけではない）
+  - **静止分岐**（全方向で`image[<dir>][0]`が空。pak128の実例はすべてこちら）:
+    `image[<dir>]`を8方向全て無条件に読む（citycarの`image[<dir>]`ループと
+    全く同じ構造。早期終了なし）
+  - **アニメーション分岐**（いずれかの方向で`image[<dir>][0]`が非空）:
+    `image[<dir>][<frame>]`をframe=0から最初の空文字列まで方向ごとに
+    独立して走査する。ある方向だけ`image[<dir>][0]`が空でも、その方向が
+    0フレームのまま許容される（fatal/warningにならない）
+  - いずれの分岐でも、実際に画像を指すキーについては参照画像が見つからない／
+    サイズが128の倍数でない → FATAL ERROR（building/way/bridge/tunnel/
+    roadsign/crossing/way-object/ground_obj/tree/citycarと同じ`check_image_ref`
+    を共有）
+- pedestrianは`obj=vehicle`と異なり`waytype`/`engine_type`/`freight`/
+  `freightimage[...]`/`freightimagetype[...]`/`constraint[prev]`/
+  `constraint[next]`のいずれへの言及も`pedestrian_writer.cc`全文に一つも無い
+  （citycarと同様、プレイヤーが編成する概念を持たないNPCのため）
+- pedestrianは`get_int_clamped`を一切使わない（`distributionweight`/`offset`/
+  `intro_year`/`intro_month`/`retire_year`/`retire_month`は全て無条件
+  フォールバック）ため、bridgeのようなクランプ系警告ルールは無い。
+  `steps_per_frame`は`max(get_int(...), 1)`というC++標準`max()`による
+  インラインの下限クランプを持つが、`dbg->warning`等のメッセージを一切
+  伴わないため、`get_int_clamped`ベースの`ClampedRangeRule`とは根拠の強さが
+  異なると判断し対象外とした（詳細は`src/rules/pedestrian.rs`冒頭のREJECTED
+  コメント参照）
+- pedestrianには`cursor`/`icon`フィールドへの言及がソース上に一つも無いため、
+  crossing/ground_obj/tree/citycarと同様にcursor/icon関連のルールは存在しない
+
 **obj種別を問わず**: 同一キーの重複定義（`duplicate-key`, WARNING）。makeobj は重複キーを
 **先勝ち**で無音に無視するため（`tabfileobj_t::put()`）、後から書いた値は意図せず捨てられます。
 
@@ -316,7 +353,7 @@ dat_linter fmt --write   <file.dat>    # ファイルに上書き（-w も可）
 壊しうる操作は行いません。並び替え（`--reorder`）はスタイル上の慣習であり makeobj の動作には影響しないため、
 オプトインです（コメント・空行は並び替え後の位置が一意に決まらないため出力から除外し件数を警告します）。
 並び順は `obj=` の値ごとに定義されており（`building`/`vehicle`/`way`/`good`/`bridge`/`tunnel`/`roadsign`/
-`crossing`/`way-object`/`ground_obj`/`tree`/`citycar` に対応）、未対応の obj 種別では並び替えを行わず元の順序のまま出力します。
+`crossing`/`way-object`/`ground_obj`/`tree`/`citycar`/`pedestrian` に対応）、未対応の obj 種別では並び替えを行わず元の順序のまま出力します。
 
 ### `couplings` — 車両連結制約の静的解析
 
@@ -349,22 +386,22 @@ dat_linter couplings <path/to/vehicle_dat_dir>
 `src/rules/vehicle.rs` / `src/rules/way.rs` / `src/rules/good.rs` / `src/rules/bridge.rs` /
 `src/rules/tunnel.rs` / `src/rules/roadsign.rs` / `src/rules/crossing.rs` /
 `src/rules/way_obj.rs` / `src/rules/groundobj.rs` / `src/rules/tree.rs` /
-`src/rules/citycar.rs` 冒頭コメント参照）。
+`src/rules/citycar.rs` / `src/rules/pedestrian.rs` 冒頭コメント参照）。
 building のルールは vanilla Simutrans と OTRP（Simutrans-Extended 系フォーク）の該当ファイルを diff し、
 両者で一致することも確認済みです。vehicle・way・good・bridge・tunnel・roadsign・crossing・way-object・
-ground_obj・tree・citycar のルールは vanilla Simutrans のみで確認済みで、OTRP との個別 diff はまだ行っていません。
+ground_obj・tree・citycar・pedestrian のルールは vanilla Simutrans のみで確認済みで、OTRP との個別 diff はまだ行っていません。
 
 対応範囲は現状:
 
 - `lint`: `obj=building`（`type=extension` / `stop` / `depot` 系）、`obj=vehicle`、`obj=way`、`obj=good`、
   `obj=bridge`、`obj=tunnel`、`obj=roadsign`、`obj=crossing`、`obj=way-object`、`obj=ground_obj`、`obj=tree`、
-  `obj=citycar`
+  `obj=citycar`、`obj=pedestrian`
 - `couplings`: `obj=vehicle` の `constraint[prev]` / `constraint[next]`
 
 ### 既知の制限（意図的に非対応）
 
-- building/vehicle/way/good/bridge/tunnel/roadsign/crossing/way-object/ground_obj/tree/citycar
-  以外の obj 種別（例: `obj=pedestrian`、`obj=factory` など）
+- building/vehicle/way/good/bridge/tunnel/roadsign/crossing/way-object/ground_obj/tree/citycar/pedestrian
+  以外の obj 種別（例: `obj=factory` など）
 - good の `name` 未指定・`catg`/`value`/`speed_bonus`/`weight_per_unit`/`mapcolor` の妥当性検証。
   `good_writer.cc`はこれらを全て`get_int`/`get_int64`/`text_writer_t`経由で無条件フォールバックさせるのみで、
   fatal/warningになる分岐が無いため対象外（詳細は`src/rules/good.rs`冒頭のREJECTEDコメント参照）
@@ -485,6 +522,33 @@ ground_obj・tree・citycar のルールは vanilla Simutrans のみで確認済
   `constraint[next]` 未指定検証。`citycar_writer.cc`全文にこれらのフィールドへの
   言及が一つも無く、そもそも対象フィールドが存在しない（goodのwaytypeパターン、
   crossing/ground_obj/treeのcursor/iconパターンと同様）
+- pedestrian の `distributionweight`/`offset`/`intro_year`/`intro_month`/
+  `retire_year`/`retire_month` の妥当性検証。`pedestrian_writer.cc`はこれら
+  6フィールドを全て`get_int`の無条件フォールバックのみで読み、`get_int_clamped`は
+  一度も呼ばれていないため対象外（詳細は`src/rules/pedestrian.rs`冒頭のREJECTED
+  コメント参照）
+- pedestrian の `steps_per_frame`が0または負の値の場合の警告。
+  `max(obj.get_int("steps_per_frame", 1), 1)`はC++標準の`max()`によるインラインの
+  下限クランプであり、`get_int_clamped`が内部で呼ぶ`dbg->warning`のような
+  メッセージ出力を一切伴わない。このプロジェクトが`ClampedRangeRule`として
+  一貫して採用してきた「`get_int_clamped`呼び出しである」という基準を満たさないため
+  見送った
+- pedestrian の静止8方向`image[<dir>]`の一部欠落検証（vehicleの
+  `incomplete-8-direction-images`相当）。citycarと同じ理由で、静止分岐の
+  画像走査は無条件ループ（早期終了なし）で、一部方向だけ定義されている状態を
+  検出するfatal分岐が存在しない
+- pedestrian のアニメーション分岐で、ある方向だけ`image[<dir>][0]`が空
+  （＝その方向のみ0フレーム）という方向間の不整合検証。
+  `pedestrian_writer.cc`のフレーム走査は方向ごとに独立しており、他方向との
+  フレーム数比較やfatal/warningの分岐が存在しない
+- pedestrian の`image[<dir>]`（静止分岐）または`image[<dir>][<frame>]`
+  （アニメーション分岐）が1つも定義されていない場合の警告。
+  `imagelist_writer_t::write_obj`/`imagelist2d_writer_t::write_obj`は空リストでも
+  fatal/warningを出さないため対象外
+- pedestrian の `cursor`/`icon`/`waytype`/`engine_type`/`freight`/
+  `constraint[prev]`/`constraint[next]` 未指定検証。`pedestrian_writer.cc`全文に
+  これらのフィールドへの言及が一つも無く、そもそも対象フィールドが存在しない
+  （citycarと同様のパターン）
 - 実際の `tabfile_t::read()` がサポートするパラメータ／範囲展開構文
   （`key[0-4]=value` や `key[n,s,w]=value`）。現行パーサは最初の `=` で単純に分割するのみのため、
   この構文を使った `.dat` はキーが期待通りに展開されず、意図しない結果になる可能性があります
@@ -527,6 +591,7 @@ src/
     groundobj.rs                       obj=ground_obj のRule実装
     tree.rs                             obj=tree のRule実装
     citycar.rs                           obj=citycar のRule実装
+    pedestrian.rs                         obj=pedestrian のRule実装
     common.rs                          共有定数・ヘルパー（KNOWN_WAYTYPES等）・duplicate-key検出
   couplings.rs              vehicle連結制約のグラフ解析（lintとは別スコープ）
   formatter/

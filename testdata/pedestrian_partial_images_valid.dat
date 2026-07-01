@@ -1,0 +1,7 @@
+obj=pedestrian
+name=PartialImagesPedestrian
+copyright=fuga
+distributionweight=8
+
+image[s]=station_cube.png.0.0
+image[w]=station_cube.png.0.0

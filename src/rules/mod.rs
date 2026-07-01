@@ -1,4 +1,4 @@
-// building/vehicle/way/good/bridge/tunnel/roadsign/crossing/way-object/ground_obj/tree/citycar の検証ロジック（cursor/icon省略時のスキップ、タイル画像欠落時の
+// building/vehicle/way/good/bridge/tunnel/roadsign/crossing/way-object/ground_obj/tree/citycar/pedestrian の検証ロジック（cursor/icon省略時のスキップ、タイル画像欠落時の
 // phases=0、frontimageのh>0、Dims size=0 fatal、vehicleのwaytype必須、engine_type
 // フォールバック、8方向画像・freightimage完全性、wayのwaytype必須・base image必須・
 // clip_belowクランプ、goodのfatal/warning分岐皆無の確認、bridgeのwaytype必須・
@@ -9,11 +9,13 @@
 // ribi/slope/diagonal可変画像キー走査、ground_objのwaytype省略可・
 // speed分岐によるphase/8方向季節画像走査、treeのage(5固定)×season全組み合わせ画像
 // 必須、citycarのwaytype/engine_type/freight/constraint系フィールド皆無・
-// 8方向画像の無条件（早期終了なし）走査等）は、いずれもmakeobjの
+// 8方向画像の無条件（早期終了なし）走査、pedestrianのis_animated判定による
+// 静止8方向画像/アニメーション画像（方向ごとに独立したフレーム走査）の排他分岐等）は、
+// いずれもmakeobjの
 // building_writer.cc / vehicle_writer.cc / way_writer.cc / good_writer.cc /
 // bridge_writer.cc / tunnel_writer.cc / roadsign_writer.cc / crossing_writer.cc /
 // way_obj_writer.cc / groundobj_writer.cc / tree_writer.cc / citycar_writer.cc /
-// get_waytype.cc / xref_writer.cc / tabfile.cc を
+// pedestrian_writer.cc / get_waytype.cc / xref_writer.cc / tabfile.cc を
 // ソースとして直接ミラーしている。
 //
 // 検証済み:
@@ -25,12 +27,13 @@
 //
 // どちらかの本体が更新され、上記コミット以降にtype/waytype一覧やcursor/icon・
 // タイル画像・vehicle画像・way画像・goodフィールド・tunnel画像キー・roadsign画像キー・
-// crossing画像キー・way-object画像キー・ground_obj画像キー・tree画像キー・citycar画像キーの
-// ロジックが変わった場合はこの定数表を再検証すること。vehicle系・way系・good系・bridge系・
-// tunnel系・roadsign系・crossing系・way-object系・ground_obj系・tree系・citycar系のルールは
-// OTRP側での個別diffはまだ行っていない（rules/vehicle.rs, rules/way.rs, rules/good.rs,
-// rules/bridge.rs, rules/tunnel.rs, rules/roadsign.rs, rules/crossing.rs, rules/way_obj.rs,
-// rules/groundobj.rs, rules/tree.rs, rules/citycar.rs参照）。
+// crossing画像キー・way-object画像キー・ground_obj画像キー・tree画像キー・citycar画像キー・
+// pedestrian画像キーのロジックが変わった場合はこの定数表を再検証すること。vehicle系・way系・
+// good系・bridge系・tunnel系・roadsign系・crossing系・way-object系・ground_obj系・tree系・
+// citycar系・pedestrian系のルールはOTRP側での個別diffはまだ行っていない（rules/vehicle.rs,
+// rules/way.rs, rules/good.rs, rules/bridge.rs, rules/tunnel.rs, rules/roadsign.rs,
+// rules/crossing.rs, rules/way_obj.rs, rules/groundobj.rs, rules/tree.rs, rules/citycar.rs,
+// rules/pedestrian.rs参照）。
 
 pub mod bridge;
 pub mod building;
@@ -39,6 +42,7 @@ pub mod common;
 pub mod crossing;
 pub mod good;
 pub mod groundobj;
+pub mod pedestrian;
 pub mod roadsign;
 pub mod tree;
 pub mod tunnel;
@@ -53,6 +57,7 @@ pub use common::check_duplicate_keys;
 pub use crossing::check_crossing;
 pub use good::check_good;
 pub use groundobj::check_groundobj;
+pub use pedestrian::check_pedestrian;
 pub use roadsign::check_roadsign;
 pub use tree::check_tree;
 pub use tunnel::check_tunnel;

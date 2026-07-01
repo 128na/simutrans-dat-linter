@@ -1,0 +1,7 @@
+obj=pedestrian
+name=BadImageSizePedestrian
+copyright=fuga
+distributionweight=8
+
+image[s]=station_cube.png.0.0
+image[w]=bad_size.png.0.0

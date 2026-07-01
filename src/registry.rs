@@ -40,6 +40,7 @@ impl RuleSet {
             "ground_obj" => Some(RuleSet::new(crate::rules::groundobj::all())),
             "tree" => Some(RuleSet::new(crate::rules::tree::all())),
             "citycar" => Some(RuleSet::new(crate::rules::citycar::all())),
+            "pedestrian" => Some(RuleSet::new(crate::rules::pedestrian::all())),
             _ => None,
         }
     }

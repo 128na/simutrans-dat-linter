@@ -1,0 +1,5 @@
+Obj=pedestrian
+image[s]=pedestrian.png.0.0
+distributionweight=8
+Name = Walker
+copyright=fuga

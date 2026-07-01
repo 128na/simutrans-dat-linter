@@ -1,0 +1,7 @@
+obj=pedestrian
+name=AnimatedMissingImageFilePedestrian
+copyright=fuga
+distributionweight=8
+
+image[s][0]=station_cube.png.0.0
+image[s][1]=nonexistent_pedestrian_anim.png.0.0

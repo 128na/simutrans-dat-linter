@@ -33,6 +33,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
         "ground_obj" => Some(&GROUNDOBJ_ORDER),
         "tree" => Some(&TREE_ORDER),
         "citycar" => Some(&CITYCAR_ORDER),
+        "pedestrian" => Some(&PEDESTRIAN_ORDER),
         _ => None,
     }
 }
@@ -461,6 +462,34 @@ const CITYCAR_NAMED: &[&str] = &[
 static CITYCAR_ORDER: OrderSpec = OrderSpec {
     sections: &[
         Section::Named(CITYCAR_NAMED),
+        Section::Unknown,
+        Section::Bracket(&["image["]),
+    ],
+};
+
+// pedestrian dat の「慣習的な並び」。pedestrian_writer.cc:15-89のフィールド読み取り順
+// （write_name_and_copyrightでname/copyright（pedestrian_writer.cc:21） ->
+// distributionweight -> (画像走査 image[<dir>] または image[<dir>][<frame>]) ->
+// steps_per_frame（アニメーション時のみ評価されるがdat記述者から見た書く場所は
+// 画像キーの近くが自然） -> offset -> intro_year/intro_month -> retire_year/
+// retire_month）という順序から導出。citycarと同様、pedestrian_writer.cc全文に
+// cursor/iconフィールドへの言及が無いため、CURSOR_ICONセクションは無い。
+const PEDESTRIAN_NAMED: &[&str] = &[
+    "obj",
+    "name",
+    "copyright",
+    "distributionweight",
+    "steps_per_frame",
+    "offset",
+    "intro_year",
+    "intro_month",
+    "retire_year",
+    "retire_month",
+];
+
+static PEDESTRIAN_ORDER: OrderSpec = OrderSpec {
+    sections: &[
+        Section::Named(PEDESTRIAN_NAMED),
         Section::Unknown,
         Section::Bracket(&["image["]),
     ],
