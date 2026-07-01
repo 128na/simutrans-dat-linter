@@ -1,0 +1,5 @@
+obj=tunnel
+name=BrokenTunnelMissingImageFile
+waytype=road
+cost=1000
+frontimage[n][0]=nonexistent_tunnel_image.png.0.0

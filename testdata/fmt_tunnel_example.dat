@@ -1,0 +1,8 @@
+Obj=tunnel
+frontimage[n][0]=tunnel.png.0.0
+waytype=road
+Name = Underpass
+cursor=road_icon.png.0.0
+copyright=fuga
+cost=1000
+icon=road_icon.png.0.0

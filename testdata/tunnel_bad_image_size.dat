@@ -1,0 +1,5 @@
+obj=tunnel
+name=BrokenTunnelBadImageSize
+waytype=road
+cost=1000
+frontimage[n][0]=bad_size.png.0.0

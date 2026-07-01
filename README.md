@@ -5,7 +5,8 @@ Simutrans アドオンの `.dat`（オブジェクト定義ファイル）を **
 `makeobj` はパラメーター不足・矛盾をほぼ無視して pak を生成してしまい、ゲーム内で初めて不具合に気付く
 → 原因調査に時間がかかる、という問題があります。このツールは makeobj の C++ ソース
 （`building_writer.cc` / `vehicle_writer.cc` / `way_writer.cc` / `good_writer.cc` / `bridge_writer.cc` /
-`get_waytype.cc` / `image_writer.cc` / `imagelist_writer.cc` / `xref_writer.cc` / `tabfile.cc`）を精読し、
+`tunnel_writer.cc` / `get_waytype.cc` / `image_writer.cc` / `imagelist_writer.cc` / `xref_writer.cc` /
+`skin_writer.cc` / `tabfile.cc`）を精読し、
 **makeobj が黙って見逃す／FATAL ERROR にする項目**を、Blender→PNG→pak のフルパイプラインを回さずに
 一瞬で検出します。makeobj には依存せず、`.dat` 構文を独自に解析します。
 
@@ -46,7 +47,7 @@ dat_linter --help
 dat_linter lint --help
 ```
 
-### `lint` — 静的検証（`obj=building` / `obj=vehicle` / `obj=way` / `obj=good` / `obj=bridge`）
+### `lint` — 静的検証（`obj=building` / `obj=vehicle` / `obj=way` / `obj=good` / `obj=bridge` / `obj=tunnel`）
 
 ```
 dat_linter lint <path/to/file.dat>
@@ -108,6 +109,20 @@ building/vehicle/way と異なり **makeobj時点でfatal/warningになる分岐
 - front画像が実際に画像を指している場合、参照画像が見つからない／サイズが128の倍数でない
   → FATAL ERROR（building/wayと同じ`check_image_ref`を共有）
 
+**tunnel** で検出する主な項目（`tunnel_writer.cc` / `get_waytype.cc` / `imagelist_writer.cc` /
+`skin_writer.cc` / `image_writer.cc` / `tabfile.cc` で裏付け済み）:
+
+- `waytype` 未指定・不正 → FATAL ERROR（vehicle/way/bridgeと同様、`obj=tunnel` では常に必須）
+- `{front|back}image[{方向}{幅}][{season}]`（`frontimage[n][1]`の有無で季節数、
+  `frontimage[nl][0]`（無ければ短縮形`frontimage[nl]`）の有無でbroad portal（4幅）/
+  narrow portal（1幅）を判定し、対象season数×2面×portal幅×4方向を機械的に走査する）が
+  実際に画像を指している場合、参照画像が見つからない／サイズが128の倍数でない
+  → FATAL ERROR（building/way/bridgeと同じ`check_image_ref`を共有）
+- bridgeと異なり、tunnelの数値フィールド（`topspeed`/`cost`/`maintenance`/`axle_load`/
+  `intro_year`/`intro_month`/`retire_year`/`retire_month`）は全て`get_int`/`get_int64`の
+  無条件フォールバックのみで`get_int_clamped`は不使用のため、クランプ系の警告ルールは無し
+  （詳細は`src/rules/tunnel.rs`冒頭のREJECTEDコメント参照）
+
 **obj種別を問わず**: 同一キーの重複定義（`duplicate-key`, WARNING）。makeobj は重複キーを
 **先勝ち**で無音に無視するため（`tabfileobj_t::put()`）、後から書いた値は意図せず捨てられます。
 
@@ -122,7 +137,7 @@ dat_linter fmt --write   <file.dat>    # ファイルに上書き（-w も可）
 安全な正規化（キー小文字化・`=`前後の空白除去・値の前後トリム）のみ行い、値の内容変更のような
 壊しうる操作は行いません。並び替え（`--reorder`）はスタイル上の慣習であり makeobj の動作には影響しないため、
 オプトインです（コメント・空行は並び替え後の位置が一意に決まらないため出力から除外し件数を警告します）。
-並び順は `obj=` の値ごとに定義されており（`building`/`vehicle`/`way`/`good`/`bridge` に対応）、未対応の obj
+並び順は `obj=` の値ごとに定義されており（`building`/`vehicle`/`way`/`good`/`bridge`/`tunnel` に対応）、未対応の obj
 種別では並び替えを行わず元の順序のまま出力します。
 
 ### `couplings` — 車両連結制約の静的解析
@@ -153,15 +168,16 @@ dat_linter couplings <path/to/vehicle_dat_dir>
 ## 検証根拠と対応範囲
 
 各ルールは makeobj の C++ ソースで根拠を確認しています（詳細は `src/rules/mod.rs` /
-`src/rules/vehicle.rs` / `src/rules/way.rs` / `src/rules/good.rs` / `src/rules/bridge.rs` 冒頭コメント参照）。
+`src/rules/vehicle.rs` / `src/rules/way.rs` / `src/rules/good.rs` / `src/rules/bridge.rs` /
+`src/rules/tunnel.rs` 冒頭コメント参照）。
 building のルールは vanilla Simutrans と OTRP（Simutrans-Extended 系フォーク）の該当ファイルを diff し、
-両者で一致することも確認済みです。vehicle・way・good・bridge のルールは vanilla Simutrans のみで確認済みで、
-OTRP との個別 diff はまだ行っていません。
+両者で一致することも確認済みです。vehicle・way・good・bridge・tunnel のルールは vanilla Simutrans のみで
+確認済みで、OTRP との個別 diff はまだ行っていません。
 
 対応範囲は現状:
 
 - `lint`: `obj=building`（`type=extension` / `stop` / `depot` 系）、`obj=vehicle`、`obj=way`、`obj=good`、
-  `obj=bridge`
+  `obj=bridge`、`obj=tunnel`
 - `couplings`: `obj=vehicle` の `constraint[prev]` / `constraint[next]`
 
 ### 既知の制限（意図的に非対応）
@@ -185,6 +201,19 @@ OTRP との個別 diff はまだ行っていません。
   `dbg->fatal`の分岐ではないため対象外（詳細は`src/rules/bridge.rs`冒頭のREJECTEDコメント参照）
 - bridge の back画像（`backimage[...]`等）未指定検証。`write_bridge_images`の
   `value.size() <= 2`警告分岐はfront画像にのみ存在し、back画像には対応する警告が無い
+- tunnel の `topspeed`/`cost`/`maintenance`/`axle_load`/`intro_year`/`intro_month`/
+  `retire_year`/`retire_month` の妥当性検証。`tunnel_writer.cc`はこれら7フィールドを全て
+  `get_int`/`get_int64`の無条件フォールバックのみで読み、`get_int_clamped`は一度も
+  呼ばれていないため対象外（bridgeの`ClampedRangeRule`に相当する根拠が無い。詳細は
+  `src/rules/tunnel.rs`冒頭のREJECTEDコメント参照）
+- tunnel の画像未指定警告。bridgeの`front{name}[...]`が`value.size() <= 2`で警告を出す
+  分岐に相当するコードが`tunnel_writer.cc`には存在しない（空文字列のキーもそのまま
+  `frontkeys`/`backkeys`にappendされ、`imagelist_writer_t::write_obj`のcount不一致警告も
+  count==keys.get_count()が常に成立するため発火しない）
+- tunnel の `cursor`/`icon` 未指定検証。way/bridgeと同じ理由（`cursorskin_writer_t`経由で
+  空文字列を無条件許容し fatal/warning を出さない）
+- tunnel の `way=`（地下ウェイオブジェクトへの参照）の実在性検証。`xref_writer_t::write_obj`
+  は参照を検証せずゲーム読み込み時まで解決を遅延する（goodのfreight参照と同じ理由）
 - 実際の `tabfile_t::read()` がサポートするパラメータ／範囲展開構文
   （`key[0-4]=value` や `key[n,s,w]=value`）。現行パーサは最初の `=` で単純に分割するのみのため、
   この構文を使った `.dat` はキーが期待通りに展開されず、意図しない結果になる可能性があります
@@ -220,7 +249,8 @@ src/
     way.rs                      obj=way のRule実装
     good.rs                      obj=good のRule実装（現状ルール0件、根拠不在の記録が主目的）
     bridge.rs                     obj=bridge のRule実装
-    common.rs                      共有定数・ヘルパー（KNOWN_WAYTYPES等）・duplicate-key検出
+    tunnel.rs                      obj=tunnel のRule実装
+    common.rs                       共有定数・ヘルパー（KNOWN_WAYTYPES等）・duplicate-key検出
   couplings.rs              vehicle連結制約のグラフ解析（lintとは別スコープ）
   formatter/
     mod.rs                    パース・正規化ロジック

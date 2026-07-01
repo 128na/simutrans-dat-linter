@@ -1,0 +1,5 @@
+obj=tunnel
+name=BrokenTunnelUnknownWaytype
+waytype=nonexistent_waytype
+cost=1000
+frontimage[n][0]=station_cube.png.0.0

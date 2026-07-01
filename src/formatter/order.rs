@@ -26,6 +26,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
         "way" => Some(&WAY_ORDER),
         "good" => Some(&GOOD_ORDER),
         "bridge" => Some(&BRIDGE_ORDER),
+        "tunnel" => Some(&TUNNEL_ORDER),
         _ => None,
     }
 }
@@ -227,5 +228,36 @@ static BRIDGE_ORDER: OrderSpec = OrderSpec {
             "backpillar2[",
             "frontpillar2[",
         ]),
+    ],
+};
+
+// tunnel dat の「慣習的な並び」。tunnel_writer.cc:22-33のフィールド読み取り順
+// （topspeed -> cost -> maintenance -> waytype -> intro/retire -> axle_load）、
+// 続けてwrite_name_and_copyrightでname/copyright（tunnel_writer.cc:74）、
+// その後season=0のときのみcursor/icon（tunnel_writer.cc:80-82,107）と
+// front/backimage系キー（tunnel_writer.cc:84-98の走査順）が書かれる、
+// という順序から導出。
+const TUNNEL_NAMED: &[&str] = &[
+    "obj",
+    "name",
+    "copyright",
+    "topspeed",
+    "cost",
+    "maintenance",
+    "waytype",
+    "intro_year",
+    "intro_month",
+    "retire_year",
+    "retire_month",
+    "axle_load",
+];
+const TUNNEL_CURSOR_ICON: &[&str] = &["cursor", "icon"];
+
+static TUNNEL_ORDER: OrderSpec = OrderSpec {
+    sections: &[
+        Section::Named(TUNNEL_NAMED),
+        Section::Named(TUNNEL_CURSOR_ICON),
+        Section::Unknown,
+        Section::Bracket(&["frontimage[", "backimage["]),
     ],
 };
