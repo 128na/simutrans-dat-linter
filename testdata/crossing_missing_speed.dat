@@ -1,0 +1,7 @@
+obj=crossing
+name=BrokenCrossingMissingSpeed
+waytype[0]=road
+waytype[1]=track
+speed[0]=80
+openimage[ns][0]=station_cube.png.0.0
+openimage[ew][0]=station_cube.png.0.0

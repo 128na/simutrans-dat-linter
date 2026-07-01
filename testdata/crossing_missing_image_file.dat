@@ -1,0 +1,8 @@
+obj=crossing
+name=BrokenCrossingMissingImageFile
+waytype[0]=road
+waytype[1]=track
+speed[0]=80
+speed[1]=120
+openimage[ns][0]=nonexistent_crossing_image.png.0.0
+openimage[ew][0]=station_cube.png.0.0

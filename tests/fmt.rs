@@ -144,6 +144,25 @@ icon=signal_icon.png.0.0
 }
 
 #[test]
+fn reorder_crossing_matches_expected_output() {
+    let parsed = formatter::parse_entries(&read("fmt_crossing_example.dat"));
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "crossing");
+    let expected = "\
+obj=crossing
+name=Level Crossing
+copyright=fuga
+waytype[0]=road
+waytype[1]=track
+speed[0]=80
+speed[1]=120
+
+openimage[ew][0]=crossing.png.0.0
+openimage[ns][0]=crossing.png.0.0
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
 fn reorder_vehicle_matches_expected_output() {
     let parsed = formatter::parse_entries(&read("fmt_vehicle_example.dat"));
     let (out, _warnings) = formatter::format_reordered(&parsed.entries, "vehicle");

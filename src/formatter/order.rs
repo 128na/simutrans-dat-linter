@@ -28,6 +28,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
         "bridge" => Some(&BRIDGE_ORDER),
         "tunnel" => Some(&TUNNEL_ORDER),
         "roadsign" => Some(&ROADSIGN_ORDER),
+        "crossing" => Some(&CROSSING_ORDER),
         _ => None,
     }
 }
@@ -301,5 +302,44 @@ static ROADSIGN_ORDER: OrderSpec = OrderSpec {
         Section::Unknown,
         Section::Bracket(&["image["]),
         Section::Named(ROADSIGN_CURSOR_ICON),
+    ],
+};
+
+// crossing dat の「慣習的な並び」。crossing_writer.cc:73-156のフィールド書き込み順
+// （write_name_and_copyrightでname/copyright -> waytype[0]/waytype[1]
+// （crossing_writer.cc:78-84） -> speed[0]/speed[1]（87-94） ->
+// animation_time_open/animation_time_closed（97-100） -> sound（52-108、値の計算は
+// node確保前だが実際に読むキーは"sound"のみ） -> intro_year/intro_month/
+// retire_year/retire_month（110-117）、その後openimage/front_openimage/
+// closedimage/front_closedimage系のimageキー（120-156の走査順）が書かれる、
+// という順序から導出。crossingにはcursor/iconフィールドへの言及が
+// crossing_writer.cc全文に無いため、他obj種別と異なりCURSOR_ICONセクションは無い。
+const CROSSING_NAMED: &[&str] = &[
+    "obj",
+    "name",
+    "copyright",
+    "waytype[0]",
+    "waytype[1]",
+    "speed[0]",
+    "speed[1]",
+    "animation_time_open",
+    "animation_time_closed",
+    "sound",
+    "intro_year",
+    "intro_month",
+    "retire_year",
+    "retire_month",
+];
+
+static CROSSING_ORDER: OrderSpec = OrderSpec {
+    sections: &[
+        Section::Named(CROSSING_NAMED),
+        Section::Unknown,
+        Section::Bracket(&[
+            "openimage[",
+            "front_openimage[",
+            "closedimage[",
+            "front_closedimage[",
+        ]),
     ],
 };
