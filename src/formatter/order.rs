@@ -30,6 +30,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
         "roadsign" => Some(&ROADSIGN_ORDER),
         "crossing" => Some(&CROSSING_ORDER),
         "way-object" => Some(&WAY_OBJ_ORDER),
+        "ground_obj" => Some(&GROUNDOBJ_ORDER),
         _ => None,
     }
 }
@@ -383,5 +384,32 @@ static WAY_OBJ_ORDER: OrderSpec = OrderSpec {
             "backdiagonal[",
         ]),
         Section::Named(WAY_OBJ_CURSOR_ICON),
+    ],
+};
+
+// ground_obj dat の「慣習的な並び」。groundobj_writer.cc:17-100のフィールド読み取り順
+// （write_name_and_copyrightでname/copyright（groundobj_writer.cc:20） -> climates
+// -> seasons -> distributionweight -> cost -> speed -> trees_on_top -> waytype、
+// その後image[<phase|dir>][<season>]系キー（52-99の走査順）が書かれる、という順序
+// から導出。ground_obj全文にcursor/iconフィールドへの言及が無いため、他obj種別と
+// 異なりCURSOR_ICONセクションは無い（crossingと同じパターン）。
+const GROUNDOBJ_NAMED: &[&str] = &[
+    "obj",
+    "name",
+    "copyright",
+    "climates",
+    "seasons",
+    "distributionweight",
+    "cost",
+    "speed",
+    "trees_on_top",
+    "waytype",
+];
+
+static GROUNDOBJ_ORDER: OrderSpec = OrderSpec {
+    sections: &[
+        Section::Named(GROUNDOBJ_NAMED),
+        Section::Unknown,
+        Section::Bracket(&["image["]),
     ],
 };

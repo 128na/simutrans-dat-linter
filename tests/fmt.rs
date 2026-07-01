@@ -46,13 +46,14 @@ fn reorder_is_idempotent() {
 fn reorder_unsupported_obj_falls_back_to_preserve_order() {
     let text = read("roundtrip_test.dat");
     let parsed = formatter::parse_entries(&text);
-    // "groundobj" は本ツールがまだ対応していないobj種別の例
-    // （かつては "wayobj" を使っていたが、obj=way-object としてway-objectを
-    // サポートしたため、真に未対応の別のobj種別文字列に更新した）。
-    let (out, warnings) = formatter::format_reordered(&parsed.entries, "groundobj");
+    // "tree" は本ツールがまだ対応していないobj種別の例
+    // （かつては "wayobj" -> "groundobj" の順で使っていたが、obj=way-object /
+    // obj=ground_obj としてそれぞれway-object/ground_objをサポートしたため、
+    // 真に未対応の別のobj種別文字列に更新した）。
+    let (out, warnings) = formatter::format_reordered(&parsed.entries, "tree");
     let preserved = formatter::format_preserve_order(&parsed.entries);
     assert_eq!(out, preserved);
-    assert!(warnings.iter().any(|w| w.contains("obj=groundobj")));
+    assert!(warnings.iter().any(|w| w.contains("obj=tree")));
 }
 
 #[test]
@@ -181,6 +182,21 @@ frontimage[-]=catenary.png.0.0
 
 cursor=catenary_icon.png.0.0
 icon=catenary_icon.png.0.0
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn reorder_groundobj_matches_expected_output() {
+    let parsed = formatter::parse_entries(&read("fmt_groundobj_example.dat"));
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "ground_obj");
+    let expected = "\
+obj=ground_obj
+name=Rock
+copyright=fuga
+climates=rocky,tundra
+
+image[0][0]=rock.png.0.0
 ";
     assert_eq!(out, expected);
 }

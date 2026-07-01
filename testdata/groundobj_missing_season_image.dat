@@ -1,0 +1,4 @@
+obj=ground_obj
+name=BrokenGroundobjMissingSeasonImage
+seasons=2
+image[0][0]=station_cube.png.0.0

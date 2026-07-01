@@ -1,0 +1,4 @@
+obj=ground_obj
+name=BrokenGroundobjUnknownWaytype
+waytype=nonexistent_waytype
+image[0][0]=station_cube.png.0.0

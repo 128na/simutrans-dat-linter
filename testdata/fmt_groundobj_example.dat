@@ -1,0 +1,5 @@
+Obj=ground_obj
+image[0][0]=rock.png.0.0
+climates=rocky,tundra
+Name = Rock
+copyright=fuga

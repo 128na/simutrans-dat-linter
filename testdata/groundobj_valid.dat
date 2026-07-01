@@ -1,0 +1,6 @@
+obj=ground_obj
+name=ValidRock
+climates=temperate,tundra
+seasons=1
+cost=100
+image[0][0]=station_cube.png.0.0

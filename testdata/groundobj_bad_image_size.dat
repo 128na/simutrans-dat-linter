@@ -1,0 +1,3 @@
+obj=ground_obj
+name=BrokenGroundobjBadImageSize
+image[0][0]=bad_size.png.0.0
