@@ -1,0 +1,10 @@
+obj=way-object
+name=ValidCatenary
+waytype=track
+own_waytype=electrified_track
+cost=800
+maintenance=35
+topspeed=999
+frontimage[-]=station_cube.png.0.0
+cursor=station_icon.png.0.0
+icon=station_icon.png.0.0

@@ -1,0 +1,6 @@
+obj=way-object
+name=BrokenWayObjUnknownWaytype
+waytype=nonexistent_waytype
+own_waytype=electrified_track
+cost=800
+frontimage[-]=station_cube.png.0.0

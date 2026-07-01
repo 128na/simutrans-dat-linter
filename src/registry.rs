@@ -36,6 +36,7 @@ impl RuleSet {
             "tunnel" => Some(RuleSet::new(crate::rules::tunnel::all())),
             "roadsign" => Some(RuleSet::new(crate::rules::roadsign::all())),
             "crossing" => Some(RuleSet::new(crate::rules::crossing::all())),
+            "way-object" => Some(RuleSet::new(crate::rules::way_obj::all())),
             _ => None,
         }
     }

@@ -1,0 +1,6 @@
+obj=way-object
+name=BrokenWayObjUnknownOwnWaytype
+waytype=track
+own_waytype=nonexistent_waytype
+cost=800
+frontimage[-]=station_cube.png.0.0

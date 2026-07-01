@@ -29,6 +29,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
         "tunnel" => Some(&TUNNEL_ORDER),
         "roadsign" => Some(&ROADSIGN_ORDER),
         "crossing" => Some(&CROSSING_ORDER),
+        "way-object" => Some(&WAY_OBJ_ORDER),
         _ => None,
     }
 }
@@ -341,5 +342,46 @@ static CROSSING_ORDER: OrderSpec = OrderSpec {
             "closedimage[",
             "front_closedimage[",
         ]),
+    ],
+};
+
+// way-object dat の「慣習的な並び」。way_obj_writer.cc:32-56のフィールド読み取り・
+// 書き込み順（cost -> maintenance -> topspeed -> intro/retire -> waytype ->
+// own_waytype、続けてwrite_name_and_copyrightでname/copyright、way_obj_writer.cc:56）、
+// その後frontimage/backimage系（61-69） -> frontimageup/backimageup系（76-84） ->
+// frontimageup2/backimageup2系（85-97） -> frontdiagonal/backdiagonal系（104-112） ->
+// cursor/icon（116-119、way_obj_writer.cc内で常に最後に書かれる。他obj種別と異なり
+// CURSOR_ICONセクションが末尾に来る点はroadsignと同じ配置）という順序から導出。
+const WAY_OBJ_NAMED: &[&str] = &[
+    "obj",
+    "name",
+    "copyright",
+    "cost",
+    "maintenance",
+    "topspeed",
+    "intro_year",
+    "intro_month",
+    "retire_year",
+    "retire_month",
+    "waytype",
+    "own_waytype",
+];
+const WAY_OBJ_CURSOR_ICON: &[&str] = &["cursor", "icon"];
+
+static WAY_OBJ_ORDER: OrderSpec = OrderSpec {
+    sections: &[
+        Section::Named(WAY_OBJ_NAMED),
+        Section::Unknown,
+        Section::Bracket(&[
+            "frontimage[",
+            "backimage[",
+            "frontimageup[",
+            "backimageup[",
+            "frontimageup2[",
+            "backimageup2[",
+            "frontdiagonal[",
+            "backdiagonal[",
+        ]),
+        Section::Named(WAY_OBJ_CURSOR_ICON),
     ],
 };

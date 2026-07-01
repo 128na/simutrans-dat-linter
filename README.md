@@ -5,8 +5,8 @@ Simutrans アドオンの `.dat`（オブジェクト定義ファイル）を **
 `makeobj` はパラメーター不足・矛盾をほぼ無視して pak を生成してしまい、ゲーム内で初めて不具合に気付く
 → 原因調査に時間がかかる、という問題があります。このツールは makeobj の C++ ソース
 （`building_writer.cc` / `vehicle_writer.cc` / `way_writer.cc` / `good_writer.cc` / `bridge_writer.cc` /
-`tunnel_writer.cc` / `roadsign_writer.cc` / `crossing_writer.cc` / `get_waytype.cc` / `image_writer.cc` /
-`imagelist_writer.cc` / `xref_writer.cc` / `skin_writer.cc` / `tabfile.cc`）を精読し、
+`tunnel_writer.cc` / `roadsign_writer.cc` / `crossing_writer.cc` / `way_obj_writer.cc` / `get_waytype.cc` /
+`image_writer.cc` / `imagelist_writer.cc` / `xref_writer.cc` / `skin_writer.cc` / `tabfile.cc`）を精読し、
 **makeobj が黙って見逃す／FATAL ERROR にする項目**を、Blender→PNG→pak のフルパイプラインを回さずに
 一瞬で検出します。makeobj には依存せず、`.dat` 構文を独自に解析します。
 
@@ -47,7 +47,7 @@ dat_linter --help
 dat_linter lint --help
 ```
 
-### `lint` — 静的検証（`obj=building` / `obj=vehicle` / `obj=way` / `obj=good` / `obj=bridge` / `obj=tunnel` / `obj=roadsign` / `obj=crossing`）
+### `lint` — 静的検証（`obj=building` / `obj=vehicle` / `obj=way` / `obj=good` / `obj=bridge` / `obj=tunnel` / `obj=roadsign` / `obj=crossing` / `obj=way-object`）
 
 ```
 dat_linter lint <path/to/file.dat>
@@ -170,6 +170,37 @@ building/vehicle/way と異なり **makeobj時点でfatal/warningになる分岐
 - crossingには`cursor`/`icon`フィールドへの言及がソース上に一つも無いため、
   他のobj種別と異なりそもそもcursor/icon関連のルールは存在しない
 
+**way-object**（架線柱・照明など、wayに付随して描画されるオブジェクト。`.dat`に実際に書く
+`obj=`の値は`way-object`。詳細は下記コラム参照）で検出する主な項目（`way_obj_writer.cc` /
+`way_obj_writer.h` / `get_waytype.cc` / `imagelist_writer.cc` / `image_writer.cc` /
+`skin_writer.cc` / `obj_writer.cc` / `tabfile.cc` で裏付け済み）:
+
+- `waytype` / `own_waytype` のいずれか未指定・不正 → FATAL ERROR（crossingと同様、
+  way-objectは他のobj種別と異なりwaytypeフィールドが**2つ**ある。`waytype`はこの
+  way-objectが乗る対象のwayの種別、`own_waytype`はこのway-object自身が表す種別
+  （架線なら`electrified_track`等）で、意味は異なるがどちらも同じ`get_waytype()`
+  経由でFATALになる）
+- 画像キー（`{front|back}image[{ribi}]`26方向×2 / `{front|back}imageup[{slope}]`
+  4段×2 / `{front|back}imageup2[{slope}]`4段×2 / `{front|back}diagonal[{ribi}]`
+  4方向×2 / `cursor` / `icon`）が実際に画像を指す場合、参照画像が見つからない／
+  サイズが128の倍数でない → FATAL ERROR（building/way/bridge/tunnel/roadsign/
+  crossingと同じ`check_image_ref`を共有）
+- way-objectは`get_int_clamped`を一切使わない（`cost`/`maintenance`/`topspeed`/
+  `intro_year`/`intro_month`/`retire_year`/`retire_month`は全て無条件フォールバック）
+  ため、bridgeのようなクランプ系警告ルールは無い（詳細は`src/rules/way_obj.rs`
+  冒頭のREJECTEDコメント参照）
+- wayの`image[-]`のような「最低1枚必須」の明示的なFATALがway_obj_writer.cc上に
+  存在しないため、画像が1枚も無くてもmakeobj時点ではエラーにならない（詳細は
+  `src/rules/way_obj.rs`冒頭のREJECTEDコメント参照）
+
+> **`obj=`文字列について**: このプロジェクトのRustモジュール名・ファイル名は
+> `way_obj`（スネークケース、makeobjの`way_obj_writer.cc`ファイル名に合わせている）
+> だが、`.dat`に実際に書く`obj=`の値は**`way-object`**（ハイフン区切り）である。
+> 根拠は`way_obj_writer_t::get_type_name()`（`way_obj_writer.h`）が
+> `return "way-object";`を返し、`obj_writer_t::write`（`obj_writer.cc`）が
+> `obj.get("obj")`の文字列でそのままこの`get_type_name()`の登録名を引く実装のため。
+> pak128等の公開`.dat`ファイルでも`obj=way-object`が使われていることを確認済み。
+
 **obj種別を問わず**: 同一キーの重複定義（`duplicate-key`, WARNING）。makeobj は重複キーを
 **先勝ち**で無音に無視するため（`tabfileobj_t::put()`）、後から書いた値は意図せず捨てられます。
 
@@ -185,7 +216,7 @@ dat_linter fmt --write   <file.dat>    # ファイルに上書き（-w も可）
 壊しうる操作は行いません。並び替え（`--reorder`）はスタイル上の慣習であり makeobj の動作には影響しないため、
 オプトインです（コメント・空行は並び替え後の位置が一意に決まらないため出力から除外し件数を警告します）。
 並び順は `obj=` の値ごとに定義されており（`building`/`vehicle`/`way`/`good`/`bridge`/`tunnel`/`roadsign`/
-`crossing` に対応）、未対応の obj 種別では並び替えを行わず元の順序のまま出力します。
+`crossing`/`way-object` に対応）、未対応の obj 種別では並び替えを行わず元の順序のまま出力します。
 
 ### `couplings` — 車両連結制約の静的解析
 
@@ -216,20 +247,21 @@ dat_linter couplings <path/to/vehicle_dat_dir>
 
 各ルールは makeobj の C++ ソースで根拠を確認しています（詳細は `src/rules/mod.rs` /
 `src/rules/vehicle.rs` / `src/rules/way.rs` / `src/rules/good.rs` / `src/rules/bridge.rs` /
-`src/rules/tunnel.rs` / `src/rules/roadsign.rs` / `src/rules/crossing.rs` 冒頭コメント参照）。
+`src/rules/tunnel.rs` / `src/rules/roadsign.rs` / `src/rules/crossing.rs` /
+`src/rules/way_obj.rs` 冒頭コメント参照）。
 building のルールは vanilla Simutrans と OTRP（Simutrans-Extended 系フォーク）の該当ファイルを diff し、
-両者で一致することも確認済みです。vehicle・way・good・bridge・tunnel・roadsign・crossing のルールは
-vanilla Simutrans のみで確認済みで、OTRP との個別 diff はまだ行っていません。
+両者で一致することも確認済みです。vehicle・way・good・bridge・tunnel・roadsign・crossing・way-object の
+ルールは vanilla Simutrans のみで確認済みで、OTRP との個別 diff はまだ行っていません。
 
 対応範囲は現状:
 
 - `lint`: `obj=building`（`type=extension` / `stop` / `depot` 系）、`obj=vehicle`、`obj=way`、`obj=good`、
-  `obj=bridge`、`obj=tunnel`、`obj=roadsign`、`obj=crossing`
+  `obj=bridge`、`obj=tunnel`、`obj=roadsign`、`obj=crossing`、`obj=way-object`
 - `couplings`: `obj=vehicle` の `constraint[prev]` / `constraint[next]`
 
 ### 既知の制限（意図的に非対応）
 
-- `obj=wayobj` など building/vehicle/way/good/bridge/tunnel/roadsign/crossing 以外の obj 種別
+- `obj=groundobj` など building/vehicle/way/good/bridge/tunnel/roadsign/crossing/way-object 以外の obj 種別
 - good の `name` 未指定・`catg`/`value`/`speed_bonus`/`weight_per_unit`/`mapcolor` の妥当性検証。
   `good_writer.cc`はこれらを全て`get_int`/`get_int64`/`text_writer_t`経由で無条件フォールバックさせるのみで、
   fatal/warningになる分岐が無いため対象外（詳細は`src/rules/good.rs`冒頭のREJECTEDコメント参照）
@@ -288,6 +320,26 @@ vanilla Simutrans のみで確認済みで、OTRP との個別 diff はまだ行
   （例: `waytype[0]=power`と`waytype[1]=decoration`）の妥当性検証。解決後の列挙値が
   一致するかどうかしか`crossing_writer.cc`は見ておらず、「意味のある交差の組み合わせ」を
   判定するロジックはmakeobj側に存在しない
+- way-object の `cost`/`maintenance`/`topspeed`/`intro_year`/`intro_month`/
+  `retire_year`/`retire_month` の妥当性検証。`way_obj_writer.cc`はこれら7フィールドを
+  全て`get_int`/`get_int64`の無条件フォールバックのみで読み、`get_int_clamped`は
+  一度も呼ばれていないため対象外（詳細は`src/rules/way_obj.rs`冒頭のREJECTEDコメント参照）
+- way-object の `waytype`と`own_waytype`が解決後の値として同一（または特定の組み合わせ）
+  であることの妥当性検証。crossingの`waytype[0]`/`waytype[1]`一致検出に相当する
+  fatal分岐が`way_obj_writer.cc`には存在しない（それぞれ独立に`get_waytype()`を
+  呼ぶだけで結果を比較しない）。実際、pak128の実例でも両者は意図的に異なる値を取る
+- way-object の画像未指定（空文字列/`"-"`）警告。bridgeの`front{name}[...]`が
+  `value.size() <= 2`で警告を出す分岐に相当するコードが`way_obj_writer.cc`には
+  存在しない
+- way-object の `image[-]`相当の「最低1枚必須」チェック。wayの`BaseImageRequiredRule`が
+  依拠する明示的なFATAL分岐（`image with label %s missing`）に相当するコードが
+  `way_obj_writer.cc`には存在せず、`frontimage[-]`/`backimage[-]`も他のribiと
+  全く同列に扱われる
+- way-object の `cursor`/`icon` 未指定検証。way/bridge/tunnel/roadsignと同じ理由
+  （`cursorskin_writer_t`経由で空文字列を無条件許容し fatal/warning を出さない）
+- way-object の `own_waytype` が既知だが意味的に不自然な値（例: `own_waytype=air`）の
+  妥当性検証。`way_obj_desc.h`のコメント「only overheadlines_wt is currently used」は
+  現状の利用実態を示すコメントであり、makeobj側にそれ以外の値を拒否する分岐は無い
 - 実際の `tabfile_t::read()` がサポートするパラメータ／範囲展開構文
   （`key[0-4]=value` や `key[n,s,w]=value`）。現行パーサは最初の `=` で単純に分割するのみのため、
   この構文を使った `.dat` はキーが期待通りに展開されず、意図しない結果になる可能性があります
@@ -326,6 +378,7 @@ src/
     tunnel.rs                      obj=tunnel のRule実装
     roadsign.rs                     obj=roadsign のRule実装
     crossing.rs                      obj=crossing のRule実装
+    way_obj.rs                        obj=way-object のRule実装
     common.rs                          共有定数・ヘルパー（KNOWN_WAYTYPES等）・duplicate-key検出
   couplings.rs              vehicle連結制約のグラフ解析（lintとは別スコープ）
   formatter/

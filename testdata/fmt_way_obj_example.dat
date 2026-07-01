@@ -1,0 +1,9 @@
+Obj=way-object
+frontimage[-]=catenary.png.0.0
+waytype=track
+Name = Catenary
+own_waytype=electrified_track
+cursor=catenary_icon.png.0.0
+copyright=fuga
+cost=1000
+icon=catenary_icon.png.0.0

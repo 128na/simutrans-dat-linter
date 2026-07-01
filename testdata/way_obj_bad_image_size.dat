@@ -1,0 +1,5 @@
+obj=way-object
+name=BrokenWayObjBadImageSize
+waytype=track
+own_waytype=electrified_track
+frontimage[-]=bad_size.png.0.0

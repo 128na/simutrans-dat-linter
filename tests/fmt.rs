@@ -46,10 +46,13 @@ fn reorder_is_idempotent() {
 fn reorder_unsupported_obj_falls_back_to_preserve_order() {
     let text = read("roundtrip_test.dat");
     let parsed = formatter::parse_entries(&text);
-    let (out, warnings) = formatter::format_reordered(&parsed.entries, "wayobj");
+    // "groundobj" は本ツールがまだ対応していないobj種別の例
+    // （かつては "wayobj" を使っていたが、obj=way-object としてway-objectを
+    // サポートしたため、真に未対応の別のobj種別文字列に更新した）。
+    let (out, warnings) = formatter::format_reordered(&parsed.entries, "groundobj");
     let preserved = formatter::format_preserve_order(&parsed.entries);
     assert_eq!(out, preserved);
-    assert!(warnings.iter().any(|w| w.contains("obj=wayobj")));
+    assert!(warnings.iter().any(|w| w.contains("obj=groundobj")));
 }
 
 #[test]
@@ -158,6 +161,26 @@ speed[1]=120
 
 openimage[ew][0]=crossing.png.0.0
 openimage[ns][0]=crossing.png.0.0
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn reorder_way_obj_matches_expected_output() {
+    let parsed = formatter::parse_entries(&read("fmt_way_obj_example.dat"));
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "way-object");
+    let expected = "\
+obj=way-object
+name=Catenary
+copyright=fuga
+cost=1000
+waytype=track
+own_waytype=electrified_track
+
+frontimage[-]=catenary.png.0.0
+
+cursor=catenary_icon.png.0.0
+icon=catenary_icon.png.0.0
 ";
     assert_eq!(out, expected);
 }
