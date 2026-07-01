@@ -1,0 +1,9 @@
+obj=good
+name=Passagiere
+copyright=fuga
+metric=Personen
+value=100
+catg=0
+speed_bonus=100
+weight_per_unit=80
+mapcolor=255

@@ -24,6 +24,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
         "building" => Some(&BUILDING_ORDER),
         "vehicle" => Some(&VEHICLE_ORDER),
         "way" => Some(&WAY_ORDER),
+        "good" => Some(&GOOD_ORDER),
         _ => None,
     }
 }
@@ -150,4 +151,25 @@ static WAY_ORDER: OrderSpec = OrderSpec {
             "frontdiagonal[",
         ]),
     ],
+};
+
+// good dat の「慣習的な並び」。good_writer.cc:15-31のフィールド読み取り順
+// （write_name_and_copyright -> metric -> value -> catg -> speed_bonus ->
+// weight_per_unit -> mapcolor）から導出。good_writer.cc全文にimage/cursor/icon
+// 系フィールドへの言及が無いため、Bracketセクションは無い
+// （未知の追加キーは全てUnknownセクションでパース順のまま保持される）。
+const GOOD_NAMED: &[&str] = &[
+    "obj",
+    "name",
+    "copyright",
+    "metric",
+    "value",
+    "catg",
+    "speed_bonus",
+    "weight_per_unit",
+    "mapcolor",
+];
+
+static GOOD_ORDER: OrderSpec = OrderSpec {
+    sections: &[Section::Named(GOOD_NAMED), Section::Unknown],
 };

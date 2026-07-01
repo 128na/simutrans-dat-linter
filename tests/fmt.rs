@@ -72,6 +72,21 @@ image[-]=road.png.0.0
 }
 
 #[test]
+fn reorder_good_matches_expected_output() {
+    let parsed = formatter::parse_entries(&read("fmt_good_example.dat"));
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "good");
+    let expected = "\
+obj=good
+name=Passagiere
+copyright=fuga
+metric=Personen
+value=100
+mapcolor=255
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
 fn reorder_vehicle_matches_expected_output() {
     let parsed = formatter::parse_entries(&read("fmt_vehicle_example.dat"));
     let (out, _warnings) = formatter::format_reordered(&parsed.entries, "vehicle");

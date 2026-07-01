@@ -31,6 +31,7 @@ impl RuleSet {
             "building" => Some(RuleSet::new(crate::rules::building::all(dat))),
             "vehicle" => Some(RuleSet::new(crate::rules::vehicle::all())),
             "way" => Some(RuleSet::new(crate::rules::way::all())),
+            "good" => Some(RuleSet::new(crate::rules::good::all())),
             _ => None,
         }
     }
