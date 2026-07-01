@@ -30,6 +30,7 @@ impl RuleSet {
         match obj {
             "building" => Some(RuleSet::new(crate::rules::building::all(dat))),
             "vehicle" => Some(RuleSet::new(crate::rules::vehicle::all())),
+            "way" => Some(RuleSet::new(crate::rules::way::all())),
             _ => None,
         }
     }

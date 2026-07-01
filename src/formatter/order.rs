@@ -23,6 +23,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
     match obj {
         "building" => Some(&BUILDING_ORDER),
         "vehicle" => Some(&VEHICLE_ORDER),
+        "way" => Some(&WAY_ORDER),
         _ => None,
     }
 }
@@ -108,5 +109,45 @@ static VEHICLE_ORDER: OrderSpec = OrderSpec {
         Section::Unknown,
         Section::Bracket(&["constraint[prev][", "constraint[next]["]),
         Section::Bracket(&["emptyimage[", "freightimage[", "freightimagetype["]),
+    ],
+};
+
+// way dat の「慣習的な並び」。way_writer.cc:37-90のフィールド読み取り・書き込み順
+// （cost -> maintenance -> topspeed -> max_weight -> axle_load -> clip_below ->
+// intro/retire -> waytype -> system_type -> draw_as_ding、その後
+// write_name_and_copyright で name/copyright、続けて image[...] 系の並び）から導出。
+const WAY_NAMED: &[&str] = &[
+    "obj",
+    "name",
+    "copyright",
+    "cost",
+    "maintenance",
+    "topspeed",
+    "max_weight",
+    "axle_load",
+    "clip_below",
+    "intro_year",
+    "intro_month",
+    "retire_year",
+    "retire_month",
+    "waytype",
+    "system_type",
+    "draw_as_ding",
+];
+const WAY_CURSOR_ICON: &[&str] = &["cursor", "icon"];
+
+static WAY_ORDER: OrderSpec = OrderSpec {
+    sections: &[
+        Section::Named(WAY_NAMED),
+        Section::Named(WAY_CURSOR_ICON),
+        Section::Unknown,
+        Section::Bracket(&[
+            "image[",
+            "frontimage[",
+            "imageup[",
+            "frontimageup[",
+            "diagonal[",
+            "frontdiagonal[",
+        ]),
     ],
 };

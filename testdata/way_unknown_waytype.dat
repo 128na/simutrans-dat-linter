@@ -1,0 +1,5 @@
+obj=way
+name=BrokenWayUnknownWaytype
+waytype=typo_track
+cost=1000
+image[-]=station_cube.png.0.0

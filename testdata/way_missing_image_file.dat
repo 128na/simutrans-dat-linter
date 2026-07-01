@@ -1,0 +1,5 @@
+obj=way
+name=BrokenWayMissingImageFile
+waytype=road
+cost=1000
+image[-]=nonexistent_way_image.png.0.0

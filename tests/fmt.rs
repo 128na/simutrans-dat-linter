@@ -46,10 +46,29 @@ fn reorder_is_idempotent() {
 fn reorder_unsupported_obj_falls_back_to_preserve_order() {
     let text = read("roundtrip_test.dat");
     let parsed = formatter::parse_entries(&text);
-    let (out, warnings) = formatter::format_reordered(&parsed.entries, "way");
+    let (out, warnings) = formatter::format_reordered(&parsed.entries, "wayobj");
     let preserved = formatter::format_preserve_order(&parsed.entries);
     assert_eq!(out, preserved);
-    assert!(warnings.iter().any(|w| w.contains("obj=way")));
+    assert!(warnings.iter().any(|w| w.contains("obj=wayobj")));
+}
+
+#[test]
+fn reorder_way_matches_expected_output() {
+    let parsed = formatter::parse_entries(&read("fmt_way_example.dat"));
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "way");
+    let expected = "\
+obj=way
+name=Highway
+copyright=fuga
+cost=1000
+waytype=road
+
+cursor=road_icon.png.0.0
+icon=road_icon.png.0.0
+
+image[-]=road.png.0.0
+";
+    assert_eq!(out, expected);
 }
 
 #[test]

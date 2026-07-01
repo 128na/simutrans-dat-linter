@@ -1,0 +1,8 @@
+Obj=way
+image[-]=road.png.0.0
+waytype=road
+Name = Highway
+cursor=road_icon.png.0.0
+copyright=fuga
+cost=1000
+icon=road_icon.png.0.0

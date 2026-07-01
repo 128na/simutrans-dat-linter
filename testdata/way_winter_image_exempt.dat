@@ -1,0 +1,5 @@
+obj=way
+name=WayWithWinterImages
+waytype=road
+cost=1000
+image[-][0]=station_cube.png.0.0

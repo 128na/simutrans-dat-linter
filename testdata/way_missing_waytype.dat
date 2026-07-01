@@ -1,0 +1,4 @@
+obj=way
+name=BrokenWayMissingWaytype
+cost=1000
+image[-]=station_cube.png.0.0

@@ -1,0 +1,4 @@
+obj=way
+name=BrokenWayMissingBaseImage
+waytype=road
+cost=1000

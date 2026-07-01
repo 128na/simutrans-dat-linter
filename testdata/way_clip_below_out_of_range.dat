@@ -1,0 +1,6 @@
+obj=way
+name=BrokenWayClipBelow
+waytype=road
+cost=1000
+clip_below=5
+image[-]=station_cube.png.0.0
