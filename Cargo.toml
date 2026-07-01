@@ -1,0 +1,15 @@
+[package]
+name = "dat_linter"
+version = "0.1.0"
+edition = "2024"
+description = "Static validator, formatter, and coupling-constraint analyzer for Simutrans .dat object definitions"
+license = "MIT"
+repository = "https://github.com/128na/simutrans-dat-linter"
+readme = "README.md"
+keywords = ["simutrans", "makeobj", "linter", "gamedev"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+# Simutrans の画像は常に PNG。デフォルトの全フォーマット（AVIF エンコーダ rav1e 等の
+# 重い依存を含む）は不要なので PNG デコードのみに絞る。
+image = { version = "0.25", default-features = false, features = ["png"] }
