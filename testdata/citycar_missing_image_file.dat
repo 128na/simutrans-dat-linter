@@ -1,0 +1,8 @@
+obj=citycar
+name=MissingImageFileCityCar
+copyright=fuga
+distributionweight=2
+speed=50
+
+image[s]=station_cube.png.0.0
+image[w]=nonexistent_citycar.png.0.0

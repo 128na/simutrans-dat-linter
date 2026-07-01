@@ -1,0 +1,6 @@
+Obj=citycar
+image[s]=citycar.png.0.0
+speed=50
+distributionweight=2
+Name = Sedan
+copyright=fuga

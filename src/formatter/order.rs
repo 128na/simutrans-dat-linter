@@ -32,6 +32,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
         "way-object" => Some(&WAY_OBJ_ORDER),
         "ground_obj" => Some(&GROUNDOBJ_ORDER),
         "tree" => Some(&TREE_ORDER),
+        "citycar" => Some(&CITYCAR_ORDER),
         _ => None,
     }
 }
@@ -434,6 +435,32 @@ const TREE_NAMED: &[&str] = &[
 static TREE_ORDER: OrderSpec = OrderSpec {
     sections: &[
         Section::Named(TREE_NAMED),
+        Section::Unknown,
+        Section::Bracket(&["image["]),
+    ],
+};
+
+// citycar dat の「慣習的な並び」。citycar_writer.cc:19-51のフィールド読み取り順
+// （distributionweight -> intro_year/intro_month -> retire_year/retire_month ->
+// speed、続けてwrite_name_and_copyrightでname/copyright（citycar_writer.cc:33）、
+// その後image[<dir>]系キー（citycar_writer.cc:38-46のdir_codes走査順）が書かれる、
+// という順序から導出。citycar_writer.cc全文にcursor/iconフィールドへの言及が無いため、
+// 他obj種別と異なりCURSOR_ICONセクションは無い（crossing/ground_obj/treeと同じパターン）。
+const CITYCAR_NAMED: &[&str] = &[
+    "obj",
+    "name",
+    "copyright",
+    "distributionweight",
+    "intro_year",
+    "intro_month",
+    "retire_year",
+    "retire_month",
+    "speed",
+];
+
+static CITYCAR_ORDER: OrderSpec = OrderSpec {
+    sections: &[
+        Section::Named(CITYCAR_NAMED),
         Section::Unknown,
         Section::Bracket(&["image["]),
     ],

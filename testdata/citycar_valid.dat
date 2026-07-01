@@ -1,0 +1,16 @@
+obj=citycar
+name=ValidCityCar
+copyright=fuga
+distributionweight=2
+intro_year=1950
+retire_year=2000
+speed=50
+
+image[s]=station_cube.png.0.0
+image[w]=station_cube.png.0.0
+image[sw]=station_cube.png.0.0
+image[se]=station_cube.png.0.0
+image[n]=station_cube.png.0.0
+image[e]=station_cube.png.0.0
+image[ne]=station_cube.png.0.0
+image[nw]=station_cube.png.0.0

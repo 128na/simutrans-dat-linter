@@ -46,16 +46,16 @@ fn reorder_is_idempotent() {
 fn reorder_unsupported_obj_falls_back_to_preserve_order() {
     let text = read("roundtrip_test.dat");
     let parsed = formatter::parse_entries(&text);
-    // "citycar" は本ツールがまだ対応していないobj種別の例
-    // （かつては "wayobj" -> "groundobj" -> "tree" の順で使っていたが、
-    // obj=way-object / obj=ground_obj / obj=tree としてそれぞれサポートしたため、
-    // 真に未対応の別のobj種別文字列に更新した。citycar_writer_t::get_type_name()
-    // （citycar_writer.h）は"citycar"を返し、registry::RuleSet::for_obj_typeの
-    // match armにまだ存在しないことを確認済み）。
-    let (out, warnings) = formatter::format_reordered(&parsed.entries, "citycar");
+    // "pedestrian" は本ツールがまだ対応していないobj種別の例
+    // （かつては "wayobj" -> "groundobj" -> "tree" -> "citycar" の順で使っていたが、
+    // obj=way-object / obj=ground_obj / obj=tree / obj=citycar としてそれぞれ
+    // サポートしたため、真に未対応の別のobj種別文字列に更新した。
+    // pedestrian_writer_t::get_type_name()（pedestrian_writer.h）は"pedestrian"を返し、
+    // registry::RuleSet::for_obj_typeのmatch armにまだ存在しないことを確認済み）。
+    let (out, warnings) = formatter::format_reordered(&parsed.entries, "pedestrian");
     let preserved = formatter::format_preserve_order(&parsed.entries);
     assert_eq!(out, preserved);
-    assert!(warnings.iter().any(|w| w.contains("obj=citycar")));
+    assert!(warnings.iter().any(|w| w.contains("obj=pedestrian")));
 }
 
 #[test]
@@ -235,6 +235,22 @@ freight=Passagiere
 
 constraint[next][0]=Wagon
 constraint[prev][0]=none
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn reorder_citycar_matches_expected_output() {
+    let parsed = formatter::parse_entries(&read("fmt_citycar_example.dat"));
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "citycar");
+    let expected = "\
+obj=citycar
+name=Sedan
+copyright=fuga
+distributionweight=2
+speed=50
+
+image[s]=citycar.png.0.0
 ";
     assert_eq!(out, expected);
 }
