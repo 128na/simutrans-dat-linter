@@ -54,6 +54,12 @@
 // `menuskin_writer_t`と挙動上完全に同一（`get_type()`/`get_type_name()`の
 // オーバーライドのみで`write_obj`は共有）であることを確認した。詳細はrules/cursor.rs
 // 参照。
+//
+// symbol（skin_writer.hの`symbolskin_writer_t`、6種のskin_writer_tサブクラスのうち
+// 3番目の実装）も、skin_writer.h/skin_writer.ccを独立に読み直した結果、
+// `menuskin_writer_t`/`cursorskin_writer_t`と挙動上完全に同一（`get_type()`/
+// `get_type_name()`のオーバーライドのみで`write_obj`は共有）であることを確認した。
+// 詳細はrules/symbol.rs参照。
 
 pub mod bridge;
 pub mod building;
@@ -69,6 +75,7 @@ pub mod menu;
 pub mod pedestrian;
 pub mod roadsign;
 pub mod sound;
+pub mod symbol;
 pub mod tree;
 pub mod tunnel;
 pub mod vehicle;
@@ -89,6 +96,7 @@ pub use menu::check_menu;
 pub use pedestrian::check_pedestrian;
 pub use roadsign::check_roadsign;
 pub use sound::check_sound;
+pub use symbol::check_symbol;
 pub use tree::check_tree;
 pub use tunnel::check_tunnel;
 pub use vehicle::check_vehicle;

@@ -46,37 +46,40 @@ fn reorder_is_idempotent() {
 fn reorder_unsupported_obj_falls_back_to_preserve_order() {
     let text = read("roundtrip_test.dat");
     let parsed = formatter::parse_entries(&text);
-    // "symbol" は本ツールがまだ対応していないobj種別の例
+    // "smoke" は本ツールがまだ対応していないobj種別の例
     // （かつては "wayobj" -> "groundobj" -> "tree" -> "citycar" -> "pedestrian" ->
-    // "factory" -> "sound" -> "ground" -> "menu" -> "cursor" の順で使っていたが、
-    // obj=way-object / obj=ground_obj / obj=tree / obj=citycar / obj=pedestrian /
-    // obj=factory / obj=sound / obj=ground / obj=menu / obj=cursor として順に
-    // サポートしたため、真に未対応の別のobj種別文字列に更新し続けている。
-    // factory/sound/ground/menu/cursorまででこのプロジェクトが対応してきたobj種別
-    // （building/vehicle/way/good/bridge/tunnel/roadsign/crossing/way-object/
-    // ground_obj/tree/citycar/pedestrian/factory/sound/ground/menu/cursorの18種）は
-    // 完了したが、soundマイルストーンでの再調査（`descriptor/writer/`配下を機械的に
-    // 網羅した結果）、makeobjには本ツール・過去の計画のどちらにも含まれて
-    // いなかった独立したトップレベルobj種別がまだ複数存在することが判明した:
-    // `ground_writer.h`の"ground"（ground_writer_t、register_writer(true)、
-    // groundマイルストーンでobj=groundとしてサポート済み）、および`skin_writer.h`の
+    // "factory" -> "sound" -> "ground" -> "menu" -> "cursor" -> "symbol" の順で
+    // 使っていたが、obj=way-object / obj=ground_obj / obj=tree / obj=citycar /
+    // obj=pedestrian / obj=factory / obj=sound / obj=ground / obj=menu /
+    // obj=cursor / obj=symbol として順にサポートしたため、真に未対応の別のobj種別
+    // 文字列に更新し続けている。
+    // factory/sound/ground/menu/cursor/symbolまででこのプロジェクトが対応してきた
+    // obj種別（building/vehicle/way/good/bridge/tunnel/roadsign/crossing/
+    // way-object/ground_obj/tree/citycar/pedestrian/factory/sound/ground/menu/
+    // cursor/symbolの19種）は完了したが、soundマイルストーンでの再調査
+    // （`descriptor/writer/`配下を機械的に網羅した結果）、makeobjには本ツール・
+    // 過去の計画のどちらにも含まれていなかった独立したトップレベルobj種別が
+    // まだ複数存在することが判明した: `ground_writer.h`の"ground"
+    // （ground_writer_t、register_writer(true)、groundマイルストーンで
+    // obj=groundとしてサポート済み）、および`skin_writer.h`の
     // "menu"/"cursor"/"symbol"/"smoke"/"field"/"misc"
     // （menuskin_writer_t/cursorskin_writer_t/symbolskin_writer_t/
     // smoke_writer_t/field_writer_t/miscimages_writer_t、いずれも
-    // register_writer(true)）。このうち"menu"/"cursor"はそれぞれのマイルストーンで
-    // obj=menu/obj=cursorとしてサポート済み。残る4種はpakset作者が直接.datを書く
-    // 対象というより、pakset全体で1つだけ書くメタ的スキン/アイコン定義に近く
-    // 別途の検討が必要なため、本マイルストーンでは対象に含めない
-    // （"symbol"はその中から未対応プレースホルダとして選んだ一例）。
-    // symbolskin_writer_t::get_type_name()（skin_writer.h）は"symbol"を返し、
-    // registry::RuleSet::for_obj_typeのmatch armにまだ存在しないことを確認済み。
+    // register_writer(true)）。このうち"menu"/"cursor"/"symbol"はそれぞれの
+    // マイルストーンでobj=menu/obj=cursor/obj=symbolとしてサポート済み。残る3種
+    // （smoke/field/misc）はpakset作者が直接.datを書く対象というより、pakset全体で
+    // 1つだけ書くメタ的スキン/アイコン定義に近く別途の検討が必要なため、
+    // 本マイルストーンでは対象に含めない（"smoke"はその中から未対応
+    // プレースホルダとして選んだ一例）。smoke_writer_t::get_type_name()
+    // （skin_writer.h）は"smoke"を返し、registry::RuleSet::for_obj_typeのmatch
+    // armにまだ存在しないことを確認済み。
     // なお`cursor=`/`icon=`という**フィールド**は building/way/bridge等の多くの
     // obj種別に存在するが、これはトップレベルの`obj=cursor`（cursorskin_writer_t、
-    // 本マイルストーンでサポート済み）とは全くの別概念であり、混同しないこと。
-    let (out, warnings) = formatter::format_reordered(&parsed.entries, "symbol");
+    // サポート済み）とは全くの別概念であり、混同しないこと。
+    let (out, warnings) = formatter::format_reordered(&parsed.entries, "smoke");
     let preserved = formatter::format_preserve_order(&parsed.entries);
     assert_eq!(out, preserved);
-    assert!(warnings.iter().any(|w| w.contains("obj=symbol")));
+    assert!(warnings.iter().any(|w| w.contains("obj=smoke")));
 }
 
 #[test]
@@ -365,6 +368,20 @@ name=MouseCursor
 copyright=fuga
 
 image[0]=mouse.1.0
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn reorder_symbol_matches_expected_output() {
+    let parsed = formatter::parse_entries(&read("fmt_symbol_example.dat"));
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "symbol");
+    let expected = "\
+obj=symbol
+name=Builder
+copyright=fuga
+
+image[0]=builder_symbol.1.0
 ";
     assert_eq!(out, expected);
 }

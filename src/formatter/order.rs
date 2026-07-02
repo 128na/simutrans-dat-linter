@@ -39,6 +39,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
         "ground" => Some(&GROUND_ORDER),
         "menu" => Some(&MENU_ORDER),
         "cursor" => Some(&CURSOR_ORDER),
+        "symbol" => Some(&SYMBOL_ORDER),
         _ => None,
     }
 }
@@ -668,6 +669,24 @@ const CURSOR_NAMED: &[&str] = &["obj", "name", "copyright"];
 static CURSOR_ORDER: OrderSpec = OrderSpec {
     sections: &[
         Section::Named(CURSOR_NAMED),
+        Section::Unknown,
+        Section::Bracket(&["image["]),
+    ],
+};
+
+// symbol dat の「慣習的な並び」。skin_writer_t::write_obj（skin_writer.cc:21-51、
+// symbolskin_writer_tはこれをオーバーライドしない）のフィールド読み取り・書き込み順は
+// menu/cursorと完全に同一（image[0], image[1], ...を1次元・無制限に走査してkeysを構築
+// した後、write_name_and_copyrightでname/copyright（skin_writer.cc:46） -> その後
+// imagelist_writer_t::write_objでimage系ノードを書く）ため、並び順もMENU_ORDER/
+// CURSOR_ORDERと同一の構成にする。skin_writer.cc/skin_writer.h全文に waytype/climates/
+// cursor/icon（フィールドとしての）系フィールドへの言及が無いため、Namedセクションは
+// obj/name/copyrightのみで、それ以外はBracketセクション（image[）にまとめる。
+const SYMBOL_NAMED: &[&str] = &["obj", "name", "copyright"];
+
+static SYMBOL_ORDER: OrderSpec = OrderSpec {
+    sections: &[
+        Section::Named(SYMBOL_NAMED),
         Section::Unknown,
         Section::Bracket(&["image["]),
     ],
