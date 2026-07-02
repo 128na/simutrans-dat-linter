@@ -15,7 +15,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// .dat ファイル1件を静的検証する（obj=building / obj=vehicle / obj=way / obj=good / obj=bridge / obj=tunnel / obj=roadsign / obj=crossing / obj=way-object / obj=ground_obj / obj=tree / obj=citycar / obj=pedestrian / obj=factory / obj=sound）
+    /// .dat ファイル1件を静的検証する（obj=building / obj=vehicle / obj=way / obj=good / obj=bridge / obj=tunnel / obj=roadsign / obj=crossing / obj=way-object / obj=ground_obj / obj=tree / obj=citycar / obj=pedestrian / obj=factory / obj=sound / obj=ground）
     Lint(LintArgs),
     /// .dat ファイルを正規化・並び替えする
     Fmt(FmtArgs),
@@ -73,7 +73,7 @@ fn run_lint(args: &LintArgs) -> ExitCode {
 
     let Some(rule_set) = RuleSet::for_obj_type(&obj_type, &dat) else {
         eprintln!(
-            "{}: obj={obj_type} は未対応です。obj=building / obj=vehicle / obj=way / obj=good / obj=bridge / obj=tunnel / obj=roadsign / obj=crossing / obj=way-object / obj=ground_obj / obj=tree / obj=citycar / obj=pedestrian / obj=factory / obj=sound のみ検証できます",
+            "{}: obj={obj_type} は未対応です。obj=building / obj=vehicle / obj=way / obj=good / obj=bridge / obj=tunnel / obj=roadsign / obj=crossing / obj=way-object / obj=ground_obj / obj=tree / obj=citycar / obj=pedestrian / obj=factory / obj=sound / obj=ground のみ検証できます",
             path.display()
         );
         return ExitCode::FAILURE;

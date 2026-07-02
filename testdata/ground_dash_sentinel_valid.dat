@@ -1,0 +1,5 @@
+obj=ground
+name=ValidGroundWithDash
+copyright=Test
+image[0][0]=-
+image[1][0]=station_cube.png.0.0

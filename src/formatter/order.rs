@@ -36,6 +36,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
         "pedestrian" => Some(&PEDESTRIAN_ORDER),
         "factory" => Some(&FACTORY_ORDER),
         "sound" => Some(&SOUND_ORDER),
+        "ground" => Some(&GROUND_ORDER),
         _ => None,
     }
 }
@@ -615,4 +616,20 @@ const SOUND_NAMED: &[&str] = &["obj", "name", "copyright", "sound_nr", "sound_na
 
 static SOUND_ORDER: OrderSpec = OrderSpec {
     sections: &[Section::Named(SOUND_NAMED), Section::Unknown],
+};
+
+// ground dat の「慣習的な並び」。ground_writer.cc:15-44のフィールド読み取り順
+// （write_name_and_copyrightでname/copyright（ground_writer.cc:19） -> その後
+// slope=0..127 x phase=0,1,2,...の走査順でimage[<slope>][<phase>]系キーが
+// 書かれる）という順序から導出。good/soundと同様、ground_writer.cc全文に
+// waytype/climates/cursor/icon系フィールドへの言及が無いため、Namedセクションは
+// obj/name/copyrightのみで、それ以外はBracketセクション（image[）にまとめる。
+const GROUND_NAMED: &[&str] = &["obj", "name", "copyright"];
+
+static GROUND_ORDER: OrderSpec = OrderSpec {
+    sections: &[
+        Section::Named(GROUND_NAMED),
+        Section::Unknown,
+        Section::Bracket(&["image["]),
+    ],
 };
