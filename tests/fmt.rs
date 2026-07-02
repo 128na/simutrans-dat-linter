@@ -46,22 +46,31 @@ fn reorder_is_idempotent() {
 fn reorder_unsupported_obj_falls_back_to_preserve_order() {
     let text = read("roundtrip_test.dat");
     let parsed = formatter::parse_entries(&text);
-    // "sound" は本ツールがまだ対応していないobj種別の例
+    // "ground" は本ツールがまだ対応していないobj種別の例
     // （かつては "wayobj" -> "groundobj" -> "tree" -> "citycar" -> "pedestrian" ->
-    // "factory" の順で使っていたが、obj=way-object / obj=ground_obj / obj=tree /
-    // obj=citycar / obj=pedestrian / obj=factory としてそれぞれサポートしたため、
-    // 真に未対応の別のobj種別文字列に更新した。factoryはこのプロジェクトが
-    // 事前に合意した対応obj種別計画（building/vehicle/way/good/bridge/tunnel/
-    // roadsign/crossing/way-object/ground_obj/tree/citycar/pedestrian/factoryの
-    // 13種）の最後のobj種別であり、これで計画は完了した。soundは計画には
-    // 含まれておらず、意図的に未対応のまま残している。sound_writer_t::
-    // get_type_name()（sound_writer.h:27）は"sound"を返し（register_writer(true)
-    // によりトップレベルobj種別として登録される）、registry::RuleSet::
-    // for_obj_typeのmatch armにまだ存在しないことを確認済み。
-    let (out, warnings) = formatter::format_reordered(&parsed.entries, "sound");
+    // "factory" -> "sound" の順で使っていたが、obj=way-object / obj=ground_obj /
+    // obj=tree / obj=citycar / obj=pedestrian / obj=factory / obj=sound として
+    // それぞれサポートしたため、真に未対応の別のobj種別文字列に更新した。
+    // factory/soundまででこのプロジェクトが対応してきたobj種別
+    // （building/vehicle/way/good/bridge/tunnel/roadsign/crossing/way-object/
+    // ground_obj/tree/citycar/pedestrian/factory/soundの15種）は完了したが、
+    // soundマイルストーンでの再調査（`descriptor/writer/`配下を機械的に
+    // 網羅した結果）、makeobjには本ツール・過去の計画のどちらにも含まれて
+    // いなかった独立したトップレベルobj種別がまだ複数存在することが判明した:
+    // `ground_writer.h`の"ground"（ground_writer_t、register_writer(true)）、
+    // および`skin_writer.h`の"menu"/"cursor"/"symbol"/"smoke"/"field"/"misc"
+    // （menuskin_writer_t/cursorskin_writer_t/symbolskin_writer_t/
+    // smoke_writer_t/field_writer_t/miscimages_writer_t、いずれも
+    // register_writer(true)）。これらはpakset作者が直接.datを書く対象という
+    // より、pakset全体で1つだけ書くメタ的スキン/アイコン定義に近く別途の
+    // 検討が必要なため、本マイルストーンでは対象に含めない
+    // （"ground"はその中から未対応プレースホルダとして選んだ一例）。
+    // ground_writer_t::get_type_name()（ground_writer.h）は"ground"を返し、
+    // registry::RuleSet::for_obj_typeのmatch armにまだ存在しないことを確認済み。
+    let (out, warnings) = formatter::format_reordered(&parsed.entries, "ground");
     let preserved = formatter::format_preserve_order(&parsed.entries);
     assert_eq!(out, preserved);
-    assert!(warnings.iter().any(|w| w.contains("obj=sound")));
+    assert!(warnings.iter().any(|w| w.contains("obj=ground")));
 }
 
 #[test]
@@ -272,6 +281,20 @@ copyright=fuga
 distributionweight=8
 
 image[s]=pedestrian.png.0.0
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn reorder_sound_matches_expected_output() {
+    let parsed = formatter::parse_entries(&read("fmt_sound_example.dat"));
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "sound");
+    let expected = "\
+obj=sound
+name=Cash
+copyright=fuga
+sound_nr=15
+sound_name=cash.wav
 ";
     assert_eq!(out, expected);
 }

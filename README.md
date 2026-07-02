@@ -7,7 +7,7 @@ Simutrans アドオンの `.dat`（オブジェクト定義ファイル）を **
 （`building_writer.cc` / `vehicle_writer.cc` / `way_writer.cc` / `good_writer.cc` / `bridge_writer.cc` /
 `tunnel_writer.cc` / `roadsign_writer.cc` / `crossing_writer.cc` / `way_obj_writer.cc` /
 `groundobj_writer.cc` / `tree_writer.cc` / `citycar_writer.cc` / `pedestrian_writer.cc` /
-`factory_writer.cc` /
+`factory_writer.cc` / `sound_writer.cc` /
 `get_waytype.cc` / `get_climate.cc` /
 `image_writer.cc` / `imagelist_writer.cc` / `imagelist2d_writer.cc` / `xref_writer.cc` /
 `skin_writer.cc` / `tabfile.cc`）を精読し、
@@ -15,7 +15,9 @@ Simutrans アドオンの `.dat`（オブジェクト定義ファイル）を **
 一瞬で検出します。makeobj には依存せず、`.dat` 構文を独自に解析します。
 
 `lint` は building/vehicle/way/good/bridge/tunnel/roadsign/crossing/way-object/ground_obj/tree/
-citycar/pedestrian/factory の全14 obj種別（このプロジェクトが事前に合意した対応範囲）をカバーしています。
+citycar/pedestrian/factory/sound の全15 obj種別をカバーしています。building〜factoryの14種は
+このプロジェクトが事前に合意した対応範囲で、soundはその計画完了後に追加された対象範囲です
+（詳細は下記soundの節を参照）。
 
 ## 3層の役割
 
@@ -54,7 +56,7 @@ dat_linter --help
 dat_linter lint --help
 ```
 
-### `lint` — 静的検証（`obj=building` / `obj=vehicle` / `obj=way` / `obj=good` / `obj=bridge` / `obj=tunnel` / `obj=roadsign` / `obj=crossing` / `obj=way-object` / `obj=ground_obj` / `obj=tree` / `obj=citycar` / `obj=pedestrian` / `obj=factory`）
+### `lint` — 静的検証（`obj=building` / `obj=vehicle` / `obj=way` / `obj=good` / `obj=bridge` / `obj=tunnel` / `obj=roadsign` / `obj=crossing` / `obj=way-object` / `obj=ground_obj` / `obj=tree` / `obj=citycar` / `obj=pedestrian` / `obj=factory` / `obj=sound`）
 
 ```
 dat_linter lint <path/to/file.dat>
@@ -377,6 +379,17 @@ building/vehicle/way と異なり **makeobj時点でfatal/warningになる分岐
 - 画像キーが実際に画像を指す場合、参照画像が見つからない／サイズが128の倍数でない
   → FATAL ERROR（building等と同じ`check_image_ref`を共有）
 
+**sound**（効果音定義。`.dat`に実際に書く`obj=`の値は`sound`。このプロジェクトが事前に
+合意した14種の対応範囲計画には含まれておらず、計画完了後の追加マイルストーンとして
+対応した）について、`sound_writer.cc`（`write_obj`本体）を精読した結果、
+goodと同様に**makeobj時点でfatal/warningになる分岐が1つも存在しない**ことを確認済みです
+（`sound_name`/`sound_nr`はそれぞれ`get`/`get_int`の無条件フォールバックのみで
+`get_int_clamped`は不使用、`name`/`copyright`も`text_writer_t`が空文字列を無条件許容。
+`waytype`/`cursor`/`icon`/画像系フィールドへの言及も`sound_writer.cc`全文に一つも無い）。
+そのためobj種別固有のルールは追加していません（`src/rules/sound.rs`冒頭のREJECTEDコメント
+に調査過程を記録）。`sound`を`lint`の対象として登録したことで、下記の**obj種別を問わず**
+適用される重複キー検出だけは`sound` datにも有効になります。
+
 **obj種別を問わず**: 同一キーの重複定義（`duplicate-key`, WARNING）。makeobj は重複キーを
 **先勝ち**で無音に無視するため（`tabfileobj_t::put()`）、後から書いた値は意図せず捨てられます。
 
@@ -392,7 +405,7 @@ dat_linter fmt --write   <file.dat>    # ファイルに上書き（-w も可）
 壊しうる操作は行いません。並び替え（`--reorder`）はスタイル上の慣習であり makeobj の動作には影響しないため、
 オプトインです（コメント・空行は並び替え後の位置が一意に決まらないため出力から除外し件数を警告します）。
 並び順は `obj=` の値ごとに定義されており（`building`/`vehicle`/`way`/`good`/`bridge`/`tunnel`/`roadsign`/
-`crossing`/`way-object`/`ground_obj`/`tree`/`citycar`/`pedestrian`/`factory` に対応）、未対応の obj 種別では並び替えを行わず元の順序のまま出力します。
+`crossing`/`way-object`/`ground_obj`/`tree`/`citycar`/`pedestrian`/`factory`/`sound` に対応）、未対応の obj 種別では並び替えを行わず元の順序のまま出力します。
 
 ### `couplings` — 車両連結制約の静的解析
 
@@ -425,24 +438,41 @@ dat_linter couplings <path/to/vehicle_dat_dir>
 `src/rules/vehicle.rs` / `src/rules/way.rs` / `src/rules/good.rs` / `src/rules/bridge.rs` /
 `src/rules/tunnel.rs` / `src/rules/roadsign.rs` / `src/rules/crossing.rs` /
 `src/rules/way_obj.rs` / `src/rules/groundobj.rs` / `src/rules/tree.rs` /
-`src/rules/citycar.rs` / `src/rules/pedestrian.rs` / `src/rules/factory.rs` 冒頭コメント参照）。
+`src/rules/citycar.rs` / `src/rules/pedestrian.rs` / `src/rules/factory.rs` /
+`src/rules/sound.rs` 冒頭コメント参照）。
 building のルールは vanilla Simutrans と OTRP（Simutrans-Extended 系フォーク）の該当ファイルを diff し、
 両者で一致することも確認済みです。vehicle・way・good・bridge・tunnel・roadsign・crossing・way-object・
-ground_obj・tree・citycar・pedestrian・factory のルールは vanilla Simutrans のみで確認済みで、OTRP との個別 diff はまだ行っていません。
+ground_obj・tree・citycar・pedestrian・factory・sound のルールは vanilla Simutrans のみで確認済みで、OTRP との個別 diff はまだ行っていません。
 
 対応範囲は現状:
 
 - `lint`: `obj=building`（`type=extension` / `stop` / `depot` 系）、`obj=vehicle`、`obj=way`、`obj=good`、
   `obj=bridge`、`obj=tunnel`、`obj=roadsign`、`obj=crossing`、`obj=way-object`、`obj=ground_obj`、`obj=tree`、
-  `obj=citycar`、`obj=pedestrian`、`obj=factory`
+  `obj=citycar`、`obj=pedestrian`、`obj=factory`、`obj=sound`
 - `couplings`: `obj=vehicle` の `constraint[prev]` / `constraint[next]`
 
 ### 既知の制限（意図的に非対応）
 
-- building/vehicle/way/good/bridge/tunnel/roadsign/crossing/way-object/ground_obj/tree/citycar/pedestrian/factory
-  以外の obj 種別（例: `obj=sound` など。`sound_writer_t::get_type_name()`は`"sound"`を返し
-  トップレベルobj種別として登録されているが、このプロジェクトが事前に合意した対応obj種別計画には
-  含まれていない）
+- building/vehicle/way/good/bridge/tunnel/roadsign/crossing/way-object/ground_obj/tree/citycar/pedestrian/factory/sound
+  以外の obj 種別。このプロジェクトが事前に合意した対応obj種別計画（14種）とsoundマイルストーン
+  （計画完了後の追加、15種目）で判明した範囲では、makeobjの`descriptor/writer/`配下に
+  `register_writer(true)`でトップレベルobj種別として登録されているものが他に7種存在する:
+  `ground_writer_t`の`"ground"`、`skin_writer.h`内の`menuskin_writer_t`の`"menu"`・
+  `cursorskin_writer_t`の`"cursor"`・`symbolskin_writer_t`の`"symbol"`・`smoke_writer_t`の
+  `"smoke"`・`field_writer_t`の`"field"`・`miscimages_writer_t`の`"misc"`。
+  これらはpakset作者が個別オブジェクトとして書くというより、pakset全体で1つだけ定義する
+  メタ的なスキン・アイコン・共通画像素材に近く、対応要否は別途検討が必要なため未対応のまま
+  残している（`root_writer.cc`/`sim_writer.cc`/`text_writer.cc`/`xref_writer.cc`/
+  `image_writer.cc`/`imagelist_writer.cc`/`imagelist2d_writer.cc`/`obj_writer.cc`/`obj_node.cc`
+  は`register_writer(false)`または内部合成用のヘルパー/基底クラスであり、独立したトップレベル
+  obj種別ではないため対象外）
+- sound の `sound_name` 未指定・`sound_nr` の妥当性検証、および `sound_name` が指す音声ファイル
+  （`sound/`ディレクトリ内の`.wav`）の実在性検証。`sound_writer.cc`はこれらを全て
+  `get`/`get_int`の無条件フォールバックのみで読み、fatal/warningになる分岐が無い。
+  音声ファイルの実在性チェックは`sound_desc_t::get_sound_id()`（ゲーム読み込み時）の
+  `dbg->warning("Sound \"%s\" not found", ...)`が該当するが、これはmakeobj時点ではなく
+  ゲーム実行時にのみ到達する分岐のため対象外（詳細は`src/rules/sound.rs`冒頭のREJECTED
+  コメント参照）
 - good の `name` 未指定・`catg`/`value`/`speed_bonus`/`weight_per_unit`/`mapcolor` の妥当性検証。
   `good_writer.cc`はこれらを全て`get_int`/`get_int64`/`text_writer_t`経由で無条件フォールバックさせるのみで、
   fatal/warningになる分岐が無いため対象外（詳細は`src/rules/good.rs`冒頭のREJECTEDコメント参照）
@@ -654,6 +684,7 @@ src/
     citycar.rs                           obj=citycar のRule実装
     pedestrian.rs                         obj=pedestrian のRule実装
     factory.rs                             obj=factory のRule実装
+    sound.rs                                obj=sound のRule実装（現状ルール0件、根拠不在の記録が主目的）
     common.rs                          共有定数・ヘルパー（KNOWN_WAYTYPES等）・duplicate-key検出
   couplings.rs              vehicle連結制約のグラフ解析（lintとは別スコープ）
   formatter/

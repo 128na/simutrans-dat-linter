@@ -42,6 +42,7 @@ impl RuleSet {
             "citycar" => Some(RuleSet::new(crate::rules::citycar::all())),
             "pedestrian" => Some(RuleSet::new(crate::rules::pedestrian::all())),
             "factory" => Some(RuleSet::new(crate::rules::factory::all(dat))),
+            "sound" => Some(RuleSet::new(crate::rules::sound::all())),
             _ => None,
         }
     }

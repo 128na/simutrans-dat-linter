@@ -35,6 +35,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
         "citycar" => Some(&CITYCAR_ORDER),
         "pedestrian" => Some(&PEDESTRIAN_ORDER),
         "factory" => Some(&FACTORY_ORDER),
+        "sound" => Some(&SOUND_ORDER),
         _ => None,
     }
 }
@@ -602,4 +603,16 @@ static FACTORY_ORDER: OrderSpec = OrderSpec {
             "smokeoffset[",
         ]),
     ],
+};
+
+// sound dat の「慣習的な並び」。sound_writer.cc:14-32のフィールド読み取り・書き込み順
+// （sound_name を先に読むが、実際のノード書き込みは write_name_and_copyright で
+// name/copyright（sound_writer.cc:19） -> sound_nr（27） -> sound_name本体（28-29）
+// という順）から導出。goodと同様、sound_writer.cc全文にimage/cursor/icon/waytype
+// 系フィールドへの言及が無いため、Bracketセクションは無い（未知の追加キーは全て
+// Unknownセクションでパース順のまま保持される）。
+const SOUND_NAMED: &[&str] = &["obj", "name", "copyright", "sound_nr", "sound_name"];
+
+static SOUND_ORDER: OrderSpec = OrderSpec {
+    sections: &[Section::Named(SOUND_NAMED), Section::Unknown],
 };
