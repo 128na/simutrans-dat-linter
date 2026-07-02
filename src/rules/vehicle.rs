@@ -6,6 +6,7 @@
 //! `get_waytype.cc`）を直接読んで確認した。OTRP側の個別diffはまだ行っていない
 //! （building側のように「vanilla/OTRPで一致確認済み」とは言えない状態）。
 
+use super::common::DIR_CODES;
 use crate::diagnostics::Diagnostic;
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
@@ -25,9 +26,6 @@ const KNOWN_ENGINE_TYPES: &[&str] = &[
     "battery",
     "unknown",
 ];
-
-/// vehicle_writer.cc の方向コード配列（emptyimage/freightimageのキー添字）。
-const DIR_CODES: [&str; 8] = ["s", "w", "sw", "se", "n", "e", "ne", "nw"];
 
 pub fn all() -> Vec<Box<dyn Rule>> {
     vec![

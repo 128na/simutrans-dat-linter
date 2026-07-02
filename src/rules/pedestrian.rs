@@ -147,14 +147,11 @@
 //!   `cursorskin_writer_t`も呼ばれない。他obj種別と異なり、そもそも
 //!   対象フィールドが存在しない）。
 
-use super::common::check_image_ref;
+use super::common::{DIR_CODES, check_image_ref};
 use crate::diagnostics::Diagnostic;
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
-
-/// pedestrian_writer.cc:25-27 の`dir_codes`配列そのもの（画像キーの添字となる8方向）。
-const DIR_CODES: [&str; 8] = ["s", "w", "sw", "se", "n", "e", "ne", "nw"];
 
 /// アニメーションフレームの上限（pedestrian_writer.cc:44の`for (uint16 j = 0;
 /// j<500; j++)`そのもの）。

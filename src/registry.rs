@@ -16,6 +16,35 @@ pub trait Rule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic>;
 }
 
+/// このプロジェクトが検証可能な`obj=`の値一覧（単一の正）。`for_obj_type`の
+/// match armと`formatter::order::order_for`のmatch armは、ここに列挙した22種別と
+/// 同じ集合・同じ順序を保つこと（`main.rs`のヘルプ文言・エラーメッセージ、および
+/// `tests/obj_type_coverage.rs`はこのリストを参照して整合性を検証する）。
+pub const SUPPORTED_OBJ_TYPES: &[&str] = &[
+    "building",
+    "vehicle",
+    "way",
+    "good",
+    "bridge",
+    "tunnel",
+    "roadsign",
+    "crossing",
+    "way-object",
+    "ground_obj",
+    "tree",
+    "citycar",
+    "pedestrian",
+    "factory",
+    "sound",
+    "ground",
+    "menu",
+    "cursor",
+    "symbol",
+    "smoke",
+    "field",
+    "misc",
+];
+
 pub struct RuleSet {
     rules: Vec<Box<dyn Rule>>,
 }

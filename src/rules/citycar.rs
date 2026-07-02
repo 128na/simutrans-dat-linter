@@ -123,14 +123,11 @@
 //!   `cursorskin_writer_t`も呼ばれない。他obj種別と異なり、そもそも対象フィールドが
 //!   存在しない）。
 
-use super::common::check_image_ref;
+use super::common::{DIR_CODES, check_image_ref};
 use crate::diagnostics::Diagnostic;
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
-
-/// citycar_writer.cc:38 の`dir_codes`配列そのもの（画像キーの添字となる8方向）。
-const DIR_CODES: [&str; 8] = ["s", "w", "sw", "se", "n", "e", "ne", "nw"];
 
 pub fn all() -> Vec<Box<dyn Rule>> {
     vec![Box::new(DirectionImageRefRule)]

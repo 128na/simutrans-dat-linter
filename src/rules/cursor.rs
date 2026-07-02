@@ -110,53 +110,21 @@
 //!   同じ理由（skin_writer.h/skin_writer.cc全文にこれらのフィールドへの言及が
 //!   一つも無い）。
 
-use super::common::check_image_ref;
+use super::common;
 use crate::diagnostics::Diagnostic;
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
 
+/// ルール実装本体は`menu`/`cursor`/`symbol`/`smoke`/`field`/`misc`の6種別で
+/// 共有される`common::AllImagesRule`（skin_writer_t::write_objそのもの、根拠は
+/// 上記コメント参照）。
 pub fn all() -> Vec<Box<dyn Rule>> {
-    vec![Box::new(AllImagesRule)]
+    vec![Box::new(common::AllImagesRule)]
 }
 
 /// `check_menu`と対称的な薄いラッパー。
 pub fn check_cursor(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
     let ctx = RuleContext { dat, dat_dir };
     all().iter().flat_map(|r| r.check(&ctx)).collect()
-}
-
-/// skin_writer.cc:21-35: `image[0]`, `image[1]`, ... と1次元・無制限に走査し、
-/// 最初に欠落した（空文字列の）添字で走査全体を終了する（`"-"`センチネルは
-/// 空文字列ではないため走査を止めない）。実際に画像を指す値（空文字列でも
-/// `"-"`でもない値）についてのみ、`common::check_image_ref`でファイル存在・
-/// サイズ（128の倍数か）を検証する（他の全obj種別と共有のパターン、menuと同一）。
-struct AllImagesRule;
-impl Rule for AllImagesRule {
-    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        let dat = ctx.dat;
-        let mut diags = Vec::new();
-
-        let mut i = 0u32;
-        loop {
-            let key = format!("image[{i}]");
-            let value = dat.get(&key).unwrap_or("");
-            if value.is_empty() {
-                // skin_writer.cc:28-30: キー欠落（空文字列）で走査終了。
-                break;
-            }
-            if value != "-" {
-                check_image_ref(value, ctx.dat_dir, &key, &mut diags);
-            }
-            i += 1;
-            // 安全弁: dat構文異常でiが際限なく増え続ける事態を避ける
-            // （makeobj自身は無限ループ`for (;;i++)`だが、実用上十分大きい上限で
-            // 打ち切る。menu/ground/groundobjの安全弁と同じ考え方）。
-            if i > 4096 {
-                break;
-            }
-        }
-
-        diags
-    }
 }

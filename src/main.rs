@@ -1,7 +1,7 @@
 use clap::{ArgAction, Parser, Subcommand};
 use dat_linter::diagnostics::Severity;
 use dat_linter::parser::DatFile;
-use dat_linter::registry::{RuleContext, RuleSet};
+use dat_linter::registry::{RuleContext, RuleSet, SUPPORTED_OBJ_TYPES};
 use dat_linter::{couplings, formatter, rules};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -15,6 +15,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    // Note: clapのderiveマクロはdocコメントをコンパイル時の静的文字列としてしか
+    // 扱えないため、このヘルプ文言のobj種別一覧は`registry::SUPPORTED_OBJ_TYPES`から
+    // 動的に構築できない。obj種別を追加・変更する際は、必ず
+    // `registry::SUPPORTED_OBJ_TYPES`（正）と手動で同期させること
+    // （実行時のエラーメッセージは`SUPPORTED_OBJ_TYPES`から動的に構築しており、
+    // ズレは`tests/obj_type_coverage.rs`で検出できる）。
     /// .dat ファイル1件を静的検証する（obj=building / obj=vehicle / obj=way / obj=good / obj=bridge / obj=tunnel / obj=roadsign / obj=crossing / obj=way-object / obj=ground_obj / obj=tree / obj=citycar / obj=pedestrian / obj=factory / obj=sound / obj=ground / obj=menu / obj=cursor / obj=symbol / obj=smoke / obj=field / obj=misc）
     Lint(LintArgs),
     /// .dat ファイルを正規化・並び替えする
@@ -72,8 +78,13 @@ fn run_lint(args: &LintArgs) -> ExitCode {
     let dat_dir = path.parent().unwrap_or_else(|| Path::new("."));
 
     let Some(rule_set) = RuleSet::for_obj_type(&obj_type, &dat) else {
+        let supported = SUPPORTED_OBJ_TYPES
+            .iter()
+            .map(|t| format!("obj={t}"))
+            .collect::<Vec<_>>()
+            .join(" / ");
         eprintln!(
-            "{}: obj={obj_type} は未対応です。obj=building / obj=vehicle / obj=way / obj=good / obj=bridge / obj=tunnel / obj=roadsign / obj=crossing / obj=way-object / obj=ground_obj / obj=tree / obj=citycar / obj=pedestrian / obj=factory / obj=sound / obj=ground / obj=menu / obj=cursor / obj=symbol / obj=smoke / obj=field / obj=misc のみ検証できます",
+            "{}: obj={obj_type} は未対応です。{supported} のみ検証できます",
             path.display()
         );
         return ExitCode::FAILURE;

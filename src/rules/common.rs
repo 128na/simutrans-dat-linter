@@ -3,6 +3,7 @@
 
 use crate::diagnostics::Diagnostic;
 use crate::parser::DatFile;
+use crate::registry::{Rule, RuleContext};
 use std::path::Path;
 
 /// obj種別を問わず、パーサレベルで検出した重複キーを警告として出す。
@@ -52,6 +53,11 @@ pub const KNOWN_WAYTYPES: &[&str] = &[
 /// pak128の画像タイルサイズ。このプロジェクトは現状pak128のみを対象とする
 /// （image_writer.cc: `if ((width%img_size!=0)||(height%img_size!=0)) dbg->fatal(...)`）。
 pub const PAK_TILE_SIZE: u32 = 128;
+
+/// `vehicle_writer.cc`/`citycar_writer.cc:38`/`pedestrian_writer.cc:25-27`の
+/// `dir_codes`配列そのもの（画像キーの添字となる8方向）。vehicle/citycar/pedestrianの
+/// 3つのobj種別で全く同一の配列内容であることを確認済み（値・順序とも一致）。
+pub const DIR_CODES: [&str; 8] = ["s", "w", "sw", "se", "n", "e", "ne", "nw"];
 
 /// 画像参照（`icon=`, `frontimage[...]=`等）を検証する。ファイル存在確認と
 /// サイズが`PAK_TILE_SIZE`の倍数か（`image_writer.cc`の該当fatalチェック）を見る。
@@ -163,5 +169,47 @@ pub fn check_image_ref(value: &str, dat_dir: &Path, context: &str, diags: &mut V
                 format!("{context}: {filename} を画像として読み込めません ({e})"),
             ));
         }
+    }
+}
+
+/// `menu`/`cursor`/`symbol`/`smoke`/`field`/`misc`の6つのobj種別で共有される
+/// ルール実装。いずれも共通の基底クラス`skin_writer_t`（skin_writer.h:18-29）の
+/// サブクラスであり、`get_type()`/`get_type_name()`の2つのオーバーライドのみを
+/// 持ち`write_obj`は一切オーバーライドしないため、実際の書き込みロジックは
+/// 全て基底`skin_writer_t::write_obj`（skin_writer.cc:18-51）そのものである
+/// （各モジュール冒頭のdocコメント参照、詳細な根拠は`menu.rs`に記載）。
+///
+/// skin_writer.cc:21-35: `image[0]`, `image[1]`, ... と1次元・無制限に走査し、
+/// 最初に欠落した（空文字列の）添字で走査全体を終了する（`"-"`センチネルは
+/// 空文字列ではないため走査を止めない）。実際に画像を指す値（空文字列でも
+/// `"-"`でもない値）についてのみ、`check_image_ref`でファイル存在・
+/// サイズ（128の倍数か）を検証する（他の全obj種別と共有のパターン）。
+pub struct AllImagesRule;
+impl Rule for AllImagesRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let mut diags = Vec::new();
+
+        let mut i = 0u32;
+        loop {
+            let key = format!("image[{i}]");
+            let value = dat.get(&key).unwrap_or("");
+            if value.is_empty() {
+                // skin_writer.cc:28-30: キー欠落（空文字列）で走査終了。
+                break;
+            }
+            if value != "-" {
+                check_image_ref(value, ctx.dat_dir, &key, &mut diags);
+            }
+            i += 1;
+            // 安全弁: dat構文異常でiが際限なく増え続ける事態を避ける
+            // （makeobj自身は無限ループ`for (;;i++)`だが、実用上十分大きい上限で
+            // 打ち切る。menu/cursor/symbol/smoke/field/miscの安全弁と同じ考え方）。
+            if i > 4096 {
+                break;
+            }
+        }
+
+        diags
     }
 }
