@@ -34,6 +34,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
         "tree" => Some(&TREE_ORDER),
         "citycar" => Some(&CITYCAR_ORDER),
         "pedestrian" => Some(&PEDESTRIAN_ORDER),
+        "factory" => Some(&FACTORY_ORDER),
         _ => None,
     }
 }
@@ -492,5 +493,113 @@ static PEDESTRIAN_ORDER: OrderSpec = OrderSpec {
         Section::Named(PEDESTRIAN_NAMED),
         Section::Unknown,
         Section::Bracket(&["image["]),
+    ],
+};
+
+// factory dat の「慣習的な並び」。factory_writer.cc:154-354のフィールド読み取り順
+// （location -> productivity -> range -> distributionweight -> mapcolor ->
+// pax_level -> expand_probability -> expand_minimum/expand_range/expand_times ->
+// electricity_boost -> passenger_boost -> mail_boost -> electricity_amount/
+// electricity_demand -> passenger_demand -> mail_demand -> sound_interval ->
+// sound、その後building_writer_t::write_obj（factory_writer.cc:223）を直接
+// 呼び出すため、name/copyright -> type（factory側では書かない） -> waytype
+// （通常未使用） -> enables_pax/enables_post/enables_ware -> level -> noinfo/
+// noconstruction/needs_ground -> climates -> dims -> chance -> animation_time
+// -> intro/retire -> preservation -> capacity -> maintenance -> cost ->
+// allow_underground -> cursor/icon -> タイル画像（building.rsのBUILDING_ORDERと
+// 共通のセクション構成）が挟まる。building呼び出しの後、smoke（224） ->
+// inputgood/inputsupplier/inputcapacity/inputfactor[N]（231-249） ->
+// outputgood/outputcapacity/outputfactor[N]（251-272） -> fields/fields[N]
+// と関連するhas_snow/production_per_field/storage_capacity/spawn_weight[N]・
+// probability_to_spawn/max_fields/min_fields/start_fields（44-98、279で呼び出し）
+// -> smoketile[N]/smokeoffset[N]/smokeuplift/smokelifetime（284-309）という順序
+// から導出。
+const FACTORY_NAMED_PRE_BUILDING: &[&str] = &[
+    "obj",
+    "name",
+    "copyright",
+    "location",
+    "productivity",
+    "range",
+    "distributionweight",
+    "mapcolor",
+    "pax_level",
+    "expand_probability",
+    "expand_minimum",
+    "expand_range",
+    "expand_times",
+    "electricity_boost",
+    "passenger_boost",
+    "mail_boost",
+    "electricity_amount",
+    "electricity_demand",
+    "passenger_demand",
+    "mail_demand",
+    "sound_interval",
+    "sound",
+];
+// building_writer_t::write_obj経由でfactoryにもそのまま適用されるフィールド
+// （BUILDING_NAMEDのうち、factoryのpakset実例で実際に使われ得るもの）。
+const FACTORY_NAMED_BUILDING: &[&str] = &[
+    "waytype",
+    "enables_pax",
+    "enables_post",
+    "enables_ware",
+    "level",
+    "noinfo",
+    "noconstruction",
+    "needs_ground",
+    "climates",
+    "dims",
+    "chance",
+    "animation_time",
+    "intro_year",
+    "intro_month",
+    "retire_year",
+    "retire_month",
+    "preservation_year",
+    "preservation_month",
+    "capacity",
+    "maintenance",
+    "cost",
+    "allow_underground",
+];
+const FACTORY_CURSOR_ICON: &[&str] = &["cursor", "icon"];
+const FACTORY_NAMED_POST_BUILDING: &[&str] = &[
+    "smoke",
+    "probability_to_spawn",
+    "max_fields",
+    "min_fields",
+    "start_fields",
+    "fields",
+    "smokeuplift",
+    "smokelifetime",
+];
+
+static FACTORY_ORDER: OrderSpec = OrderSpec {
+    sections: &[
+        Section::Named(FACTORY_NAMED_PRE_BUILDING),
+        Section::Named(FACTORY_NAMED_BUILDING),
+        Section::Named(FACTORY_CURSOR_ICON),
+        Section::Named(FACTORY_NAMED_POST_BUILDING),
+        Section::Unknown,
+        Section::Bracket(&[
+            "frontimage[",
+            "backimage[",
+            "inputgood[",
+            "inputsupplier[",
+            "inputcapacity[",
+            "inputfactor[",
+            "outputgood[",
+            "outputcapacity[",
+            "outputfactor[",
+            "fields[",
+            "has_snow[",
+            "production_per_field[",
+            "storage_capacity[",
+            "spawn_weight[",
+            "smoketile[",
+            "smokeoffset[",
+        ]),
     ],
 };

@@ -1,0 +1,14 @@
+obj=factory
+name=MissingCursorIconFactory
+copyright=fuga
+
+location=land
+mapcolor=194
+
+outputgood[0]=glass
+outputcapacity[0]=400
+
+dims=1,1
+
+frontimage[0][0][0][0][0]=station_cube.png.0.0
+backimage[0][0][0][0][0]=station_cube.png.0.0

@@ -1,0 +1,13 @@
+obj=factory
+name=ZeroDimsFactory
+copyright=fuga
+
+location=land
+mapcolor=194
+
+outputgood[0]=glass
+outputcapacity[0]=400
+
+dims=0,1
+cursor=station_icon.png.0.0
+icon=station_icon.png.0.0

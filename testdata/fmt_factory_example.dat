@@ -1,0 +1,10 @@
+Obj=factory
+outputgood[0]=glass
+mapcolor=194
+Name = Glassworks
+dims=1,1
+copyright=fuga
+location=land
+icon=factory_icon.png.0.0
+cursor=factory_icon.png.0.0
+outputcapacity[0]=400

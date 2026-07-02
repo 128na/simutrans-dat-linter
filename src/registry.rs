@@ -41,6 +41,7 @@ impl RuleSet {
             "tree" => Some(RuleSet::new(crate::rules::tree::all())),
             "citycar" => Some(RuleSet::new(crate::rules::citycar::all())),
             "pedestrian" => Some(RuleSet::new(crate::rules::pedestrian::all())),
+            "factory" => Some(RuleSet::new(crate::rules::factory::all(dat))),
             _ => None,
         }
     }

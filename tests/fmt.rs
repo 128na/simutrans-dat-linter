@@ -46,20 +46,22 @@ fn reorder_is_idempotent() {
 fn reorder_unsupported_obj_falls_back_to_preserve_order() {
     let text = read("roundtrip_test.dat");
     let parsed = formatter::parse_entries(&text);
-    // "factory" は本ツールがまだ対応していないobj種別の例
-    // （かつては "wayobj" -> "groundobj" -> "tree" -> "citycar" -> "pedestrian" の順で
-    // 使っていたが、obj=way-object / obj=ground_obj / obj=tree / obj=citycar /
-    // obj=pedestrian としてそれぞれサポートしたため、真に未対応の別のobj種別文字列に
-    // 更新した。この時点でこのプロジェクトの対応obj種別計画で残る最後のobj種別が
-    // factoryである。factory_writer_t::get_type_name()（factory_writer.h:115）は
-    // "factory"を返し（同ファイル内の"factory field class"/"factory field"/
-    // "factory smoke"/"factory product"/"factory supplier"は別クラスのget_type_name()
-    // でありfactory本体とは異なる）、registry::RuleSet::for_obj_typeのmatch armに
-    // まだ存在しないことを確認済み）。
-    let (out, warnings) = formatter::format_reordered(&parsed.entries, "factory");
+    // "sound" は本ツールがまだ対応していないobj種別の例
+    // （かつては "wayobj" -> "groundobj" -> "tree" -> "citycar" -> "pedestrian" ->
+    // "factory" の順で使っていたが、obj=way-object / obj=ground_obj / obj=tree /
+    // obj=citycar / obj=pedestrian / obj=factory としてそれぞれサポートしたため、
+    // 真に未対応の別のobj種別文字列に更新した。factoryはこのプロジェクトが
+    // 事前に合意した対応obj種別計画（building/vehicle/way/good/bridge/tunnel/
+    // roadsign/crossing/way-object/ground_obj/tree/citycar/pedestrian/factoryの
+    // 13種）の最後のobj種別であり、これで計画は完了した。soundは計画には
+    // 含まれておらず、意図的に未対応のまま残している。sound_writer_t::
+    // get_type_name()（sound_writer.h:27）は"sound"を返し（register_writer(true)
+    // によりトップレベルobj種別として登録される）、registry::RuleSet::
+    // for_obj_typeのmatch armにまだ存在しないことを確認済み。
+    let (out, warnings) = formatter::format_reordered(&parsed.entries, "sound");
     let preserved = formatter::format_preserve_order(&parsed.entries);
     assert_eq!(out, preserved);
-    assert!(warnings.iter().any(|w| w.contains("obj=factory")));
+    assert!(warnings.iter().any(|w| w.contains("obj=sound")));
 }
 
 #[test]
@@ -270,6 +272,28 @@ copyright=fuga
 distributionweight=8
 
 image[s]=pedestrian.png.0.0
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn reorder_factory_matches_expected_output() {
+    let parsed = formatter::parse_entries(&read("fmt_factory_example.dat"));
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "factory");
+    let expected = "\
+obj=factory
+name=Glassworks
+copyright=fuga
+location=land
+mapcolor=194
+
+dims=1,1
+
+cursor=factory_icon.png.0.0
+icon=factory_icon.png.0.0
+
+outputcapacity[0]=400
+outputgood[0]=glass
 ";
     assert_eq!(out, expected);
 }
