@@ -57,6 +57,36 @@ pub const PAK_TILE_SIZE: u32 = 128;
 /// サイズが`PAK_TILE_SIZE`の倍数か（`image_writer.cc`の該当fatalチェック）を見る。
 /// building・vehicleの画像フィールドはどちらも同じ`layer.season.frame`形式の
 /// サフィックスを持つため、両者から共有する。
+/// waytypeを表すフィールドの必須性・既知値チェック。`get_waytype()`を無条件に
+/// 呼ぶobj種別（way/bridge/tunnel/roadsign/vehicle/way-object/crossing）で
+/// 共通のパターンを1箇所に集約する。`key`は`"waytype"`のような単純フィールド名
+/// でも、`"own_waytype"`や`"waytype[0]"`のような別名・添字付きキーでもよい。
+/// 呼び出し元ごとの`obj=`名はメッセージに含めず、`key`と値のみで表現する
+/// （元の各obj種別別メッセージが持っていた「obj=way では」等の接頭辞はここでは
+/// 付けない。これは表示テキストの差異であり、`missing-waytype`/`unknown-waytype`/
+/// `waytype-ok`の3つの診断コードと重大度（Error/Error/Info）は元の実装と同じ）。
+///
+/// 根拠: `get_waytype()`（get_waytype.cc）はSTRICMPで`KNOWN_WAYTYPES`の
+/// いずれにも一致しなければ`dbg->fatal("get_waytype()","invalid waytype
+/// \"%s\"\n", ...)`で落とす。`tabfileobj_t::get()`はNULLを返さず欠落キーには
+/// 空文字列を返す（tabfile.cc:48-56）ため、キー未指定も同じfatalパスに入る。
+pub fn check_waytype_field(dat: &DatFile, key: &str) -> Vec<Diagnostic> {
+    let waytype = dat.get(key).unwrap_or("").to_ascii_lowercase();
+    if waytype.is_empty() {
+        vec![Diagnostic::error(
+            "missing-waytype",
+            format!("{key} が必須です（get_waytype()は空文字列もFATAL ERRORにします）"),
+        )]
+    } else if !KNOWN_WAYTYPES.contains(&waytype.as_str()) {
+        vec![Diagnostic::error(
+            "unknown-waytype",
+            format!("{key}={waytype} は不正な値です（FATAL ERRORになります）"),
+        )]
+    } else {
+        vec![Diagnostic::info("waytype-ok", format!("{key}={waytype}"))]
+    }
+}
+
 pub fn check_image_ref(value: &str, dat_dir: &Path, context: &str, diags: &mut Vec<Diagnostic>) {
     let base = value.split(',').next().unwrap_or(value);
     let parts: Vec<&str> = base.split('.').collect();

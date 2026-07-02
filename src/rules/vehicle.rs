@@ -6,7 +6,6 @@
 //! `get_waytype.cc`）を直接読んで確認した。OTRP側の個別diffはまだ行っていない
 //! （building側のように「vanilla/OTRPで一致確認済み」とは言えない状態）。
 
-use super::common::KNOWN_WAYTYPES;
 use crate::diagnostics::Diagnostic;
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
@@ -53,24 +52,12 @@ pub fn check_vehicle(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
 /// 既知12種のいずれにも一致しなければ dbg->fatal("get_waytype()","invalid
 /// waytype \"%s\"\n", waytype) で落とす。tabfileobj_t::get()はNULLを返さず
 /// 欠落キーには空文字列を返す（tabfile.h:148）ため、waytype未指定も同じ
-/// fatalパスに入る。
+/// fatalパスに入る。実際のチェックロジックは`common::check_waytype_field`に
+/// 集約されている（way/bridge/tunnel/roadsign/vehicle/way-object/crossingで共有）。
 struct WaytypeRequiredRule;
 impl Rule for WaytypeRequiredRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        let waytype = ctx.dat.get("waytype").unwrap_or("").to_ascii_lowercase();
-        if waytype.is_empty() {
-            vec![Diagnostic::error(
-                "missing-waytype",
-                "obj=vehicle では waytype が必須です（get_waytype()は空文字列もFATAL ERRORにします）",
-            )]
-        } else if !KNOWN_WAYTYPES.contains(&waytype.as_str()) {
-            vec![Diagnostic::error(
-                "unknown-waytype",
-                format!("waytype={waytype} は不正な値です（FATAL ERRORになります）"),
-            )]
-        } else {
-            vec![Diagnostic::info("waytype-ok", format!("waytype={waytype}"))]
-        }
+        super::common::check_waytype_field(ctx.dat, "waytype")
     }
 }
 

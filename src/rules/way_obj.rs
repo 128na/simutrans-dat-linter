@@ -146,7 +146,7 @@
 //!   拒否する分岐は無い（get_waytype()は既知13種のいずれでも受理する）。
 //!   crossingの「意味のある交差の組み合わせ」検証が見送られたのと同じ理由。
 
-use super::common::{KNOWN_WAYTYPES, check_image_ref};
+use super::common::check_image_ref;
 use crate::diagnostics::Diagnostic;
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
@@ -184,24 +184,13 @@ pub fn check_way_obj(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
 /// get_waytype.cc:14-49はSTRICMPが既知13種のいずれにも一致しなければ
 /// dbg->fatal("get_waytype()","invalid waytype \"%s\"\n", waytype) で落とす。
 /// tabfileobj_t::get()はNULLを返さず欠落キーには空文字列を返す（tabfile.cc:48-56）
-/// ため、waytype未指定も同じfatalパスに入る。
+/// ため、waytype未指定も同じfatalパスに入る。実際のチェックロジックは
+/// `common::check_waytype_field`に集約されている（way/bridge/tunnel/roadsign/
+/// vehicle/way-object/crossingで共有）。
 struct WaytypeRequiredRule;
 impl Rule for WaytypeRequiredRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        let waytype = ctx.dat.get("waytype").unwrap_or("").to_ascii_lowercase();
-        if waytype.is_empty() {
-            vec![Diagnostic::error(
-                "missing-waytype",
-                "obj=way-object では waytype が必須です（get_waytype()は空文字列もFATAL ERRORにします）",
-            )]
-        } else if !KNOWN_WAYTYPES.contains(&waytype.as_str()) {
-            vec![Diagnostic::error(
-                "unknown-waytype",
-                format!("waytype={waytype} は不正な値です（FATAL ERRORになります）"),
-            )]
-        } else {
-            vec![Diagnostic::info("waytype-ok", format!("waytype={waytype}"))]
-        }
+        super::common::check_waytype_field(ctx.dat, "waytype")
     }
 }
 
@@ -209,31 +198,13 @@ impl Rule for WaytypeRequiredRule {
 /// way-objectはwaytypeフィールドが2つあり（`waytype`=乗る対象のway種別、
 /// `own_waytype`=このway-object自身の種別）、どちらも同じ`get_waytype()`を経由する
 /// ため、`own_waytype`の欠落・不正値も同じfatalパスに入る
-/// （crossingのwaytype[0]/waytype[1]とキー名は異なるが同じ仕組み）。
+/// （crossingのwaytype[0]/waytype[1]とキー名は異なるが同じ仕組み）。実際の
+/// チェックロジックは`common::check_waytype_field`に集約されている
+/// （keyに`"own_waytype"`を渡す点のみ`WaytypeRequiredRule`と異なる）。
 struct OwnWaytypeRequiredRule;
 impl Rule for OwnWaytypeRequiredRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        let own_waytype = ctx
-            .dat
-            .get("own_waytype")
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        if own_waytype.is_empty() {
-            vec![Diagnostic::error(
-                "missing-waytype",
-                "obj=way-object では own_waytype が必須です（get_waytype()は空文字列もFATAL ERRORにします）",
-            )]
-        } else if !KNOWN_WAYTYPES.contains(&own_waytype.as_str()) {
-            vec![Diagnostic::error(
-                "unknown-waytype",
-                format!("own_waytype={own_waytype} は不正な値です（FATAL ERRORになります）"),
-            )]
-        } else {
-            vec![Diagnostic::info(
-                "waytype-ok",
-                format!("own_waytype={own_waytype}"),
-            )]
-        }
+        super::common::check_waytype_field(ctx.dat, "own_waytype")
     }
 }
 

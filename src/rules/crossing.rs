@@ -158,30 +158,16 @@ pub fn check_crossing(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
 /// いずれにも一致しなければ dbg->fatal("get_waytype()","invalid waytype
 /// \"%s\"\n", waytype) で落とす。tabfileobj_t::get()はNULLを返さず欠落キーには
 /// 空文字列を返す（tabfile.cc:48-56）ため、waytype[N]未指定も同じfatalパスに入る。
+/// 実際のチェックロジックは`common::check_waytype_field`に集約されている
+/// （way/bridge/tunnel/roadsign/vehicle/way-object/crossingで共有。crossingは
+/// waytype[0]/waytype[1]の2キー分をそれぞれ呼び出して結果を連結する点のみ
+/// 他のobj種別と異なる）。
 struct WaytypesRequiredRule;
 impl Rule for WaytypesRequiredRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        let mut diags = Vec::new();
-        for i in 0..2 {
-            let key = format!("waytype[{i}]");
-            let waytype = ctx.dat.get(&key).unwrap_or("").to_ascii_lowercase();
-            if waytype.is_empty() {
-                diags.push(Diagnostic::error(
-                    "missing-waytype",
-                    format!(
-                        "obj=crossing では {key} が必須です（get_waytype()は空文字列もFATAL ERRORにします）"
-                    ),
-                ));
-            } else if !KNOWN_WAYTYPES.contains(&waytype.as_str()) {
-                diags.push(Diagnostic::error(
-                    "unknown-waytype",
-                    format!("{key}={waytype} は不正な値です（FATAL ERRORになります）"),
-                ));
-            } else {
-                diags.push(Diagnostic::info("waytype-ok", format!("{key}={waytype}")));
-            }
-        }
-        diags
+        (0..2)
+            .flat_map(|i| super::common::check_waytype_field(ctx.dat, &format!("waytype[{i}]")))
+            .collect()
     }
 }
 
