@@ -19,31 +19,39 @@ pub struct OrderSpec {
 }
 
 /// `obj=`の値に応じた並び順を返す。未対応のobj種別には`None`。
+///
+/// 内部では`obj`文字列をまず`registry::ObjType`にパースし、`ObjType`に対する
+/// **ワイルドカードarmを持たない網羅match**でディスパッチする。これにより
+/// `ObjType`に23番目のvariantを追加したのにこのmatchへのarm追加を忘れると
+/// `cargo build`が非網羅match errorで失敗する（`registry::RuleSet::for_obj_type`と
+/// 対になる、このリファクタの要点）。公開シグネチャ（`&str`入力・
+/// `Option<&'static OrderSpec>`出力）は変更しない。
 pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
-    match obj {
-        "building" => Some(&BUILDING_ORDER),
-        "vehicle" => Some(&VEHICLE_ORDER),
-        "way" => Some(&WAY_ORDER),
-        "good" => Some(&GOOD_ORDER),
-        "bridge" => Some(&BRIDGE_ORDER),
-        "tunnel" => Some(&TUNNEL_ORDER),
-        "roadsign" => Some(&ROADSIGN_ORDER),
-        "crossing" => Some(&CROSSING_ORDER),
-        "way-object" => Some(&WAY_OBJ_ORDER),
-        "ground_obj" => Some(&GROUNDOBJ_ORDER),
-        "tree" => Some(&TREE_ORDER),
-        "citycar" => Some(&CITYCAR_ORDER),
-        "pedestrian" => Some(&PEDESTRIAN_ORDER),
-        "factory" => Some(&FACTORY_ORDER),
-        "sound" => Some(&SOUND_ORDER),
-        "ground" => Some(&GROUND_ORDER),
-        "menu" => Some(&MENU_ORDER),
-        "cursor" => Some(&CURSOR_ORDER),
-        "symbol" => Some(&SYMBOL_ORDER),
-        "smoke" => Some(&SMOKE_ORDER),
-        "field" => Some(&FIELD_ORDER),
-        "misc" => Some(&MISC_ORDER),
-        _ => None,
+    use crate::registry::ObjType;
+    let obj_type = ObjType::from_str(obj)?;
+    match obj_type {
+        ObjType::Building => Some(&BUILDING_ORDER),
+        ObjType::Vehicle => Some(&VEHICLE_ORDER),
+        ObjType::Way => Some(&WAY_ORDER),
+        ObjType::Good => Some(&GOOD_ORDER),
+        ObjType::Bridge => Some(&BRIDGE_ORDER),
+        ObjType::Tunnel => Some(&TUNNEL_ORDER),
+        ObjType::Roadsign => Some(&ROADSIGN_ORDER),
+        ObjType::Crossing => Some(&CROSSING_ORDER),
+        ObjType::WayObject => Some(&WAY_OBJ_ORDER),
+        ObjType::GroundObj => Some(&GROUNDOBJ_ORDER),
+        ObjType::Tree => Some(&TREE_ORDER),
+        ObjType::Citycar => Some(&CITYCAR_ORDER),
+        ObjType::Pedestrian => Some(&PEDESTRIAN_ORDER),
+        ObjType::Factory => Some(&FACTORY_ORDER),
+        ObjType::Sound => Some(&SOUND_ORDER),
+        ObjType::Ground => Some(&GROUND_ORDER),
+        ObjType::Menu => Some(&MENU_ORDER),
+        ObjType::Cursor => Some(&CURSOR_ORDER),
+        ObjType::Symbol => Some(&SYMBOL_ORDER),
+        ObjType::Smoke => Some(&SMOKE_ORDER),
+        ObjType::Field => Some(&FIELD_ORDER),
+        ObjType::Misc => Some(&MISC_ORDER),
     }
 }
 

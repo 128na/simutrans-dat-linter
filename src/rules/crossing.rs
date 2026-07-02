@@ -107,32 +107,51 @@ use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
 
+/// get_waytype.cc:14-49 の文字列->列挙値マッピングが実際に区別する`waytype_t`の
+/// 値そのものを表す（代表文字列ではなく型として区別する）。`KNOWN_WAYTYPES`は
+/// 13種類の入力文字列を持つが、`schiene_tram`と`tram_track`はどちらも
+/// `Waytype::Tram`（get_waytype.cc:36-39の`tram_wt`）に解決される既知の別名ペア
+/// のため、distinctなvariant数は12。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Waytype {
+    Ignore,
+    Road,
+    Track,
+    Overheadlines,
+    Maglev,
+    Monorail,
+    Narrowgauge,
+    Water,
+    Air,
+    Tram,
+    Powerline,
+    Decoration,
+}
+
 /// get_waytype.cc:14-49 の文字列->列挙値マッピングをそのまま再現する。
 /// `schiene_tram`と`tram_track`はどちらも`tram_wt`に解決される既知の別名ペア
 /// （get_waytype.cc:36-39）。それ以外は概ね1文字列1列挙値。
-/// 戻り値はmakeobj内部の`waytype_t`列挙順ではなく、本ツール内で「解決後の値が
-/// 一致するかどうか」だけを比較できればよいための代表文字列（正規化キー）。
-fn resolve_waytype(raw: &str) -> &'static str {
+fn resolve_waytype(raw: &str) -> Waytype {
     match raw.to_ascii_lowercase().as_str() {
-        "none" => "ignore_wt",
-        "road" => "road_wt",
-        "track" => "track_wt",
-        "electrified_track" => "overheadlines_wt",
-        "maglev_track" => "maglev_wt",
-        "monorail_track" => "monorail_wt",
-        "narrowgauge_track" => "narrowgauge_wt",
-        "water" => "water_wt",
-        "air" => "air_wt",
+        "none" => Waytype::Ignore,
+        "road" => Waytype::Road,
+        "track" => Waytype::Track,
+        "electrified_track" => Waytype::Overheadlines,
+        "maglev_track" => Waytype::Maglev,
+        "monorail_track" => Waytype::Monorail,
+        "narrowgauge_track" => Waytype::Narrowgauge,
+        "water" => Waytype::Water,
+        "air" => Waytype::Air,
         // get_waytype.cc:36-39: 両方とも tram_wt に解決される別名ペア。
-        "schiene_tram" => "tram_wt",
-        "tram_track" => "tram_wt",
-        "power" => "powerline_wt",
-        "decoration" => "decoration_wt",
+        "schiene_tram" => Waytype::Tram,
+        "tram_track" => Waytype::Tram,
+        "power" => Waytype::Powerline,
+        "decoration" => Waytype::Decoration,
         // 不正値はget_waytype()内でdbg->fatalになるため、この代表値自体は
         // IdenticalWaytypesRuleの比較には使われない想定（WaytypesRequiredRuleで
-        // 別途fatalにする）。便宜上road_wt（get_waytype.cc:16のデフォルト初期値）
+        // 別途fatalにする）。便宜上Road（get_waytype.cc:16のデフォルト初期値）
         // に寄せておく。
-        _ => "road_wt",
+        _ => Waytype::Road,
     }
 }
 
