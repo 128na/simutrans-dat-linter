@@ -46,33 +46,37 @@ fn reorder_is_idempotent() {
 fn reorder_unsupported_obj_falls_back_to_preserve_order() {
     let text = read("roundtrip_test.dat");
     let parsed = formatter::parse_entries(&text);
-    // "menu" は本ツールがまだ対応していないobj種別の例
+    // "cursor" は本ツールがまだ対応していないobj種別の例
     // （かつては "wayobj" -> "groundobj" -> "tree" -> "citycar" -> "pedestrian" ->
-    // "factory" -> "sound" -> "ground" の順で使っていたが、obj=way-object /
-    // obj=ground_obj / obj=tree / obj=citycar / obj=pedestrian / obj=factory /
-    // obj=sound / obj=ground として順にサポートしたため、真に未対応の別のobj種別
-    // 文字列に更新し続けている。
-    // factory/sound/groundまででこのプロジェクトが対応してきたobj種別
+    // "factory" -> "sound" -> "ground" -> "menu" の順で使っていたが、
+    // obj=way-object / obj=ground_obj / obj=tree / obj=citycar / obj=pedestrian /
+    // obj=factory / obj=sound / obj=ground / obj=menu として順にサポートしたため、
+    // 真に未対応の別のobj種別文字列に更新し続けている。
+    // factory/sound/ground/menuまででこのプロジェクトが対応してきたobj種別
     // （building/vehicle/way/good/bridge/tunnel/roadsign/crossing/way-object/
-    // ground_obj/tree/citycar/pedestrian/factory/sound/groundの16種）は完了したが、
-    // soundマイルストーンでの再調査（`descriptor/writer/`配下を機械的に
+    // ground_obj/tree/citycar/pedestrian/factory/sound/ground/menuの17種）は完了
+    // したが、soundマイルストーンでの再調査（`descriptor/writer/`配下を機械的に
     // 網羅した結果）、makeobjには本ツール・過去の計画のどちらにも含まれて
     // いなかった独立したトップレベルobj種別がまだ複数存在することが判明した:
     // `ground_writer.h`の"ground"（ground_writer_t、register_writer(true)、
-    // 本マイルストーンでobj=groundとしてサポート済み）、および`skin_writer.h`の
+    // groundマイルストーンでobj=groundとしてサポート済み）、および`skin_writer.h`の
     // "menu"/"cursor"/"symbol"/"smoke"/"field"/"misc"
     // （menuskin_writer_t/cursorskin_writer_t/symbolskin_writer_t/
     // smoke_writer_t/field_writer_t/miscimages_writer_t、いずれも
-    // register_writer(true)）。これらはpakset作者が直接.datを書く対象という
-    // より、pakset全体で1つだけ書くメタ的スキン/アイコン定義に近く別途の
-    // 検討が必要なため、本マイルストーンでは対象に含めない
-    // （"menu"はその中から未対応プレースホルダとして選んだ一例）。
-    // menuskin_writer_t::get_type_name()（skin_writer.h）は"menu"を返し、
+    // register_writer(true)）。このうち"menu"は本マイルストーンでobj=menuとして
+    // サポート済み。残る5種はpakset作者が直接.datを書く対象というより、pakset
+    // 全体で1つだけ書くメタ的スキン/アイコン定義に近く別途の検討が必要なため、
+    // 本マイルストーンでは対象に含めない
+    // （"cursor"はその中から未対応プレースホルダとして選んだ一例）。
+    // cursorskin_writer_t::get_type_name()（skin_writer.h）は"cursor"を返し、
     // registry::RuleSet::for_obj_typeのmatch armにまだ存在しないことを確認済み。
-    let (out, warnings) = formatter::format_reordered(&parsed.entries, "menu");
+    // なお`cursor=`/`icon=`という**フィールド**は building/way/bridge等の多くの
+    // obj種別に存在するが、これはトップレベルの`obj=cursor`（この
+    // cursorskin_writer_t）とは全くの別概念であり、混同しないこと。
+    let (out, warnings) = formatter::format_reordered(&parsed.entries, "cursor");
     let preserved = formatter::format_preserve_order(&parsed.entries);
     assert_eq!(out, preserved);
-    assert!(warnings.iter().any(|w| w.contains("obj=menu")));
+    assert!(warnings.iter().any(|w| w.contains("obj=cursor")));
 }
 
 #[test]
@@ -333,6 +337,20 @@ name=Slopes
 copyright=fuga
 
 image[0][0]=slope.png.0.0
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn reorder_menu_matches_expected_output() {
+    let parsed = formatter::parse_entries(&read("fmt_menu_example.dat"));
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "menu");
+    let expected = "\
+obj=menu
+name=WindowSkin
+copyright=fuga
+
+image[0]=skins.0.0
 ";
     assert_eq!(out, expected);
 }

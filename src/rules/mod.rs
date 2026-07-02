@@ -37,11 +37,17 @@
 // pedestrian画像キー・factoryフィールド・soundフィールド・ground画像キーのロジックが
 // 変わった場合はこの定数表を再検証すること。
 // vehicle系・way系・good系・bridge系・tunnel系・roadsign系・crossing系・way-object系・
-// ground_obj系・tree系・citycar系・pedestrian系・factory系・sound系・ground系のルールは
-// OTRP側での個別diffはまだ行っていない（rules/vehicle.rs, rules/way.rs, rules/good.rs,
-// rules/bridge.rs, rules/tunnel.rs, rules/roadsign.rs, rules/crossing.rs, rules/way_obj.rs,
-// rules/groundobj.rs, rules/tree.rs, rules/citycar.rs, rules/pedestrian.rs,
-// rules/factory.rs, rules/sound.rs, rules/ground.rs参照）。
+// ground_obj系・tree系・citycar系・pedestrian系・factory系・sound系・ground系・menu系の
+// ルールはOTRP側での個別diffはまだ行っていない（rules/vehicle.rs, rules/way.rs,
+// rules/good.rs, rules/bridge.rs, rules/tunnel.rs, rules/roadsign.rs, rules/crossing.rs,
+// rules/way_obj.rs, rules/groundobj.rs, rules/tree.rs, rules/citycar.rs,
+// rules/pedestrian.rs, rules/factory.rs, rules/sound.rs, rules/ground.rs,
+// rules/menu.rs参照）。
+//
+// menu（skin_writer.hの`menuskin_writer_t`、6種のskin_writer_tサブクラスのうち最初の
+// 実装）で、`image_writer_t::write_obj`の`"> "`（ズーム不可フラグ）構文が
+// obj種別中立の`common::check_image_ref`側に未対応だったことが判明し、
+// `strip_zoomable_prefix`として修正済み（詳細はrules/menu.rs参照）。
 
 pub mod bridge;
 pub mod building;
@@ -52,6 +58,7 @@ pub mod factory;
 pub mod good;
 pub mod ground;
 pub mod groundobj;
+pub mod menu;
 pub mod pedestrian;
 pub mod roadsign;
 pub mod sound;
@@ -70,6 +77,7 @@ pub use factory::check_factory;
 pub use good::check_good;
 pub use ground::check_ground;
 pub use groundobj::check_groundobj;
+pub use menu::check_menu;
 pub use pedestrian::check_pedestrian;
 pub use roadsign::check_roadsign;
 pub use sound::check_sound;

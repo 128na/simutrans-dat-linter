@@ -84,11 +84,19 @@ fn image_not_multiple_of_128_is_detected() {
 }
 
 #[test]
-fn leading_space_in_value_breaks_image_resolution() {
-    // `cursor= station_icon.png.0.0` の先頭スペースは値としてトリムされないため、
-    // 存在しないファイル " station_icon.png" を参照して missing-image-file になる。
-    assert!(has_error(
-        &check("broken_space_in_value.dat"),
-        "missing-image-file"
-    ));
+fn leading_space_in_value_is_trimmed_and_not_an_error() {
+    // `cursor= station_icon.png.0.0` の先頭スペースは、`DatFile`のパース時点では
+    // トリムされない（parser.rsのdocコメントどおり値は一切トリムしない）が、
+    // makeobj側の実際の解決経路（cursorskin_writer_t::write_obj経由の
+    // `image_writer_t::write_obj`、image_writer.cc:364）は`'>'`の有無に関わらず
+    // 無条件で`trim(an_imagekey)`を呼ぶため、makeobj自体はこの先頭スペースを
+    // 無視して正しく"station_icon.png"を解決する（menuマイルストーンでの
+    // image_writer.cc再調査により、以前このテストが前提としていた「先頭スペースは
+    // トリムされない」という認識が誤りだったと判明したため訂正した。
+    // common::check_image_refのstrip_zoomable_prefix_and_trim参照）。
+    let errors: Vec<_> = check("broken_space_in_value.dat")
+        .into_iter()
+        .filter(|(s, _)| *s == Severity::Error)
+        .collect();
+    assert!(errors.is_empty(), "予期しない error: {errors:?}");
 }

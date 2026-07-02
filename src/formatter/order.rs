@@ -37,6 +37,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
         "factory" => Some(&FACTORY_ORDER),
         "sound" => Some(&SOUND_ORDER),
         "ground" => Some(&GROUND_ORDER),
+        "menu" => Some(&MENU_ORDER),
         _ => None,
     }
 }
@@ -629,6 +630,25 @@ const GROUND_NAMED: &[&str] = &["obj", "name", "copyright"];
 static GROUND_ORDER: OrderSpec = OrderSpec {
     sections: &[
         Section::Named(GROUND_NAMED),
+        Section::Unknown,
+        Section::Bracket(&["image["]),
+    ],
+};
+
+// menu dat の「慣習的な並び」。skin_writer_t::write_obj（skin_writer.cc:21-51、
+// menuskin_writer_tはこれをオーバーライドしない）のフィールド読み取り・書き込み順
+// （image[0], image[1], ...を1次元・無制限に走査してkeysを構築した後、
+// write_name_and_copyrightでname/copyright（skin_writer.cc:46） -> その後
+// imagelist_writer_t::write_objでimage系ノードを書く）という順序から導出。
+// dat記述者から見た自然な配置に揃え、他obj種別と同様name/copyrightをobj直後に置く。
+// good/sound/groundと同様、skin_writer.cc/skin_writer.h全文に waytype/climates/
+// cursor/icon系フィールドへの言及が無いため、Namedセクションはobj/name/copyright
+// のみで、それ以外はBracketセクション（image[）にまとめる。
+const MENU_NAMED: &[&str] = &["obj", "name", "copyright"];
+
+static MENU_ORDER: OrderSpec = OrderSpec {
+    sections: &[
+        Section::Named(MENU_NAMED),
         Section::Unknown,
         Section::Bracket(&["image["]),
     ],

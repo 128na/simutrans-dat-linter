@@ -87,7 +87,28 @@ pub fn check_waytype_field(dat: &DatFile, key: &str) -> Vec<Diagnostic> {
     }
 }
 
+/// `image_writer_t::write_obj`（image_writer.cc:348-364）の構文仕様コメント
+/// （`"[> ]imagefilename_without_extension[...]"`）どおり、先頭の`'>'`1文字は
+/// 「ズーム不可」フラグとして`an_imagekey[0]=='>'`判定で剥がされ
+/// （`an_imagekey = an_imagekey.substr(1)`、image_writer.cc:357-359）、
+/// **`'>'`の有無に関わらず無条件で**続けて`trim(an_imagekey)`
+/// （image_writer.cc:364、`utils/simstring.cc`の`trim()`本体は半角スペース/タブの
+/// 前後除去のみ）が呼ばれる。この処理はobj種別を問わず`image_writer_t::write_obj`を
+/// 通る全ての画像キーに無条件で適用される共通の構文であり、特定のobj種別に
+/// 限定されない（menuのマイルストーンで実例`Image[0]=> skins.0.4`
+/// （aburch/simutrans-pak128.britain:gui/gui64/skins-64.dat）から`'>'`構文の
+/// 見落としが発覚し、その調査の過程で`trim()`が`'>'`の有無に関係なく常に
+/// 呼ばれる実装であることも判明した。剥がさず・trimせずに`check_image_ref`へ
+/// 渡すと、`"> skins.0.4"`や`" station_icon.png.0.0"`のような文字列をそのまま
+/// ファイル名として解決を試み、実在するファイルを「見つからない」と誤検知する。
+/// Rustの`str::trim()`はUnicode空白全般を対象とし対象がC++の` `/`\t`限定より
+/// 広いが、実用上の`.dat`ファイルでこの差が問題になることはない。
+fn strip_zoomable_prefix_and_trim(value: &str) -> &str {
+    value.strip_prefix('>').unwrap_or(value).trim()
+}
+
 pub fn check_image_ref(value: &str, dat_dir: &Path, context: &str, diags: &mut Vec<Diagnostic>) {
+    let value = strip_zoomable_prefix_and_trim(value);
     let base = value.split(',').next().unwrap_or(value);
     let parts: Vec<&str> = base.split('.').collect();
     let filename = if parts.len() >= 2

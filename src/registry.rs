@@ -44,6 +44,7 @@ impl RuleSet {
             "factory" => Some(RuleSet::new(crate::rules::factory::all(dat))),
             "sound" => Some(RuleSet::new(crate::rules::sound::all())),
             "ground" => Some(RuleSet::new(crate::rules::ground::all())),
+            "menu" => Some(RuleSet::new(crate::rules::menu::all())),
             _ => None,
         }
     }
