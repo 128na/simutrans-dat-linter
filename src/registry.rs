@@ -45,6 +45,7 @@ impl RuleSet {
             "sound" => Some(RuleSet::new(crate::rules::sound::all())),
             "ground" => Some(RuleSet::new(crate::rules::ground::all())),
             "menu" => Some(RuleSet::new(crate::rules::menu::all())),
+            "cursor" => Some(RuleSet::new(crate::rules::cursor::all())),
             _ => None,
         }
     }

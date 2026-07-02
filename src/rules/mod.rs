@@ -48,12 +48,19 @@
 // 実装）で、`image_writer_t::write_obj`の`"> "`（ズーム不可フラグ）構文が
 // obj種別中立の`common::check_image_ref`側に未対応だったことが判明し、
 // `strip_zoomable_prefix`として修正済み（詳細はrules/menu.rs参照）。
+//
+// cursor（skin_writer.hの`cursorskin_writer_t`、6種のskin_writer_tサブクラスのうち
+// 2番目の実装）は、skin_writer.h/skin_writer.ccを独立に読み直した結果、
+// `menuskin_writer_t`と挙動上完全に同一（`get_type()`/`get_type_name()`の
+// オーバーライドのみで`write_obj`は共有）であることを確認した。詳細はrules/cursor.rs
+// 参照。
 
 pub mod bridge;
 pub mod building;
 pub mod citycar;
 pub mod common;
 pub mod crossing;
+pub mod cursor;
 pub mod factory;
 pub mod good;
 pub mod ground;
@@ -73,6 +80,7 @@ pub use building::check_building;
 pub use citycar::check_citycar;
 pub use common::check_duplicate_keys;
 pub use crossing::check_crossing;
+pub use cursor::check_cursor;
 pub use factory::check_factory;
 pub use good::check_good;
 pub use ground::check_ground;
