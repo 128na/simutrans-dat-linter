@@ -106,6 +106,22 @@ fn missing_freightimagetype_is_detected() {
 }
 
 #[test]
+fn power_gear_mismatch_is_detected() {
+    assert!(has(
+        &check("vehicle_power_gear_mismatch.dat"),
+        Severity::Warning,
+        "power-gear-mismatch"
+    ));
+}
+
+#[test]
+fn power_gear_boundary_is_not_a_mismatch() {
+    // gear=2 -> (2*64)/100=1（非ゼロ）。整数除算の境界値でも警告が出ないことを確認する。
+    let diags = check("vehicle_power_gear_boundary_ok.dat");
+    assert!(!has(&diags, Severity::Warning, "power-gear-mismatch"));
+}
+
+#[test]
 fn extra_freightimagetype_is_detected() {
     assert!(has(
         &check("vehicle_extra_freightimagetype.dat"),

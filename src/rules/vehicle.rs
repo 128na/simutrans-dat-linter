@@ -5,6 +5,12 @@
 //! （`src/simutrans/descriptor/writer/vehicle_writer.cc` / `xref_writer.cc` /
 //! `get_waytype.cc`）を直接読んで確認した。OTRP側の個別diffはまだ行っていない
 //! （building側のように「vanilla/OTRPで一致確認済み」とは言えない状態）。
+//!
+//! `PowerGearMismatchRule`のみ根拠の種類が異なる: 他の全ルールは
+//! makeobj自体（コンパイル時、`descriptor/writer/`）の`dbg->fatal`/`dbg->warning`を
+//! 根拠とするが、このルールはゲームエンジンのランタイムコード（`src/simutrans/simconvoi.cc`）
+//! を根拠とする「静的解析」層のルールである（`couplings`サブコマンドと同種の位置づけ）。
+//! makeobj自身はこのフィールドの組み合わせを一切検証しない。
 
 use super::common::DIR_CODES;
 use crate::diagnostics::Diagnostic;
@@ -33,6 +39,7 @@ pub fn all() -> Vec<Box<dyn Rule>> {
         Box::new(EngineTypeRule),
         Box::new(DirectionImageRule),
         Box::new(FreightImageTypeRule),
+        Box::new(PowerGearMismatchRule),
     ]
 }
 
@@ -240,5 +247,51 @@ impl Rule for FreightImageTypeRule {
         }
 
         diags
+    }
+}
+
+/// 根拠: `vehicle_writer.cc:142` `uint16 gear = (obj.get_int("gear", 100) * 64) / 100;`
+/// （整数除算）。`simconvoi.cc`（例: 1698, 1704, 1755, 1763, 2365行目）で
+/// `sum_gear_and_power += info->get_power() * info->get_gear();` として編成全体の
+/// 実効出力に積算され、これが`calc_max_speed()`（simconvoi.cc:834-）の`total_power`
+/// になる。変換後`gear`が0だと、`power`をいくら宣言していてもその車両の出力寄与は
+/// 常に0になる（`power`自体が無視されるわけではなく、`gear`という別フィールドが
+/// 出力を無効化する）。整数除算`(raw*64)/100`は`raw`が0または1のとき0になる
+/// （`raw=2`なら`(2*64)/100=1`で非ゼロ）。makeobj自体はこの組み合わせを一切
+/// 検証しない（`dbg->fatal`/`dbg->warning`なし）。他のルールと異なり、
+/// 根拠はコンパイル時のmakeobjソースではなくランタイムコード（`simconvoi.cc`）。
+struct PowerGearMismatchRule;
+impl Rule for PowerGearMismatchRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let Some(power) = ctx
+            .dat
+            .get("power")
+            .and_then(|v| v.trim().parse::<i64>().ok())
+        else {
+            return Vec::new();
+        };
+        if power <= 0 {
+            return Vec::new();
+        }
+
+        let gear_raw = ctx
+            .dat
+            .get("gear")
+            .and_then(|v| v.trim().parse::<i64>().ok())
+            .unwrap_or(100);
+        let gear_transformed = (gear_raw * 64) / 100;
+        if gear_transformed == 0 {
+            vec![Diagnostic::warning(
+                "power-gear-mismatch",
+                format!(
+                    "power={power} を宣言していますが gear={gear_raw} は変換後 \
+                     (gear*64/100={gear_transformed}) になり、編成内でのこの車両の\
+                     実効出力寄与が常に0になります（simconvoi.cc: sum_gear_and_power \
+                     += get_power() * get_gear()）。makeobjはこれを検証しません"
+                ),
+            )]
+        } else {
+            Vec::new()
+        }
     }
 }
