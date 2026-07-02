@@ -1,0 +1,4 @@
+obj=misc
+name=ValidMiscWithZoomablePrefix
+copyright=Test
+image[0]=> station_cube.png.0.0

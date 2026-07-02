@@ -42,6 +42,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
         "symbol" => Some(&SYMBOL_ORDER),
         "smoke" => Some(&SMOKE_ORDER),
         "field" => Some(&FIELD_ORDER),
+        "misc" => Some(&MISC_ORDER),
         _ => None,
     }
 }
@@ -732,6 +733,25 @@ const FIELD_NAMED: &[&str] = &["obj", "name", "copyright"];
 static FIELD_ORDER: OrderSpec = OrderSpec {
     sections: &[
         Section::Named(FIELD_NAMED),
+        Section::Unknown,
+        Section::Bracket(&["image["]),
+    ],
+};
+
+// misc dat の「慣習的な並び」。skin_writer_t::write_obj（skin_writer.cc:21-51、
+// miscimages_writer_tはこれをオーバーライドしない）のフィールド読み取り・書き込み順は
+// menu/cursor/symbol/smoke/fieldと完全に同一（image[0], image[1], ...を1次元・
+// 無制限に走査してkeysを構築した後、write_name_and_copyrightでname/copyright
+// （skin_writer.cc:46） -> その後imagelist_writer_t::write_objでimage系ノードを
+// 書く）ため、並び順もMENU_ORDER/CURSOR_ORDER/SYMBOL_ORDER/SMOKE_ORDER/FIELD_ORDERと
+// 同一の構成にする。skin_writer.cc/skin_writer.h全文に waytype/climates/cursor/icon
+// （フィールドとしての）系フィールドへの言及が無いため、Namedセクションは
+// obj/name/copyrightのみで、それ以外はBracketセクション（image[）にまとめる。
+const MISC_NAMED: &[&str] = &["obj", "name", "copyright"];
+
+static MISC_ORDER: OrderSpec = OrderSpec {
+    sections: &[
+        Section::Named(MISC_NAMED),
         Section::Unknown,
         Section::Bracket(&["image["]),
     ],

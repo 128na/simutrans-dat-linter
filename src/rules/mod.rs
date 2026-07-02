@@ -85,6 +85,28 @@
 // （`simutrans/pak128:factories/corn_farm.dat`、`Obj=factory`ブロックと
 // `obj=field`ブロックを1ファイルに`----`区切りで連結する構成）で
 // `obj=field`が使われていることを確認した。
+//
+// misc（skin_writer.hの`miscimages_writer_t`、6種のskin_writer_tサブクラスのうち
+// 6番目（最後）の実装）も、skin_writer.h/skin_writer.ccを独立に読み直した結果、
+// `menuskin_writer_t`/`cursorskin_writer_t`/`symbolskin_writer_t`/`smoke_writer_t`/
+// `field_writer_t`と挙動上完全に同一（`get_type()`/`get_type_name()`の
+// オーバーライドのみで`write_obj`は共有）であることを確認した。
+// `miscimages_writer_t`直前のクラスコメント「Used for images needed by the game
+// but not yet integrated as real objects」は意味論上の説明に過ぎず、特別な検証・
+// 専用フィールドを一切伴わないことも確認した。詳細はrules/misc.rs参照。実際の
+// 公開`.dat`（`simutrans/pak128:base/misc_GUI/construction.dat`、
+// `aburch/simutrans-pak128.britain:gui/gui128/misc_images-128.dat`）で
+// `obj=misc`が使われていることを直接fetchして確認した。
+//
+// misc対応をもって、`src/simutrans/descriptor/writer/`配下の全24ヘッダファイルを
+// 対象に`register_writer(true)`/`get_type_name()`を機械的に棚卸しした結果、
+// makeobjが認識するトップレベルobj種別は building/vehicle/way/good/bridge/
+// tunnel/roadsign/crossing/way-object/ground_obj/tree/citycar/pedestrian/
+// factory/sound/ground/menu/cursor/symbol/smoke/field/misc の22種で尽きることを
+// 確認した（詳細はtests/fmt.rsの`reorder_unsupported_obj_falls_back_to_preserve_order`
+// コメント参照）。soundマイルストーンでの「これで最後」という過去の判断が実際には
+// 誤りだった前例があるため、将来的にmakeobj本体側に新規obj種別が追加された場合は
+// 改めてこの棚卸しを繰り返すこと。
 
 pub mod bridge;
 pub mod building;
@@ -98,6 +120,7 @@ pub mod good;
 pub mod ground;
 pub mod groundobj;
 pub mod menu;
+pub mod misc;
 pub mod pedestrian;
 pub mod roadsign;
 pub mod smoke;
@@ -121,6 +144,7 @@ pub use good::check_good;
 pub use ground::check_ground;
 pub use groundobj::check_groundobj;
 pub use menu::check_menu;
+pub use misc::check_misc;
 pub use pedestrian::check_pedestrian;
 pub use roadsign::check_roadsign;
 pub use smoke::check_smoke;

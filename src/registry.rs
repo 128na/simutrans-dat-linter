@@ -49,6 +49,7 @@ impl RuleSet {
             "symbol" => Some(RuleSet::new(crate::rules::symbol::all())),
             "smoke" => Some(RuleSet::new(crate::rules::smoke::all())),
             "field" => Some(RuleSet::new(crate::rules::field::all())),
+            "misc" => Some(RuleSet::new(crate::rules::misc::all())),
             _ => None,
         }
     }

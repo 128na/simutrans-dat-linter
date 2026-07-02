@@ -46,49 +46,59 @@ fn reorder_is_idempotent() {
 fn reorder_unsupported_obj_falls_back_to_preserve_order() {
     let text = read("roundtrip_test.dat");
     let parsed = formatter::parse_entries(&text);
-    // "misc" は本ツールがまだ対応していないobj種別の例
-    // （かつては "wayobj" -> "groundobj" -> "tree" -> "citycar" -> "pedestrian" ->
-    // "factory" -> "sound" -> "ground" -> "menu" -> "cursor" -> "symbol" ->
-    // "smoke" -> "field" の順で使っていたが、obj=way-object / obj=ground_obj /
-    // obj=tree / obj=citycar / obj=pedestrian / obj=factory / obj=sound /
-    // obj=ground / obj=menu / obj=cursor / obj=symbol / obj=smoke / obj=field
-    // として順にサポートしたため、真に未対応の別のobj種別文字列に更新し続けている。
-    // factory/sound/ground/menu/cursor/symbol/smoke/fieldまででこのプロジェクトが
-    // 対応してきたobj種別（building/vehicle/way/good/bridge/tunnel/roadsign/
-    // crossing/way-object/ground_obj/tree/citycar/pedestrian/factory/sound/
-    // ground/menu/cursor/symbol/smoke/fieldの21種）は完了したが、soundマイルストーン
-    // での再調査（`descriptor/writer/`配下を機械的に網羅した結果）、makeobjには
-    // 本ツール・過去の計画のどちらにも含まれていなかった独立したトップレベル
-    // obj種別がまだ複数存在することが判明した: `ground_writer.h`の"ground"
-    // （ground_writer_t、register_writer(true)、groundマイルストーンで
-    // obj=groundとしてサポート済み）、および`skin_writer.h`の
-    // "menu"/"cursor"/"symbol"/"smoke"/"field"/"misc"
-    // （menuskin_writer_t/cursorskin_writer_t/symbolskin_writer_t/
-    // smoke_writer_t/field_writer_t/miscimages_writer_t、いずれも
-    // register_writer(true)）。このうち"menu"/"cursor"/"symbol"/"smoke"/"field"は
-    // それぞれのマイルストーンでobj=menu/obj=cursor/obj=symbol/obj=smoke/obj=field
-    // としてサポート済み。残る1種（misc）はpakset作者が直接.datを書く対象という
-    // より、pakset全体で1つだけ書くメタ的な未統合画像素材に近く別途の検討が
-    // 必要なため、本マイルストーンでは対象に含めない（"misc"を未対応プレースホルダ
-    // として選んだ）。miscimages_writer_t::get_type_name()（skin_writer.h）は
-    // "misc"を返し、registry::RuleSet::for_obj_typeのmatch armにまだ存在しない
-    // ことを確認済み。この"misc"が7種のうち最後の未対応obj種別であり、この
-    // マイルストーンが完了すればskin_writer.h由来の新規obj種別はすべて出尽くす
-    // 見込みだが、soundマイルストーンでの「これで最後」という過去の判断が
-    // 実際には誤りだった前例があるため、断定はせず次のマイルストーンで改めて
-    // `descriptor/writer/`配下を再確認すること。
+    // "nonexistent-obj-type" は本ツールが対応していない（そもそも実在しない）
+    // obj種別文字列のプレースホルダ。かつては "wayobj" -> "groundobj" -> "tree" ->
+    // "citycar" -> "pedestrian" -> "factory" -> "sound" -> "ground" -> "menu" ->
+    // "cursor" -> "symbol" -> "smoke" -> "field" -> "misc" の順で実在する未対応
+    // obj種別文字列を使い回してきたが、obj=way-object / obj=ground_obj / obj=tree /
+    // obj=citycar / obj=pedestrian / obj=factory / obj=sound / obj=ground /
+    // obj=menu / obj=cursor / obj=symbol / obj=smoke / obj=field / obj=misc として
+    // 順にサポートしたため、真に未対応の候補が尽きた。
+    //
+    // misc マイルストーンで、`src/simutrans/descriptor/writer/` 配下の**全ヘッダ
+    // ファイル**（`*_writer.h`という命名規則に限らず、ディレクトリ内の全`.h`、
+    // 具体的には bridge/building/citycar/crossing/factory/good/ground/groundobj/
+    // image/imagelist/imagelist2d/obj_node/obj_pak_exception/obj_writer/
+    // pedestrian/roadsign/root/skin/sound/text/tree/tunnel/vehicle/way_obj/way/
+    // xref の24ヘッダ全て）を対象に、`register_writer(true)`と`get_type_name()`を
+    // 機械的に棚卸しした。`obj_writer_t::register_writer(bool main_obj)`
+    // （obj_writer.cc:24-36）の実装は`if (main_obj) { writer_by_name->put(...) }`
+    // であり、`writer_by_name`こそが`obj_writer_t::write`（obj_writer.cc:39-59、
+    // `.dat`の`obj=`フィールドの値=`type`でルックアップする実体）が引く
+    // ハッシュテーブルである。つまり`register_writer(true)`で登録される
+    // クラスだけが「`.dat`に書ける`obj=`のトップレベル値」であり、
+    // `register_writer(false)`（tile_writer_t/factory_field_class_writer_t/
+    // factory_field_group_writer_t/factory_smoke_writer_t/factory_product_writer_t/
+    // factory_supplier_writer_t/image_writer_t/imagelist_writer_t/
+    // imagelist2d_writer_t/root_writer_t/text_writer_t/xref_writer_t）は
+    // 内部専用の補助writerであり`.dat`の`obj=`には書けないことも確認した
+    // （`writer_by_type`にのみ登録され、型IDでの内部参照専用）。
+    //
+    // 棚卸しの結果、`register_writer(true)`を持つクラスは厳密に22個であり、
+    // その`get_type_name()`の返り値は次の22種で尽きる: building, vehicle, way,
+    // good, bridge, tunnel, roadsign, crossing, way-object, ground_obj, tree,
+    // citycar, pedestrian, factory, sound, ground, menu, cursor, symbol, smoke,
+    // field, misc。これは`registry::RuleSet::for_obj_type`のmatch armと
+    // 1対1で完全に一致する（本misc追加により22種目が埋まった）。よって
+    // makeobjが認識するトップレベルobj種別のカバレッジは本マイルストームで
+    // 完全（22/22）になったと判断し、このテストのプレースホルダには実在しない
+    // 架空の文字列 "nonexistent-obj-type" を採用する。
+    //
     // なお`cursor=`/`icon=`という**フィールド**は building/way/bridge等の多くの
-    // obj種別に存在するが、これはトップレベルの`obj=cursor`（cursorskin_writer_t、
-    // サポート済み）とは全くの別概念であり、混同しないこと。同様に`obj=factory`の
+    // obj種別に存在するが、これはトップレベルの`obj=cursor`（cursorskin_writer_t）
+    // とは全くの別概念であり、混同しないこと。同様に`obj=factory`の
     // `smoketile[N]=`/`smokeoffset[N]=`/`smoke=`**フィールド**も、トップレベルの
-    // `obj=smoke`（smoke_writer_t、サポート済み）とは全くの別概念である。さらに
-    // `obj=factory`の`fields=`/`max_fields=`/`min_fields=`/`start_fields=`
-    // **フィールド**も、トップレベルの`obj=field`（field_writer_t、サポート済み）
-    // とは全くの別概念である。
-    let (out, warnings) = formatter::format_reordered(&parsed.entries, "misc");
+    // `obj=smoke`（smoke_writer_t）とは全くの別概念である。さらに`obj=factory`の
+    // `fields=`/`max_fields=`/`min_fields=`/`start_fields=`**フィールド**も、
+    // トップレベルの`obj=field`（field_writer_t）とは全くの別概念である。
+    let (out, warnings) = formatter::format_reordered(&parsed.entries, "nonexistent-obj-type");
     let preserved = formatter::format_preserve_order(&parsed.entries);
     assert_eq!(out, preserved);
-    assert!(warnings.iter().any(|w| w.contains("obj=misc")));
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("obj=nonexistent-obj-type"))
+    );
 }
 
 #[test]
@@ -419,6 +429,20 @@ name=CornField
 copyright=fuga
 
 image[0]=corn_farm.4.3
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn reorder_misc_matches_expected_output() {
+    let parsed = formatter::parse_entries(&read("fmt_misc_example.dat"));
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "misc");
+    let expected = "\
+obj=misc
+name=Construction
+copyright=fuga
+
+image[0]=construction.1.0
 ";
     assert_eq!(out, expected);
 }
