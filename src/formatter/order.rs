@@ -40,6 +40,7 @@ pub fn order_for(obj: &str) -> Option<&'static OrderSpec> {
         "menu" => Some(&MENU_ORDER),
         "cursor" => Some(&CURSOR_ORDER),
         "symbol" => Some(&SYMBOL_ORDER),
+        "smoke" => Some(&SMOKE_ORDER),
         _ => None,
     }
 }
@@ -687,6 +688,27 @@ const SYMBOL_NAMED: &[&str] = &["obj", "name", "copyright"];
 static SYMBOL_ORDER: OrderSpec = OrderSpec {
     sections: &[
         Section::Named(SYMBOL_NAMED),
+        Section::Unknown,
+        Section::Bracket(&["image["]),
+    ],
+};
+
+// smoke dat の「慣習的な並び」。skin_writer_t::write_obj（skin_writer.cc:21-51、
+// smoke_writer_tはこれをオーバーライドしない）のフィールド読み取り・書き込み順は
+// menu/cursor/symbolと完全に同一（image[0], image[1], ...を1次元・無制限に走査して
+// keysを構築した後、write_name_and_copyrightでname/copyright（skin_writer.cc:46） ->
+// その後imagelist_writer_t::write_objでimage系ノードを書く）ため、並び順も
+// MENU_ORDER/CURSOR_ORDER/SYMBOL_ORDERと同一の構成にする。skin_writer.cc/
+// skin_writer.h全文に waytype/climates/cursor/icon（フィールドとしての）系
+// フィールドへの言及が無いため、Namedセクションはobj/name/copyrightのみで、
+// それ以外はBracketセクション（image[）にまとめる。`obj=factory`の
+// `smoketile[N]`/`smokeoffset[N]`（FACTORY_ORDERのBracketセクションに既存）とは
+// 全くの別obj種別・別フィールドであることに注意。
+const SMOKE_NAMED: &[&str] = &["obj", "name", "copyright"];
+
+static SMOKE_ORDER: OrderSpec = OrderSpec {
+    sections: &[
+        Section::Named(SMOKE_NAMED),
         Section::Unknown,
         Section::Bracket(&["image["]),
     ],

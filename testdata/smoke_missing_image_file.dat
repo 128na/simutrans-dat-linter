@@ -1,0 +1,4 @@
+obj=smoke
+name=MissingImageFile
+copyright=Test
+image[0]=no_such_file.png.0.0

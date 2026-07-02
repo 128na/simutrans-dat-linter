@@ -47,6 +47,7 @@ impl RuleSet {
             "menu" => Some(RuleSet::new(crate::rules::menu::all())),
             "cursor" => Some(RuleSet::new(crate::rules::cursor::all())),
             "symbol" => Some(RuleSet::new(crate::rules::symbol::all())),
+            "smoke" => Some(RuleSet::new(crate::rules::smoke::all())),
             _ => None,
         }
     }

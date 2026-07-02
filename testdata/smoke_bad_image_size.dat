@@ -1,0 +1,4 @@
+obj=smoke
+name=BadImageSize
+copyright=Test
+image[0]=bad_size.png.0.0
