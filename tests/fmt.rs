@@ -46,17 +46,17 @@ fn reorder_is_idempotent() {
 fn reorder_unsupported_obj_falls_back_to_preserve_order() {
     let text = read("roundtrip_test.dat");
     let parsed = formatter::parse_entries(&text);
-    // "field" は本ツールがまだ対応していないobj種別の例
+    // "misc" は本ツールがまだ対応していないobj種別の例
     // （かつては "wayobj" -> "groundobj" -> "tree" -> "citycar" -> "pedestrian" ->
     // "factory" -> "sound" -> "ground" -> "menu" -> "cursor" -> "symbol" ->
-    // "smoke" の順で使っていたが、obj=way-object / obj=ground_obj / obj=tree /
-    // obj=citycar / obj=pedestrian / obj=factory / obj=sound / obj=ground /
-    // obj=menu / obj=cursor / obj=symbol / obj=smoke として順にサポートしたため、
-    // 真に未対応の別のobj種別文字列に更新し続けている。
-    // factory/sound/ground/menu/cursor/symbol/smokeまででこのプロジェクトが
+    // "smoke" -> "field" の順で使っていたが、obj=way-object / obj=ground_obj /
+    // obj=tree / obj=citycar / obj=pedestrian / obj=factory / obj=sound /
+    // obj=ground / obj=menu / obj=cursor / obj=symbol / obj=smoke / obj=field
+    // として順にサポートしたため、真に未対応の別のobj種別文字列に更新し続けている。
+    // factory/sound/ground/menu/cursor/symbol/smoke/fieldまででこのプロジェクトが
     // 対応してきたobj種別（building/vehicle/way/good/bridge/tunnel/roadsign/
     // crossing/way-object/ground_obj/tree/citycar/pedestrian/factory/sound/
-    // ground/menu/cursor/symbol/smokeの20種）は完了したが、soundマイルストーン
+    // ground/menu/cursor/symbol/smoke/fieldの21種）は完了したが、soundマイルストーン
     // での再調査（`descriptor/writer/`配下を機械的に網羅した結果）、makeobjには
     // 本ツール・過去の計画のどちらにも含まれていなかった独立したトップレベル
     // obj種別がまだ複数存在することが判明した: `ground_writer.h`の"ground"
@@ -65,23 +65,30 @@ fn reorder_unsupported_obj_falls_back_to_preserve_order() {
     // "menu"/"cursor"/"symbol"/"smoke"/"field"/"misc"
     // （menuskin_writer_t/cursorskin_writer_t/symbolskin_writer_t/
     // smoke_writer_t/field_writer_t/miscimages_writer_t、いずれも
-    // register_writer(true)）。このうち"menu"/"cursor"/"symbol"/"smoke"は
-    // それぞれのマイルストーンでobj=menu/obj=cursor/obj=symbol/obj=smokeとして
-    // サポート済み。残る2種（field/misc）はpakset作者が直接.datを書く対象
-    // というより、pakset全体で1つだけ書くメタ的スキン/アイコン定義に近く別途の
-    // 検討が必要なため、本マイルストーンでは対象に含めない（"field"はその中から
-    // 未対応プレースホルダとして選んだ一例）。field_writer_t::get_type_name()
-    // （skin_writer.h）は"field"を返し、registry::RuleSet::for_obj_typeのmatch
-    // armにまだ存在しないことを確認済み。
+    // register_writer(true)）。このうち"menu"/"cursor"/"symbol"/"smoke"/"field"は
+    // それぞれのマイルストーンでobj=menu/obj=cursor/obj=symbol/obj=smoke/obj=field
+    // としてサポート済み。残る1種（misc）はpakset作者が直接.datを書く対象という
+    // より、pakset全体で1つだけ書くメタ的な未統合画像素材に近く別途の検討が
+    // 必要なため、本マイルストーンでは対象に含めない（"misc"を未対応プレースホルダ
+    // として選んだ）。miscimages_writer_t::get_type_name()（skin_writer.h）は
+    // "misc"を返し、registry::RuleSet::for_obj_typeのmatch armにまだ存在しない
+    // ことを確認済み。この"misc"が7種のうち最後の未対応obj種別であり、この
+    // マイルストーンが完了すればskin_writer.h由来の新規obj種別はすべて出尽くす
+    // 見込みだが、soundマイルストーンでの「これで最後」という過去の判断が
+    // 実際には誤りだった前例があるため、断定はせず次のマイルストーンで改めて
+    // `descriptor/writer/`配下を再確認すること。
     // なお`cursor=`/`icon=`という**フィールド**は building/way/bridge等の多くの
     // obj種別に存在するが、これはトップレベルの`obj=cursor`（cursorskin_writer_t、
     // サポート済み）とは全くの別概念であり、混同しないこと。同様に`obj=factory`の
     // `smoketile[N]=`/`smokeoffset[N]=`/`smoke=`**フィールド**も、トップレベルの
-    // `obj=smoke`（smoke_writer_t、サポート済み）とは全くの別概念である。
-    let (out, warnings) = formatter::format_reordered(&parsed.entries, "field");
+    // `obj=smoke`（smoke_writer_t、サポート済み）とは全くの別概念である。さらに
+    // `obj=factory`の`fields=`/`max_fields=`/`min_fields=`/`start_fields=`
+    // **フィールド**も、トップレベルの`obj=field`（field_writer_t、サポート済み）
+    // とは全くの別概念である。
+    let (out, warnings) = formatter::format_reordered(&parsed.entries, "misc");
     let preserved = formatter::format_preserve_order(&parsed.entries);
     assert_eq!(out, preserved);
-    assert!(warnings.iter().any(|w| w.contains("obj=field")));
+    assert!(warnings.iter().any(|w| w.contains("obj=misc")));
 }
 
 #[test]
@@ -398,6 +405,20 @@ name=Diesel
 copyright=fuga
 
 image[0]=misc-smoke-128.0.0
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn reorder_field_matches_expected_output() {
+    let parsed = formatter::parse_entries(&read("fmt_field_example.dat"));
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "field");
+    let expected = "\
+obj=field
+name=CornField
+copyright=fuga
+
+image[0]=corn_farm.4.3
 ";
     assert_eq!(out, expected);
 }

@@ -71,6 +71,20 @@
 // 処理自体には含まれない。詳細はrules/smoke.rs参照。`obj=factory`の
 // `smoketile[N]`/`smokeoffset[N]`フィールド（factory.rsのSmokeOffsetRuleが対象）
 // とは全くの別概念であることに注意。
+//
+// field（skin_writer.hの`field_writer_t`、6種のskin_writer_tサブクラスのうち
+// 5番目の実装）も、skin_writer.h/skin_writer.ccを独立に読み直した結果、
+// `menuskin_writer_t`/`cursorskin_writer_t`/`symbolskin_writer_t`/`smoke_writer_t`と
+// 挙動上完全に同一（`get_type()`/`get_type_name()`のオーバーライドのみで
+// `write_obj`は共有）であることを確認した。「field」という名前から作物の
+// 生育段階の日数・タイミング処理を連想したが、そのような処理は`obj=factory`側の
+// フィールド（`production_per_field`等）とゲーム実行時ロジックに存在し、
+// makeobjの`obj=field`書き込み処理自体には含まれない。詳細はrules/field.rs参照。
+// `obj=factory`の`fields`/`max_fields`/`min_fields`/`start_fields`フィールドとは
+// 全くの別概念であることに注意。実際の公開`.dat`
+// （`simutrans/pak128:factories/corn_farm.dat`、`Obj=factory`ブロックと
+// `obj=field`ブロックを1ファイルに`----`区切りで連結する構成）で
+// `obj=field`が使われていることを確認した。
 
 pub mod bridge;
 pub mod building;
@@ -79,6 +93,7 @@ pub mod common;
 pub mod crossing;
 pub mod cursor;
 pub mod factory;
+pub mod field;
 pub mod good;
 pub mod ground;
 pub mod groundobj;
@@ -101,6 +116,7 @@ pub use common::check_duplicate_keys;
 pub use crossing::check_crossing;
 pub use cursor::check_cursor;
 pub use factory::check_factory;
+pub use field::check_field;
 pub use good::check_good;
 pub use ground::check_ground;
 pub use groundobj::check_groundobj;
