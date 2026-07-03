@@ -1,1 +1,7 @@
 /target
+
+# サードパーティ製の実アドオンデータ（refs/linter_test/からのローカルコピー）。
+# 回帰テスト(tests/real_data_regression.rs)専用のローカル検証用フィクスチャで、
+# ライセンス上git管理対象にしない。フィクスチャが無い環境ではこのディレクトリを
+# 前提とするテストは自動的にスキップされる（テスト側のskip_if_fixture_missing!参照）。
+/testdata/real_data/

@@ -128,22 +128,28 @@ fn parse_records(text: &str) -> Vec<DatFile> {
             continue;
         };
         let key = format_key(key_raw);
-        match pairs.get(&key) {
-            Some(existing) => {
-                duplicates.push(DuplicateKey {
-                    key,
-                    first_line: existing.line,
-                    duplicate_line: lineno,
-                });
-            }
-            None => {
-                pairs.insert(
-                    key,
-                    Entry {
-                        value: value.to_string(),
-                        line: lineno,
-                    },
-                );
+        // real makeobj (tabfile_t::read()) はformat_key()適用後のキーに対して
+        // find_parameter_expansion()によるパラメータ展開を試み、展開が無い場合は
+        // 元のkey=valueをそのまま1件put()する。crate::param_expansion::expand_lineは
+        // 展開不要な場合に`vec![(key, value)]`を返すため、常にこの経路を通してよい。
+        for (expanded_key, expanded_value) in crate::param_expansion::expand_line(&key, value) {
+            match pairs.get(&expanded_key) {
+                Some(existing) => {
+                    duplicates.push(DuplicateKey {
+                        key: expanded_key,
+                        first_line: existing.line,
+                        duplicate_line: lineno,
+                    });
+                }
+                None => {
+                    pairs.insert(
+                        expanded_key,
+                        Entry {
+                            value: expanded_value,
+                            line: lineno,
+                        },
+                    );
+                }
             }
         }
     }
