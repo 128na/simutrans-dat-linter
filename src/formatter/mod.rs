@@ -1,18 +1,24 @@
 use crate::parser::format_key;
 
 pub mod order;
-use order::{Section, order_for};
+use order::{OrderSpec, Section, order_for};
 
 /// 1行をパースした結果。tabfile_t::read()/read_line() の挙動に合わせて分類する:
 /// - `#`または行頭スペースで始まる行は、実際のmakeobjでも丸ごと無視される
 ///   （read_line(): `while(*dest=='#' || *dest==' ')`でスキップされ続ける）。
 ///   フォーマッタはこれを「無効化」も「有効化」もせず、原文のまま通す
-/// - `=`が無い非空行は、実際のmakeobjでも`dbg->warning("No data in ...")`になる
+/// - 行頭が`-`の行は、実際のmakeobjでは1つのobj定義の終端マーカーである
+///   （`tabfile_t::read()`: `while(read_line(...) && *line != '-')`）。1ファイルに
+///   複数のobj定義が連結されている場合の区切りであり、`=`が無くても
+///   Malformed扱いにはしない（警告も出さない）
+/// - `=`が無い非空行（区切り行を除く）は、実際のmakeobjでも
+///   `dbg->warning("No data in ...")`になる
 pub enum Entry {
     Pair { key: String, value: String },
     Comment(String),
     Blank,
     SkippedLeadingSpace(String),
+    Separator(String),
     Malformed(String),
 }
 
@@ -37,6 +43,8 @@ pub fn parse_entries(text: &str) -> ParsedDat {
                 "line {lineno}: 行頭にスペースがあるため makeobj から無視されます（コメント扱い）: \"{line}\""
             ));
             entries.push(Entry::SkippedLeadingSpace(line.to_string()));
+        } else if line.starts_with('-') {
+            entries.push(Entry::Separator(line.to_string()));
         } else if let Some((key_raw, value)) = line.split_once('=') {
             entries.push(Entry::Pair {
                 key: format_key(key_raw),
@@ -74,7 +82,10 @@ pub fn format_preserve_order(entries: &[Entry]) -> String {
                 out.push_str(value.trim());
                 out.push('\n');
             }
-            Entry::Comment(s) | Entry::SkippedLeadingSpace(s) | Entry::Malformed(s) => {
+            Entry::Comment(s)
+            | Entry::SkippedLeadingSpace(s)
+            | Entry::Separator(s)
+            | Entry::Malformed(s) => {
                 out.push_str(s);
                 out.push('\n');
             }
@@ -88,6 +99,12 @@ pub fn format_preserve_order(entries: &[Entry]) -> String {
 /// コメント・空行・スキップ行・不正行は並び替えとの整合が取れないため出力には
 /// 含めない（dropした件数をwarningsで返す）。`obj`が未対応の値の場合は並び替えを
 /// 行わず、元の行順を保ったまま（`format_preserve_order`相当）出力する。
+///
+/// 1ファイルに`Entry::Separator`（`-`始まりの区切り行）で複数のobj定義が
+/// 連結されている場合は、区切り行ごとにセグメントへ分割し、**セグメントごとに
+/// 独立して**並び替える（全セグメントに同じ`obj`の並び順仕様を適用する。
+/// 建物の複数ステージ等、連結された定義は通常すべて同じobj種別のため）。
+/// 区切り行自体は元の位置・原文のまま復元する。
 pub fn format_reordered(entries: &[Entry], obj: &str) -> (String, Vec<String>) {
     let mut warnings = Vec::new();
 
@@ -97,6 +114,34 @@ pub fn format_reordered(entries: &[Entry], obj: &str) -> (String, Vec<String>) {
         ));
         return (format_preserve_order(entries), warnings);
     };
+
+    let segments: Vec<&[Entry]> = entries
+        .split(|e| matches!(e, Entry::Separator(_)))
+        .collect();
+    let separators: Vec<&str> = entries
+        .iter()
+        .filter_map(|e| match e {
+            Entry::Separator(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+
+    let mut out = String::new();
+    for (i, segment) in segments.iter().enumerate() {
+        if i > 0 {
+            out.push_str(separators[i - 1]);
+            out.push('\n');
+        }
+        let (segment_out, segment_warnings) = format_reordered_segment(segment, spec);
+        out.push_str(&segment_out);
+        warnings.extend(segment_warnings);
+    }
+
+    (out, warnings)
+}
+
+fn format_reordered_segment(entries: &[Entry], spec: &OrderSpec) -> (String, Vec<String>) {
+    let mut warnings = Vec::new();
 
     let mut pairs: Vec<(&String, &String)> = Vec::new();
     let mut dropped = 0usize;

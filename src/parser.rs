@@ -47,42 +47,30 @@ pub fn read_dat_text(path: &Path) -> std::io::Result<String> {
 }
 
 impl DatFile {
+    /// 1ファイル中の**最初のobj定義のみ**をパースする（後方互換用）。
+    /// 1ファイルに複数のobj定義が`-`始まりの区切り行で連結されている場合
+    /// （例: 建物の複数ステージを1つの.datにまとめた実例）は[`DatFile::parse_all`]
+    /// を使うこと。
     pub fn parse(path: &Path) -> std::io::Result<Self> {
         let text = read_dat_text(path)?;
-        let mut pairs: BTreeMap<String, Entry> = BTreeMap::new();
-        let mut duplicates = Vec::new();
+        Ok(parse_records(&text)
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| DatFile {
+                pairs: BTreeMap::new(),
+                duplicates: Vec::new(),
+            }))
+    }
 
-        for (i, raw_line) in text.lines().enumerate() {
-            let lineno = i + 1;
-            let line = raw_line.trim_end_matches('\r');
-            if line.is_empty() || line.starts_with('#') || line.starts_with(' ') {
-                continue;
-            }
-            let Some((key_raw, value)) = line.split_once('=') else {
-                continue;
-            };
-            let key = format_key(key_raw);
-            match pairs.get(&key) {
-                Some(existing) => {
-                    duplicates.push(DuplicateKey {
-                        key,
-                        first_line: existing.line,
-                        duplicate_line: lineno,
-                    });
-                }
-                None => {
-                    pairs.insert(
-                        key,
-                        Entry {
-                            value: value.to_string(),
-                            line: lineno,
-                        },
-                    );
-                }
-            }
-        }
-
-        Ok(DatFile { pairs, duplicates })
+    /// 1ファイル中の**全てのobj定義**をパースする。real makeobj
+    /// (`tabfile_t::read()`: `while(read_line(...) && *line != '-')`)と同じく、
+    /// 行頭が`-`の行（`#`コメントの区切り線ではなく素のダッシュ行）でobj定義を
+    /// 区切る。区切られた各obj定義は独立した[`DatFile`]として返るため、
+    /// 2つ目以降の定義の`obj=`/`name=`等が1つ目との「重複キー」に
+    /// 誤判定されることはない。
+    pub fn parse_all(path: &Path) -> std::io::Result<Vec<Self>> {
+        let text = read_dat_text(path)?;
+        Ok(parse_records(&text))
     }
 
     pub fn get(&self, key: &str) -> Option<&str> {
@@ -103,6 +91,67 @@ impl DatFile {
             None => Vec::new(),
         }
     }
+}
+
+/// テキスト全体を複数のobj定義（レコード）に分割してパースする。
+/// 行頭が`-`の行（`#`コメントや行頭スペースはスキップ済みの行のみ判定対象、
+/// real makeobjの`read_line()`によるコメントスキップの後で区切り判定する
+/// 順序を再現している）に達するたびに、それまで蓄積した1レコードを確定し、
+/// 次のレコードの蓄積を始める。空のまま区切り行に達したレコード（区切り行が
+/// 連続している場合や末尾の余white）は読み飛ばす（real makeobjの
+/// `do { ... } while(!lines && !feof(file))`= 「空オブジェクトはスキップ」を再現）。
+/// 行番号はレコードごとにリセットせず、ファイル先頭からの絶対行番号を使う
+/// （real makeobjは`current_line_number`をread()呼び出しごとにリセットするが、
+/// これは内部の数式展開エラー表示専用でありユーザー向け診断には使われない。
+/// 本linterの診断はエディタ上の行番号を指すべきなので絶対行番号が正しい）。
+fn parse_records(text: &str) -> Vec<DatFile> {
+    let mut records = Vec::new();
+    let mut pairs: BTreeMap<String, Entry> = BTreeMap::new();
+    let mut duplicates: Vec<DuplicateKey> = Vec::new();
+
+    for (i, raw_line) in text.lines().enumerate() {
+        let lineno = i + 1;
+        let line = raw_line.trim_end_matches('\r');
+        if line.is_empty() || line.starts_with('#') || line.starts_with(' ') {
+            continue;
+        }
+        if line.starts_with('-') {
+            if !pairs.is_empty() {
+                records.push(DatFile {
+                    pairs: std::mem::take(&mut pairs),
+                    duplicates: std::mem::take(&mut duplicates),
+                });
+            }
+            continue;
+        }
+        let Some((key_raw, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = format_key(key_raw);
+        match pairs.get(&key) {
+            Some(existing) => {
+                duplicates.push(DuplicateKey {
+                    key,
+                    first_line: existing.line,
+                    duplicate_line: lineno,
+                });
+            }
+            None => {
+                pairs.insert(
+                    key,
+                    Entry {
+                        value: value.to_string(),
+                        line: lineno,
+                    },
+                );
+            }
+        }
+    }
+    if !pairs.is_empty() {
+        records.push(DatFile { pairs, duplicates });
+    }
+
+    records
 }
 
 /// `tabfile_t::format_key()` を模倣: 末尾空白トリム、小文字化、'['と']'内の空白除去。

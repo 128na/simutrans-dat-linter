@@ -66,36 +66,75 @@ fn run_lint(args: &LintArgs) -> ExitCode {
     let level = Severity::from_verbosity(args.verbose);
     let path = args.path.as_path();
 
-    let dat = match DatFile::parse(path) {
-        Ok(d) => d,
+    let records = match DatFile::parse_all(path) {
+        Ok(r) => r,
         Err(e) => {
             eprintln!("{}: 読み込みに失敗しました ({e})", path.display());
             return ExitCode::FAILURE;
         }
     };
 
-    let obj_type = dat.get("obj").unwrap_or("").to_string();
-    let dat_dir = path.parent().unwrap_or_else(|| Path::new("."));
-
-    let Some(rule_set) = RuleSet::for_obj_type(&obj_type, &dat) else {
-        let supported = SUPPORTED_OBJ_TYPES
+    let supported = || {
+        SUPPORTED_OBJ_TYPES
             .iter()
             .map(|t| format!("obj={t}"))
             .collect::<Vec<_>>()
-            .join(" / ");
-        eprintln!(
-            "{}: obj={obj_type} は未対応です。{supported} のみ検証できます",
-            path.display()
-        );
-        return ExitCode::FAILURE;
+            .join(" / ")
     };
 
-    let ctx = RuleContext { dat: &dat, dat_dir };
-    let mut diags = rules::check_duplicate_keys(&dat);
-    diags.extend(rule_set.run(&ctx));
+    // 1ファイルに`-`区切りで複数obj定義が連結されている実例（建物の複数ステージを
+    // 1つの.datにまとめたもの等）がある。obj定義が無い（レコード0件）場合も
+    // 単一obj前提だった従来の「obj=は未対応です」メッセージ・終了コードを再現する。
+    if records.is_empty() {
+        eprintln!(
+            "{}: obj= は未対応です。{} のみ検証できます",
+            path.display(),
+            supported()
+        );
+        return ExitCode::FAILURE;
+    }
 
-    for d in diags.iter().filter(|d| d.severity <= level) {
-        println!("{}: {d}", path.display());
+    let dat_dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let total = records.len();
+    let mut diags = Vec::new();
+    let mut unsupported = 0usize;
+
+    for (idx, dat) in records.iter().enumerate() {
+        let obj_type = dat.get("obj").unwrap_or("").to_string();
+        let label = if total > 1 {
+            let name = dat.get("name").unwrap_or("");
+            if name.is_empty() {
+                format!(" [{}/{total}]", idx + 1)
+            } else {
+                format!(" [{}/{total} name={name}]", idx + 1)
+            }
+        } else {
+            String::new()
+        };
+
+        let Some(rule_set) = RuleSet::for_obj_type(&obj_type, dat) else {
+            eprintln!(
+                "{}{label}: obj={obj_type} は未対応です。{} のみ検証できます",
+                path.display(),
+                supported()
+            );
+            unsupported += 1;
+            continue;
+        };
+
+        let ctx = RuleContext { dat, dat_dir };
+        let mut record_diags = rules::check_duplicate_keys(dat);
+        record_diags.extend(rule_set.run(&ctx));
+
+        for d in record_diags.iter().filter(|d| d.severity <= level) {
+            println!("{}{label}: {d}", path.display());
+        }
+        diags.extend(record_diags);
+    }
+
+    // 単一obj・未対応の場合は従来通り即失敗（サマリ行を出さない挙動を維持）。
+    if total == 1 && unsupported == 1 {
+        return ExitCode::FAILURE;
     }
 
     let error_count = diags
@@ -107,8 +146,13 @@ fn run_lint(args: &LintArgs) -> ExitCode {
         .filter(|d| d.severity == Severity::Warning)
         .count();
 
-    if error_count == 0 && warning_count == 0 {
+    if error_count == 0 && warning_count == 0 && unsupported == 0 {
         println!("{}: OK（既知ルールの範囲では問題なし）", path.display());
+    } else if unsupported > 0 {
+        println!(
+            "{}: error {error_count} 件 / warning {warning_count} 件 / 未対応 {unsupported} 件",
+            path.display()
+        );
     } else {
         println!(
             "{}: error {error_count} 件 / warning {warning_count} 件",
@@ -116,7 +160,7 @@ fn run_lint(args: &LintArgs) -> ExitCode {
         );
     }
 
-    if error_count > 0 {
+    if error_count > 0 || unsupported > 0 {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS

@@ -48,6 +48,49 @@ fn no_duplicates_in_clean_file() {
 }
 
 #[test]
+fn parse_all_splits_dash_separated_records() {
+    // 建物の複数ステージ等、1ファイルに`-`区切りで複数のobj定義が連結されている
+    // 実例（refs/building.JpClassicTerminal/JpClassicTerminal.dat）を模したfixture。
+    // real makeobj (tabfile_t::read(): `while(read_line(...) && *line != '-')`) は
+    // 行頭が`-`の行でobj定義を区切って1つずつ読む。
+    let path = testdata_dir().join("multi_object_building.dat");
+    let records = DatFile::parse_all(&path).expect("パースに失敗");
+    assert_eq!(records.len(), 3);
+    assert_eq!(records[0].get("name"), Some("StageA"));
+    assert_eq!(records[1].get("name"), Some("StageB"));
+    assert_eq!(records[2].get("name"), Some("StageC"));
+}
+
+#[test]
+fn parse_all_does_not_report_cross_record_duplicates() {
+    // レコード跨ぎの obj=/name= 等が「重複キー」に誤判定されないことを確認する
+    // （このバグの再現・回帰防止が本テストの目的）。
+    let path = testdata_dir().join("multi_object_building.dat");
+    let records = DatFile::parse_all(&path).expect("パースに失敗");
+    assert!(records[0].duplicates.is_empty());
+    assert!(records[2].duplicates.is_empty());
+}
+
+#[test]
+fn parse_all_still_detects_duplicate_within_a_single_record() {
+    // レコード内の本物の重複（fixtureの2番目のオブジェクトに仕込んだ
+    // `name=StageB` / `name=StageB_dup`）は引き続き検知されるべき。
+    let path = testdata_dir().join("multi_object_building.dat");
+    let records = DatFile::parse_all(&path).expect("パースに失敗");
+    assert_eq!(records[1].duplicates.len(), 1);
+    assert_eq!(records[1].duplicates[0].key, "name");
+}
+
+#[test]
+fn parse_returns_only_first_record_for_backward_compat() {
+    // 既存の単一オブジェクトAPI(`DatFile::parse`)は、複数obj定義があっても
+    // 最初の1件のみを返す（25箇所の既存呼び出し元との後方互換のため）。
+    let path = testdata_dir().join("multi_object_building.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    assert_eq!(dat.get("name"), Some("StageA"));
+}
+
+#[test]
 fn shift_jis_encoded_file_is_decoded_as_fallback() {
     // 古いpak128.japan系アドオンはShift-JIS(CP932)のまま配布されていることがある。
     // UTF-8として不正でも「読み込み失敗」にせず、CP932としてデコードして継続する。

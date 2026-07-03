@@ -25,6 +25,41 @@ fn reorder_matches_expected_output() {
 }
 
 #[test]
+fn reorder_handles_dash_separated_multi_object_file() {
+    // 建物の複数ステージ等、1ファイルに`-`区切りで複数のobj定義が連結されている
+    // 実例（refs/building.JpClassicTerminal/JpClassicTerminal.dat）を模したfixture。
+    // 各obj定義は区切りを跨がず**独立して**並び替えられ、区切り行自体は
+    // 原文のまま元の位置に復元されるべき。
+    let parsed = formatter::parse_entries(&read("fmt_multi_object_example.dat"));
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "building");
+    let expected = "\
+obj=building
+name=StageA
+copyright=fuga
+type=station
+-------------------------------------------------------------------------------
+obj=building
+name=StageB
+copyright=fuga
+type=station
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn preserve_order_does_not_warn_on_separator_line() {
+    // `-`始まりの区切り行はreal makeobjでも正常なobj定義の終端マーカーであり、
+    // Malformed（`=`が無い不正行）としての警告を出すべきではない。
+    let text = read("fmt_multi_object_example.dat");
+    let parsed = formatter::parse_entries(&text);
+    assert!(
+        parsed.warnings.is_empty(),
+        "区切り行だけのfixtureで警告が出ないべき: {:?}",
+        parsed.warnings
+    );
+}
+
+#[test]
 fn preserve_order_is_idempotent() {
     let text = read("roundtrip_test.dat");
     let once = formatter::format_preserve_order(&formatter::parse_entries(&text).entries);

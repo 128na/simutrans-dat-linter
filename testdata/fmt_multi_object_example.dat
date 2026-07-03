@@ -1,0 +1,10 @@
+name=StageA
+obj=building
+copyright=fuga
+type=station
+
+-------------------------------------------------------------------------------
+name=StageB
+obj=building
+copyright=fuga
+type=station

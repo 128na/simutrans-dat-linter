@@ -49,8 +49,8 @@ pub fn load_vehicles(dir: &Path) -> (Vec<VehicleInfo>, Vec<Diagnostic>) {
         if path.extension().and_then(|s| s.to_str()) != Some("dat") {
             continue;
         }
-        let dat = match DatFile::parse(&path) {
-            Ok(d) => d,
+        let records = match DatFile::parse_all(&path) {
+            Ok(r) => r,
             Err(e) => {
                 diags.push(Diagnostic::error(
                     "read-failed",
@@ -59,24 +59,35 @@ pub fn load_vehicles(dir: &Path) -> (Vec<VehicleInfo>, Vec<Diagnostic>) {
                 continue;
             }
         };
-        if dat.get("obj").unwrap_or("") != "vehicle" {
-            continue;
-        }
-        let name = dat.get("name").unwrap_or("").to_string();
-        if name.is_empty() {
-            diags.push(Diagnostic::error(
-                "missing-name",
-                format!("{}: obj=vehicle に name がありません", path.display()),
-            ));
-            continue;
-        }
 
-        vehicles.push(VehicleInfo {
-            prev: read_constraint_side(&dat, "prev"),
-            next: read_constraint_side(&dat, "next"),
-            source: path.display().to_string(),
-            name,
-        });
+        // 1ファイルに`-`区切りで複数のobj=vehicle定義が連結されているケース
+        // （編成の複数バリエーションを1つの.datにまとめた実例）にも対応する。
+        let total = records.len();
+        for (idx, dat) in records.iter().enumerate() {
+            if dat.get("obj").unwrap_or("") != "vehicle" {
+                continue;
+            }
+            let name = dat.get("name").unwrap_or("").to_string();
+            if name.is_empty() {
+                diags.push(Diagnostic::error(
+                    "missing-name",
+                    format!("{}: obj=vehicle に name がありません", path.display()),
+                ));
+                continue;
+            }
+            let source = if total > 1 {
+                format!("{} [{}/{total}]", path.display(), idx + 1)
+            } else {
+                path.display().to_string()
+            };
+
+            vehicles.push(VehicleInfo {
+                prev: read_constraint_side(dat, "prev"),
+                next: read_constraint_side(dat, "next"),
+                source,
+                name,
+            });
+        }
     }
 
     (vehicles, diags)
