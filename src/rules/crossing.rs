@@ -131,27 +131,27 @@ enum Waytype {
 /// get_waytype.cc:14-49 の文字列->列挙値マッピングをそのまま再現する。
 /// `schiene_tram`と`tram_track`はどちらも`tram_wt`に解決される既知の別名ペア
 /// （get_waytype.cc:36-39）。それ以外は概ね1文字列1列挙値。
-fn resolve_waytype(raw: &str) -> Waytype {
+///
+/// 不正値はget_waytype()内でdbg->fatalになるため、呼び出し元
+/// （`IdenticalWaytypesRule`）は既に`KNOWN_WAYTYPES.contains()`を通った値しか
+/// 渡さない想定だが、その前提を「代表値へのフォールバック」というコメントで
+/// 保証する代わりに`None`という型で表現する（型設計監査で指摘された箇所）。
+fn resolve_waytype(raw: &str) -> Option<Waytype> {
     match raw.to_ascii_lowercase().as_str() {
-        "none" => Waytype::Ignore,
-        "road" => Waytype::Road,
-        "track" => Waytype::Track,
-        "electrified_track" => Waytype::Overheadlines,
-        "maglev_track" => Waytype::Maglev,
-        "monorail_track" => Waytype::Monorail,
-        "narrowgauge_track" => Waytype::Narrowgauge,
-        "water" => Waytype::Water,
-        "air" => Waytype::Air,
-        // get_waytype.cc:36-39: 両方とも tram_wt に解決される別名ペア。
-        "schiene_tram" => Waytype::Tram,
-        "tram_track" => Waytype::Tram,
-        "power" => Waytype::Powerline,
-        "decoration" => Waytype::Decoration,
-        // 不正値はget_waytype()内でdbg->fatalになるため、この代表値自体は
-        // IdenticalWaytypesRuleの比較には使われない想定（WaytypesRequiredRuleで
-        // 別途fatalにする）。便宜上Road（get_waytype.cc:16のデフォルト初期値）
-        // に寄せておく。
-        _ => Waytype::Road,
+        "none" => Some(Waytype::Ignore),
+        "road" => Some(Waytype::Road),
+        "track" => Some(Waytype::Track),
+        "electrified_track" => Some(Waytype::Overheadlines),
+        "maglev_track" => Some(Waytype::Maglev),
+        "monorail_track" => Some(Waytype::Monorail),
+        "narrowgauge_track" => Some(Waytype::Narrowgauge),
+        "water" => Some(Waytype::Water),
+        "air" => Some(Waytype::Air),
+        // get_waytype.cc:36-39: 両方とも tram_wt に解決される既知の別名ペア。
+        "schiene_tram" | "tram_track" => Some(Waytype::Tram),
+        "power" => Some(Waytype::Powerline),
+        "decoration" => Some(Waytype::Decoration),
+        _ => None,
     }
 }
 
@@ -207,18 +207,19 @@ impl Rule for IdenticalWaytypesRule {
         {
             return Vec::new();
         }
-        if resolve_waytype(&w0) == resolve_waytype(&w1) {
-            vec![Diagnostic::error(
+        if let (Some(r0), Some(r1)) = (resolve_waytype(&w0), resolve_waytype(&w1))
+            && r0 == r1
+        {
+            return vec![Diagnostic::error(
                 "crossing-identical-waytypes",
                 format!(
                     "waytype[0]={w0} と waytype[1]={w1} は同じ種別のwayに解決されます。\
                      makeobjは同一waytype同士の交差をFATAL ERRORにします\
                      （\"Identical ways ({w0}) cannot cross (check waytypes)!\"）"
                 ),
-            )]
-        } else {
-            Vec::new()
+            )];
         }
+        Vec::new()
     }
 }
 
