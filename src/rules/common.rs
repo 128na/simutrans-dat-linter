@@ -113,18 +113,32 @@ fn strip_zoomable_prefix_and_trim(value: &str) -> &str {
     value.strip_prefix('>').unwrap_or(value).trim()
 }
 
+/// 画像参照からファイル名を取り出す。`image_writer_t::write_obj`
+/// （image_writer.cc:372-388）は最初の`'.'`より**前だけ**をファイル名の幹として
+/// 取り出し、無条件で`".png"`を付与する
+/// （`imagekey.substr(0, imagekey.size()-numkey.size()-1) + ".png"`、
+/// `numkey`は最初の`'.'`より後ろの全体）。1文字目の`'.'`の直後に続く文字列
+/// （`"foo.png.0.0"`のように慣習的に`"png"`と書かれることが多いが、数字で
+/// 始まらない限り何が書かれていても構わない）は行番号として`atoi()`され、
+/// 非数値の先頭文字列は単に`0`になるだけで実質無視される。つまり
+/// `"foo.png.0.0"`と`"foo.0.0"`は実際には全く同じ`"foo.png"`を指しており、
+/// `"png"`という文字列自体に構文上の意味は無い。
+/// 参照が`".png"`を含まない場合（実際に配布されているpak128.japan系
+/// アドオンでよく見る`"basename.col.row"`形式、例:
+/// `icon=> JpClassicTerminal.4.0`）でも、makeobjと同じく`.png`を補って
+/// 正しく解決できなければならない（以前の実装は`"最後の2つが数値なら
+/// それより前を丸ごとファイル名とする"`というヒューリスティックで、
+/// `.png`の補完が漏れていた）。
+fn resolve_image_filename(value: &str) -> String {
+    match value.find('.') {
+        Some(dot_idx) => format!("{}.png", &value[..dot_idx]),
+        None => value.to_string(),
+    }
+}
+
 pub fn check_image_ref(value: &str, dat_dir: &Path, context: &str, diags: &mut Vec<Diagnostic>) {
     let value = strip_zoomable_prefix_and_trim(value);
-    let base = value.split(',').next().unwrap_or(value);
-    let parts: Vec<&str> = base.split('.').collect();
-    let filename = if parts.len() >= 2
-        && parts[parts.len() - 1].parse::<i64>().is_ok()
-        && parts[parts.len() - 2].parse::<i64>().is_ok()
-    {
-        parts[..parts.len() - 2].join(".")
-    } else {
-        base.to_string()
-    };
+    let filename = resolve_image_filename(value);
 
     let path = dat_dir.join(&filename);
     diags.push(Diagnostic::debug(
