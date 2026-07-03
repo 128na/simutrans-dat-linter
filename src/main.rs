@@ -1,6 +1,6 @@
 use clap::{ArgAction, Parser, Subcommand};
 use dat_linter::diagnostics::Severity;
-use dat_linter::parser::DatFile;
+use dat_linter::parser::{read_dat_text, DatFile};
 use dat_linter::registry::{RuleContext, RuleSet, SUPPORTED_OBJ_TYPES};
 use dat_linter::{couplings, formatter, rules};
 use std::path::{Path, PathBuf};
@@ -126,7 +126,7 @@ fn run_lint(args: &LintArgs) -> ExitCode {
 fn run_fmt(args: &FmtArgs) -> ExitCode {
     let path = args.path.as_path();
 
-    let text = match std::fs::read_to_string(path) {
+    let text = match read_dat_text(path) {
         Ok(t) => t,
         Err(e) => {
             eprintln!("{}: 読み込みに失敗しました ({e})", path.display());

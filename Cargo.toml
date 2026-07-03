@@ -22,3 +22,6 @@ clap = { version = "4", default-features = false, features = [
     "usage",
     "error-context",
 ] }
+# 実際に配布されている .dat の一部（特に日本語コメント入りの古い pak128.japan 系）は
+# Shift-JIS(CP932) で保存されている。UTF-8として不正な場合のフォールバックデコードに使う。
+encoding_rs = "0.8"

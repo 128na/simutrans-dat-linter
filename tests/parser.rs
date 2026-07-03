@@ -48,6 +48,15 @@ fn no_duplicates_in_clean_file() {
 }
 
 #[test]
+fn shift_jis_encoded_file_is_decoded_as_fallback() {
+    // 古いpak128.japan系アドオンはShift-JIS(CP932)のまま配布されていることがある。
+    // UTF-8として不正でも「読み込み失敗」にせず、CP932としてデコードして継続する。
+    let path = testdata_dir().join("shift_jis_encoded.dat");
+    let dat = DatFile::parse(&path).expect("Shift-JISファイルもパースできるべき");
+    assert_eq!(dat.get("name"), Some("SJISName"));
+}
+
+#[test]
 fn check_duplicate_keys_reports_warning_with_location() {
     // rules::check_duplicate_keys はobj種別を問わずrun_lintから無条件に呼ばれる
     // （パーサレベルの一般的な問題のため）。ここではその診断生成自体を検証する。

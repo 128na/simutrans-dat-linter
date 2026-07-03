@@ -29,9 +29,26 @@ pub struct DatFile {
     pub duplicates: Vec<DuplicateKey>,
 }
 
+/// .dat のテキストを読み込む。UTF-8として不正な場合はShift-JIS(CP932)として
+/// デコードし直す（古いpak128.japan系アドオンに日本語コメントがShift-JISで
+/// 保存されたまま配布されているケースへの対応。makeobj自体は文字コードを
+/// 検証しないため、実際に読み込めるファイルをlinterが「読み込み失敗」で
+/// 弾いてしまわないようにする）。
+pub fn read_dat_text(path: &Path) -> std::io::Result<String> {
+    let bytes = fs::read(path)?;
+    match String::from_utf8(bytes) {
+        Ok(text) => Ok(text),
+        Err(e) => {
+            let bytes = e.into_bytes();
+            let (text, _, _had_errors) = encoding_rs::SHIFT_JIS.decode(&bytes);
+            Ok(text.into_owned())
+        }
+    }
+}
+
 impl DatFile {
     pub fn parse(path: &Path) -> std::io::Result<Self> {
-        let text = fs::read_to_string(path)?;
+        let text = read_dat_text(path)?;
         let mut pairs: BTreeMap<String, Entry> = BTreeMap::new();
         let mut duplicates = Vec::new();
 
