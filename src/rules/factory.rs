@@ -8,6 +8,12 @@
 //! `get_climate.cc` / `xref_writer.cc` / `dataobj/tabfile.cc`）を直接読んで確認した。
 //! OTRP側の個別diffはまだ行っていない（citycar以降の全obj種別と同様）。
 //!
+//! `ProductivityZeroRule`のみ根拠の種類が異なる: 他の全ルールはmakeobj自体
+//! （コンパイル時、`descriptor/writer/`）の`dbg->fatal`/`dbg->warning`を根拠とするが、
+//! このルールはゲームエンジンのランタイムコード（`src/simutrans/simfab.cc`）を
+//! 根拠とする「静的解析」層のルールである（vehicleの`PowerGearMismatchRule`と
+//! 同じ新しい証跡カテゴリ）。makeobj自身は`productivity`の値を一切検証しない。
+//!
 //! ## `obj=`文字列について
 //!
 //! `factory_writer_t::get_type_name()`（`factory_writer.h:115`）は`return "factory";`
@@ -115,12 +121,15 @@
 //! - `sound`（factory_writer.cc:199-216）: 数値文字列なら`atoi`でsound_idとして
 //!   使われ、非数値ならLOAD_SOUND方式のファイル名として扱われるだけで、
 //!   いずれの経路もfatal/warningを出さない（crossingの`sound`と同じパターン）。
-//! - `productivity`/`range`/`distributionweight`/`pax_level`/`expand_minimum`/
+//! - `range`/`distributionweight`/`pax_level`/`expand_minimum`/
 //!   `expand_range`/`expand_times`/`electricity_boost`/`passenger_boost`/
 //!   `mail_boost`/`electricity_amount`/`electricity_demand`/`passenger_demand`/
 //!   `mail_demand`/`sound_interval`（factory_writer.cc:165-194）は全て
 //!   `get_int`の無条件フォールバックのみで読まれ、`get_int_clamped`は
 //!   一切使われていない（bridgeの`ClampedRangeRule`に相当する根拠が無い）。
+//!   `productivity`も同じ理由でmakeobj側の根拠は無いが、こちらはランタイム側の
+//!   根拠（`simfab.cc`）があるため`ProductivityZeroRule`として別途実装する
+//!   （下記の静的解析ルール本体、および下のREJECTED注記を参照）。
 //! - **`location`**（factory_writer.cc:156-164）: `land`/`water`/`city`/`river`/
 //!   `shore`/`forest`のいずれにもSTRICMPで一致しない場合（未指定・誤字含む）は
 //!   `dbg->warning`/`dbg->fatal`を一切伴わずに黙って`factory_desc_t::Land`へ
@@ -151,7 +160,7 @@
 //!   フォールバックするだけ（三項演算子チェーンの最終elseが常に`Land`で、
 //!   goodのwaytype省略やvehicleのengine_typeフォールバックと異なり、
 //!   このフォールバック自体を示すメッセージ出力が一切無い）。
-//! - `productivity`/`range`/`distributionweight`/`pax_level`/`expand_minimum`/
+//! - `range`/`distributionweight`/`pax_level`/`expand_minimum`/
 //!   `expand_range`/`expand_times`/`electricity_boost`/`passenger_boost`/
 //!   `mail_boost`/`electricity_amount`/`electricity_demand`/`passenger_demand`/
 //!   `mail_demand`/`sound_interval`の妥当性検証: いずれも`get_int`の無条件
@@ -159,6 +168,15 @@
 //!   （factory_writer.cc:165-194）。bridgeの`ClampedRangeRule`に相当する根拠が
 //!   無いため見送り（way/tunnel/roadsign/crossing/way-object/groundobj/tree/
 //!   citycar/pedestrianの同種フィールドが見送られたのと同じ理由）。
+//!   `productivity`単体はmakeobj側の根拠こそ無いものの、`ProductivityZeroRule`
+//!   として別途実装済み（このREJECTEDバッチからは対象外、上記参照）。
+//! - `productivity=0`以外の`weight`/`speed`型フィールド全般へのランタイム依存
+//!   静的解析の横展開: 21obj種別を横断調査した結果、`productivity=0`
+//!   （`simfab.cc:417-446`、コンストラクタから無条件到達するゼロ除算）以外に
+//!   「単一.datで閉じて判定可能・ランタイムソースで裏付けが取れる・実害あり」の
+//!   条件を満たす候補は見つからなかった（good.value=0等は単一フィールドの直接的な
+//!   帰結で発見価値が薄く、bridge/tunnel/way系は construction-tool・map状態依存、
+//!   pedestrian.steps_per_frame等は既にランタイム側でガード済みと確認）。
 //! - `inputsupplier[N]`/`inputcapacity[N]`/`inputfactor[N]`の妥当性検証:
 //!   いずれも`get_int`の無条件フォールバックのみで読まれる
 //!   （factory_writer.cc:242-246）。`outputcapacity`と異なり、`inputcapacity`
@@ -216,6 +234,7 @@ pub fn all(dat: &DatFile) -> Vec<Box<dyn Rule>> {
         Box::new(OutputCapacityRule),
         Box::new(SmokeOffsetRule),
         Box::new(ProbabilityClampRule),
+        Box::new(ProductivityZeroRule),
     ]
 }
 
@@ -580,5 +599,50 @@ fn check_probability_field(
                  サイレントに10000へクランプします（\"{message}\"）"
             ),
         ));
+    }
+}
+
+/// 静的解析ルール（根拠はコンパイル時のmakeobjソースではなくランタイムコード）。
+///
+/// `factory_writer.cc:165`は`productivity`を`obj.get_int("productivity", 10)`で
+/// 無条件フォールバックのみで読み、値の妥当性検証（fatal/warning）は一切無い。
+///
+/// しかしゲームランタイム側の`src/simutrans/simfab.cc`では、`fabrik_t`の
+/// コンストラクタ（simfab.cc:865-867）がfactoryを配置した瞬間に無条件で
+/// `update_scaled_pax_demand()`/`update_scaled_mail_demand()`を呼ぶ。
+/// この2つの関数はどちらも`const sint64 prod = desc->get_productivity();`
+/// （simfab.cc:420,439）を分母とした整数除算を行うが、`prod==0`に対する
+/// ガードが存在しない（`update_scaled_electric_demand()`は`electric_demand`が
+/// センチネル値65535のとき早期returnするガードを持つが、これは`electric_demand`
+/// 自身のためのガードであり`productivity`には無関係。かつpax/mail用の2関数には
+/// そもそも早期returnが無い）:
+/// ```text
+/// const uint32 pax_demand = (uint32)( ( desc_pax_demand * (sint64)prodbase + (prod >> 1) ) / prod );
+/// ```
+/// `productivity=0`を指定したfactoryは、makeobjは正常に`.pak`化に成功するが、
+/// パークセットへ配置された瞬間にゼロ除算（未定義動作、通常はクラッシュ）が
+/// 発生する。vehicleの`power-gear-mismatch`（サイレントに出力寄与ゼロになる、
+/// クラッシュしない）より深刻な結果になるため、Warningではなく
+/// Errorとして報告する。
+struct ProductivityZeroRule;
+impl Rule for ProductivityZeroRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let productivity = ctx
+            .dat
+            .get("productivity")
+            .and_then(|v| v.trim().parse::<i64>().ok())
+            .unwrap_or(10);
+        if productivity == 0 {
+            vec![Diagnostic::error(
+                "factory-productivity-zero",
+                "productivity=0 です。ゲームランタイム（simfab.cc）はfactory配置時に\
+                 無条件でupdate_scaled_pax_demand()/update_scaled_mail_demand()を呼び、\
+                 productivityを分母とした整数除算を行いますが、この値がゼロだと\
+                 ゼロ除算（未定義動作、通常はクラッシュ）になります。\
+                 makeobj自体はこの値をノーチェックで通します",
+            )]
+        } else {
+            Vec::new()
+        }
     }
 }

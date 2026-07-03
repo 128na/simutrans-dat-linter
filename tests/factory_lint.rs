@@ -132,3 +132,11 @@ fn bad_image_size_is_detected() {
         "image-size-not-multiple-of-128"
     ));
 }
+
+#[test]
+fn productivity_zero_is_detected() {
+    assert!(has_error(
+        &check("factory_productivity_zero.dat"),
+        "factory-productivity-zero"
+    ));
+}
