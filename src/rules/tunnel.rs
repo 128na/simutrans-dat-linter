@@ -108,7 +108,11 @@ pub fn all() -> Vec<Box<dyn Rule>> {
 
 /// `check_bridge`/`check_way`と対称的な薄いラッパー。
 pub fn check_tunnel(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext { dat, dat_dir };
+    let ctx = RuleContext {
+        dat,
+        dat_dir,
+        language: crate::i18n::Language::default(),
+    };
     all().iter().flat_map(|r| r.check(&ctx)).collect()
 }
 
@@ -122,7 +126,7 @@ pub fn check_tunnel(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
 struct WaytypeRequiredRule;
 impl Rule for WaytypeRequiredRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        super::common::check_waytype_field(ctx.dat, "waytype")
+        super::common::check_waytype_field(ctx.dat, "waytype", ctx.language)
     }
 }
 
@@ -177,7 +181,7 @@ impl Rule for ImageRefRule {
                         if value.is_empty() || value == "-" {
                             continue;
                         }
-                        check_image_ref(value, ctx.dat_dir, &key_used, &mut diags);
+                        check_image_ref(value, ctx.dat_dir, &key_used, &mut diags, ctx.language);
                     }
                 }
             }

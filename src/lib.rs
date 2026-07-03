@@ -7,6 +7,7 @@ pub mod config;
 pub mod couplings;
 pub mod diagnostics;
 pub mod formatter;
+pub mod i18n;
 pub mod param_expansion;
 pub mod parser;
 pub mod registry;

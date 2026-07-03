@@ -1,4 +1,5 @@
 use crate::diagnostics::Diagnostic;
+use crate::i18n::Language;
 use crate::parser::DatFile;
 use std::path::Path;
 
@@ -6,6 +7,9 @@ use std::path::Path;
 pub struct RuleContext<'a> {
     pub dat: &'a DatFile,
     pub dat_dir: &'a Path,
+    /// 診断メッセージの出力言語。`config.rs`の`[general] language`から解決される
+    /// （未指定・設定ファイル無しの場合は`Language::default()`=English）。
+    pub language: Language,
 }
 
 /// 1つのobj種別に対する1つの検査項目。obj種別ごとの`Vec<Box<dyn Rule>>`を

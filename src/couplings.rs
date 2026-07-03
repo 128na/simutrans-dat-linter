@@ -1,4 +1,5 @@
 use crate::diagnostics::Diagnostic;
+use crate::i18n::{Language, t};
 use crate::parser::DatFile;
 use std::collections::{BTreeSet, VecDeque};
 use std::path::Path;
@@ -28,7 +29,7 @@ pub struct VehicleInfo {
     pub next: ConstraintSide,
 }
 
-pub fn load_vehicles(dir: &Path) -> (Vec<VehicleInfo>, Vec<Diagnostic>) {
+pub fn load_vehicles(dir: &Path, lang: Language) -> (Vec<VehicleInfo>, Vec<Diagnostic>) {
     let mut vehicles = Vec::new();
     let mut diags = Vec::new();
 
@@ -37,7 +38,12 @@ pub fn load_vehicles(dir: &Path) -> (Vec<VehicleInfo>, Vec<Diagnostic>) {
         Err(e) => {
             diags.push(Diagnostic::error(
                 "read-dir-failed",
-                format!("{}: ディレクトリを読めません ({e})", dir.display()),
+                t!(lang,
+                    ja: "{d}: ディレクトリを読めません ({e})",
+                    en: "{d}: Failed to read the directory ({e})",
+                    d = dir.display(),
+                    e = e,
+                ),
             ));
             return (vehicles, diags);
         }
@@ -54,7 +60,12 @@ pub fn load_vehicles(dir: &Path) -> (Vec<VehicleInfo>, Vec<Diagnostic>) {
             Err(e) => {
                 diags.push(Diagnostic::error(
                     "read-failed",
-                    format!("{}: 読み込みに失敗しました ({e})", path.display()),
+                    t!(lang,
+                        ja: "{p}: 読み込みに失敗しました ({e})",
+                        en: "{p}: Failed to read the file ({e})",
+                        p = path.display(),
+                        e = e,
+                    ),
                 ));
                 continue;
             }
@@ -71,7 +82,11 @@ pub fn load_vehicles(dir: &Path) -> (Vec<VehicleInfo>, Vec<Diagnostic>) {
             if name.is_empty() {
                 diags.push(Diagnostic::error(
                     "missing-name",
-                    format!("{}: obj=vehicle に name がありません", path.display()),
+                    t!(lang,
+                        ja: "{p}: obj=vehicle に name がありません",
+                        en: "{p}: obj=vehicle has no name",
+                        p = path.display(),
+                    ),
                 ));
                 continue;
             }
@@ -116,7 +131,7 @@ fn read_constraint_side(dat: &DatFile, side: &str) -> ConstraintSide {
 }
 
 /// linter相当の検査: makeobjが検証しない車両名参照の実在性をパークセット内で確認する。
-pub fn check_dangling_refs(vehicles: &[VehicleInfo]) -> Vec<Diagnostic> {
+pub fn check_dangling_refs(vehicles: &[VehicleInfo], lang: Language) -> Vec<Diagnostic> {
     let known: BTreeSet<&str> = vehicles.iter().map(|v| v.name.as_str()).collect();
     let mut diags = Vec::new();
     for v in vehicles {
@@ -130,9 +145,18 @@ pub fn check_dangling_refs(vehicles: &[VehicleInfo]) -> Vec<Diagnostic> {
                 {
                     diags.push(Diagnostic::error(
                         "dangling-vehicle-constraint",
-                        format!(
-                            "{} ({}): constraint[{side_label}]が参照する車両 \"{n}\" がこのディレクトリ内に存在しません（makeobjは参照の実在性を検証しないため、ゲーム読み込み時まで気づけません）",
-                            v.name, v.source
+                        t!(lang,
+                            ja: "{name} ({source}): constraint[{side_label}]が参照する車両 \"{n}\" \
+                                 がこのディレクトリ内に存在しません（makeobjは参照の実在性を検証\
+                                 しないため、ゲーム読み込み時まで気づけません）",
+                            en: "{name} ({source}): the vehicle \"{n}\" referenced by \
+                                 constraint[{side_label}] does not exist in this directory \
+                                 (makeobj does not validate reference existence, so this goes \
+                                 unnoticed until the game loads it)",
+                            name = v.name,
+                            source = v.source,
+                            side_label = side_label,
+                            n = n,
                         ),
                     ));
                 }
@@ -148,7 +172,7 @@ pub fn check_dangling_refs(vehicles: &[VehicleInfo]) -> Vec<Diagnostic> {
 /// 仮想グラフを作り、各車両がSTARTから到達可能かつENDに到達可能かを判定する。
 /// 自身・参照車両の制約だけで矛盾なく組める実例が無い場合、ゲーム内で
 /// 編成を組もうとしても永遠に成立しないという問題をビルド不要で発見できる。
-pub fn check_satisfiability(vehicles: &[VehicleInfo]) -> Vec<Diagnostic> {
+pub fn check_satisfiability(vehicles: &[VehicleInfo], lang: Language) -> Vec<Diagnostic> {
     let n = vehicles.len();
 
     let can_be_first = |v: &VehicleInfo| match &v.prev {
@@ -215,9 +239,15 @@ pub fn check_satisfiability(vehicles: &[VehicleInfo]) -> Vec<Diagnostic> {
         if !(reachable_from_start[i] && can_reach_end[i]) {
             diags.push(Diagnostic::error(
                 "unsatisfiable-constraint",
-                format!(
-                    "{} ({}): constraint[prev]/constraint[next]を満たす有限な編成が1つも組み立てられません（自身および参照車両の制約だけでは先頭〜末尾まで到達できない）",
-                    v.name, v.source
+                t!(lang,
+                    ja: "{name} ({source}): constraint[prev]/constraint[next]を満たす有限な編成が\
+                         1つも組み立てられません（自身および参照車両の制約だけでは先頭〜末尾まで\
+                         到達できない）",
+                    en: "{name} ({source}): no finite consist satisfying constraint[prev]/\
+                         constraint[next] can be assembled (the constraints of this vehicle and \
+                         its referenced vehicles alone cannot reach from head to tail)",
+                    name = v.name,
+                    source = v.source,
                 ),
             ));
         }

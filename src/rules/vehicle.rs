@@ -14,6 +14,7 @@
 
 use super::common::DIR_CODES;
 use crate::diagnostics::Diagnostic;
+use crate::i18n::t;
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
@@ -48,7 +49,11 @@ pub fn all() -> Vec<Box<dyn Rule>> {
 /// （このマイルストーンでは非対象、rules/mod.rsのREADME参照）を追加する際に
 /// シグネチャ変更が不要になるようにしている。
 pub fn check_vehicle(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext { dat, dat_dir };
+    let ctx = RuleContext {
+        dat,
+        dat_dir,
+        language: crate::i18n::Language::default(),
+    };
     all().iter().flat_map(|r| r.check(&ctx)).collect()
 }
 
@@ -62,7 +67,7 @@ pub fn check_vehicle(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
 struct WaytypeRequiredRule;
 impl Rule for WaytypeRequiredRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        super::common::check_waytype_field(ctx.dat, "waytype")
+        super::common::check_waytype_field(ctx.dat, "waytype", ctx.language)
     }
 }
 
@@ -83,7 +88,11 @@ impl Rule for EngineTypeRule {
         if waytype == "electrified_track" {
             return vec![Diagnostic::debug(
                 "engine-type-skipped",
-                "waytype=electrified_track のため engine_type は読まれません（無条件 electric）",
+                t!(ctx.language,
+                    ja: "waytype=electrified_track のため engine_type は読まれません（無条件 electric）",
+                    en: "engine_type is not read because waytype=electrified_track \
+                         (unconditionally electric)",
+                ),
             )];
         }
 
@@ -95,9 +104,12 @@ impl Rule for EngineTypeRule {
         if !engine_type.is_empty() && !KNOWN_ENGINE_TYPES.contains(&engine_type.as_str()) {
             vec![Diagnostic::warning(
                 "unknown-engine-type",
-                format!(
-                    "engine_type={engine_type} は不明な値です。makeobjはfatal/errorを出さず、\
-                     黙って diesel にフォールバックします"
+                t!(ctx.language,
+                    ja: "engine_type={engine_type} は不明な値です。makeobjはfatal/errorを出さず、\
+                         黙って diesel にフォールバックします",
+                    en: "engine_type={engine_type} is an unknown value. makeobj does not emit \
+                         fatal/error, but silently falls back to diesel",
+                    engine_type = engine_type,
                 ),
             )]
         } else {
@@ -157,11 +169,16 @@ impl Rule for DirectionImageRule {
         if has_8_images && empty_count < 8 {
             diags.push(Diagnostic::error(
                 "incomplete-8-direction-images",
-                format!(
-                    "n/e/ne/nwのいずれかの方向画像(emptyimage)が定義されているのに、\
-                     連続して定義された方向が{empty_count}個しかありません。\
-                     8方向は全て揃っているか、4方向以下で止めるかのどちらかが必要です \
-                     （makeobjはFATAL ERRORになります）"
+                t!(ctx.language,
+                    ja: "n/e/ne/nwのいずれかの方向画像(emptyimage)が定義されているのに、\
+                         連続して定義された方向が{empty_count}個しかありません。\
+                         8方向は全て揃っているか、4方向以下で止めるかのどちらかが必要です \
+                         （makeobjはFATAL ERRORになります）",
+                    en: "One of the n/e/ne/nw direction images (emptyimage) is defined, but only \
+                         {empty_count} consecutive direction(s) are defined. You must either \
+                         define all 8 directions or stop at 4 or fewer \
+                         (makeobj treats this as a FATAL ERROR)",
+                    empty_count = empty_count,
                 ),
             ));
         }
@@ -178,10 +195,15 @@ impl Rule for DirectionImageRule {
             if old_style_count > 0 && old_style_count != empty_count {
                 diags.push(Diagnostic::error(
                     "freightimage-count-mismatch",
-                    format!(
-                        "非indexedのfreightimage[<dir>]が{old_style_count}個定義されていますが、\
-                         emptyimageは{empty_count}個です。両者は完全一致している必要があります \
-                         （makeobjはFATAL ERRORになります）"
+                    t!(ctx.language,
+                        ja: "非indexedのfreightimage[<dir>]が{old_style_count}個定義されていますが、\
+                             emptyimageは{empty_count}個です。両者は完全一致している必要があります \
+                             （makeobjはFATAL ERRORになります）",
+                        en: "{old_style_count} non-indexed freightimage[<dir>] entries are defined, \
+                             but emptyimage has {empty_count}. These must match exactly \
+                             (makeobj treats this as a FATAL ERROR)",
+                        old_style_count = old_style_count,
+                        empty_count = empty_count,
                     ),
                 ));
             }
@@ -192,11 +214,16 @@ impl Rule for DirectionImageRule {
                     if dat.get(&key).map(str::is_empty).unwrap_or(true) {
                         diags.push(Diagnostic::error(
                             "missing-indexed-freightimage",
-                            format!(
-                                "{key} が未指定です。freightimage[0][s]が定義されている\
-                                 （indexed形式）ため、emptyimageが定義された全方向×全freight\
-                                 typeの組み合わせでfreightimageが必須です（makeobjはFATAL \
-                                 ERRORになります）"
+                            t!(ctx.language,
+                                ja: "{key} が未指定です。freightimage[0][s]が定義されている\
+                                     （indexed形式）ため、emptyimageが定義された全方向×全freight\
+                                     typeの組み合わせでfreightimageが必須です（makeobjはFATAL \
+                                     ERRORになります）",
+                                en: "{key} is unspecified. Since freightimage[0][s] is defined \
+                                     (indexed form), freightimage is required for every combination \
+                                     of direction (where emptyimage is defined) x freight type \
+                                     (makeobj treats this as a FATAL ERROR)",
+                                key = key,
                             ),
                         ));
                     }
@@ -226,10 +253,15 @@ impl Rule for FreightImageTypeRule {
             if dat.get(&key).map(str::is_empty).unwrap_or(true) {
                 diags.push(Diagnostic::error(
                     "missing-freightimagetype",
-                    format!(
-                        "{key} が未指定です。freight_image_type={ft}個のindexed freightimageが\
-                         使われているため、各indexに対応するfreightimagetype[i]（goodへのxref）\
-                         が必須です（makeobjはFATAL ERRORになります）"
+                    t!(ctx.language,
+                        ja: "{key} が未指定です。freight_image_type={ft}個のindexed freightimageが\
+                             使われているため、各indexに対応するfreightimagetype[i]（goodへのxref）\
+                             が必須です（makeobjはFATAL ERRORになります）",
+                        en: "{key} is unspecified. Since {ft} indexed freightimage entries are \
+                             used, freightimagetype[i] (an xref to a good) is required for each \
+                             index (makeobj treats this as a FATAL ERROR)",
+                        key = key,
+                        ft = ft,
                     ),
                 ));
             }
@@ -239,9 +271,13 @@ impl Rule for FreightImageTypeRule {
         if dat.get(&extra_key).map(|v| !v.is_empty()).unwrap_or(false) {
             diags.push(Diagnostic::warning(
                 "extra-freightimagetype",
-                format!(
-                    "{extra_key} は使用範囲(0..{ft})より1つ多いindexです。\
-                     makeobjはFATALにはしませんが警告を出します（超過定義）"
+                t!(ctx.language,
+                    ja: "{extra_key} は使用範囲(0..{ft})より1つ多いindexです。\
+                         makeobjはFATALにはしませんが警告を出します（超過定義）",
+                    en: "{extra_key} is one index beyond the used range (0..{ft}). makeobj does \
+                         not treat this as FATAL, but warns (excess definition)",
+                    extra_key = extra_key,
+                    ft = ft,
                 ),
             ));
         }
@@ -283,11 +319,19 @@ impl Rule for PowerGearMismatchRule {
         if gear_transformed == 0 {
             vec![Diagnostic::warning(
                 "power-gear-mismatch",
-                format!(
-                    "power={power} を宣言していますが gear={gear_raw} は変換後 \
-                     (gear*64/100={gear_transformed}) になり、編成内でのこの車両の\
-                     実効出力寄与が常に0になります（simconvoi.cc: sum_gear_and_power \
-                     += get_power() * get_gear()）。makeobjはこれを検証しません"
+                t!(ctx.language,
+                    ja: "power={power} を宣言していますが gear={gear_raw} は変換後 \
+                         (gear*64/100={gear_transformed}) になり、編成内でのこの車両の\
+                         実効出力寄与が常に0になります（simconvoi.cc: sum_gear_and_power \
+                         += get_power() * get_gear()）。makeobjはこれを検証しません",
+                    en: "power={power} is declared, but gear={gear_raw} becomes \
+                         (gear*64/100={gear_transformed}) after conversion, so this vehicle's \
+                         effective power contribution in a convoy is always 0 \
+                         (simconvoi.cc: sum_gear_and_power += get_power() * get_gear()). \
+                         makeobj does not validate this",
+                    power = power,
+                    gear_raw = gear_raw,
+                    gear_transformed = gear_transformed,
                 ),
             )]
         } else {

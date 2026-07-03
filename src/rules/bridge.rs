@@ -61,6 +61,7 @@
 
 use super::common::check_image_ref;
 use crate::diagnostics::Diagnostic;
+use crate::i18n::t;
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
@@ -88,7 +89,11 @@ pub fn all() -> Vec<Box<dyn Rule>> {
 
 /// `check_way`/`check_good`と対称的な薄いラッパー。
 pub fn check_bridge(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext { dat, dat_dir };
+    let ctx = RuleContext {
+        dat,
+        dat_dir,
+        language: crate::i18n::Language::default(),
+    };
     all().iter().flat_map(|r| r.check(&ctx)).collect()
 }
 
@@ -102,7 +107,7 @@ pub fn check_bridge(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
 struct WaytypeRequiredRule;
 impl Rule for WaytypeRequiredRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        super::common::check_waytype_field(ctx.dat, "waytype")
+        super::common::check_waytype_field(ctx.dat, "waytype", ctx.language)
     }
 }
 
@@ -197,10 +202,15 @@ impl Rule for ClampedRangeRule {
             if value < field.min || value > field.max {
                 diags.push(Diagnostic::warning(
                     "clamped-value-out-of-range",
-                    format!(
-                        "{}={value} は範囲{}..{}外です。makeobjはFATALにはしませんが警告を出し、\
-                         値を範囲内にクランプします（tabfileobj_t::get_int_clamped()）",
-                        field.key, field.min, field.max
+                    t!(ctx.language,
+                        ja: "{key}={value} は範囲{min}..{max}外です。makeobjはFATALにはしませんが警告を出し、\
+                             値を範囲内にクランプします（tabfileobj_t::get_int_clamped()）",
+                        en: "{key}={value} is out of range {min}..{max}. makeobj does not treat this \
+                             as FATAL, but warns and clamps the value into range (tabfileobj_t::get_int_clamped())",
+                        key = field.key,
+                        value = value,
+                        min = field.min,
+                        max = field.max,
                     ),
                 ));
             }
@@ -254,13 +264,16 @@ impl Rule for FrontImageWarningRule {
                     if value.len() <= 2 {
                         diags.push(Diagnostic::warning(
                             "no-bridge-image-specified",
-                            format!(
-                                "{key} が未指定です（\"No {key} specified (might still work)\"）。\
-                                 makeobjはFATALにはしませんが警告を出します"
+                            t!(ctx.language,
+                                ja: "{key} が未指定です（\"No {key} specified (might still work)\"）。\
+                                     makeobjはFATALにはしませんが警告を出します",
+                                en: "{key} is not specified (\"No {key} specified (might still work)\"). \
+                                     makeobj does not treat this as FATAL, but warns",
+                                key = key,
                             ),
                         ));
                     } else {
-                        check_image_ref(value, ctx.dat_dir, &key, &mut diags);
+                        check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
                     }
                 }
             }

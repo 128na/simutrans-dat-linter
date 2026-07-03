@@ -1,13 +1,20 @@
-//! `lint`サブコマンドの診断ルールinclude/exclude設定（TOML）。
+//! `lint`/`fmt`/`couplings`共通の設定ファイル（TOML）。
 //!
 //! ## 配置場所・探索順
 //! - `--config <path>` が明示された場合はそのパスのみを読む（存在しなければエラー）。
 //! - 明示が無い場合、カレントディレクトリ直下の `dat_linter.toml` を自動探索する。
-//!   存在しなければ「設定ファイル無し」として全ルールを有効にする（エラーにしない。
-//!   このツールを設定ファイル無しでこれまで通り使い続けられることを優先する）。
+//!   存在しなければ、[`LintConfig::load_or_default`] が[`generate_default_config_file`]で
+//!   コメント付きのデフォルト設定ファイルを**カレントディレクトリに自動生成**した上で、
+//!   「設定ファイル無し」相当のデフォルト設定（全ルール有効・`language=en`）を返す
+//!   （ユーザー確認済みの決定事項: 生成先はexe隣接ではなく既存の自動探索と同じ
+//!   カレントディレクトリ）。生成に失敗しても致命的エラーにはせず、動作は継続する
+//!   （書き込み権限が無いディレクトリでも従来通りツールを使い続けられることを優先する）。
 //!
 //! ## スキーマ
 //! ```toml
+//! [general]
+//! language = "en"  # "en" (デフォルト) または "ja"
+//!
 //! [rules]
 //! include = ["obsolete-type", "missing-waytype"]
 //! exclude = ["duplicate-key"]
@@ -23,18 +30,58 @@
 //! 実装しており（`is_enabled`）、`Rule` trait や各obj種別モジュールの構造には
 //! 一切手を入れていない（このツールの各ルールは`Diagnostic { code, .. }`を
 //! 生成するだけの副作用フリーな設計のため、後段フィルタが最も低リスク）。
+//!
+//! ## `language`のデフォルト
+//! 設定ファイルが無い場合・`[general] language`未指定の場合のデフォルトは
+//! **英語（`en`）**（ユーザー確認済みの決定事項。既存の日本語固定挙動から
+//! 変更されている点に注意。第1弾実装時点ではメッセージが日本語固定だったが、
+//! i18n対応後はこのデフォルトに従う）。
 
+use crate::i18n::Language;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-/// 自動探索時に見るファイル名。
+/// 自動探索・自動生成時に見る/書くファイル名。
 const DEFAULT_CONFIG_FILENAME: &str = "dat_linter.toml";
+
+/// 設定ファイルが存在しない場合にカレントディレクトリへ自動生成する
+/// デフォルト内容。コメントでスキーマの意味を説明し、値は全て
+/// デフォルト相当（`language = "en"`・include/exclude空）にする。
+const DEFAULT_CONFIG_TEMPLATE: &str = r#"# dat_linter configuration file
+# Auto-generated on first run. Feel free to edit or delete this file.
+#
+# [general]
+# language: message language for lint/fmt/couplings output.
+#   "en" (default) or "ja".
+# language = "en"
+#
+# [rules]
+# include: rule codes (Diagnostic.code) to enable. Empty = all rules enabled (default).
+# exclude: rule codes to disable, applied after include. exclude always wins.
+# include = []
+# exclude = []
+
+[general]
+language = "en"
+
+[rules]
+include = []
+exclude = []
+"#;
 
 #[derive(Debug, Default, Deserialize)]
 struct RawConfig {
     #[serde(default)]
+    general: RawGeneralConfig,
+    #[serde(default)]
     rules: RawRulesConfig,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RawGeneralConfig {
+    #[serde(default)]
+    language: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -46,27 +93,39 @@ struct RawRulesConfig {
 }
 
 /// 読み込み・正規化済みの設定。`is_enabled`で`Diagnostic.code`ごとに
-/// 有効/無効を判定する。
-#[derive(Debug, Default)]
+/// 有効/無効を判定し、`language()`で出力言語を取得する。
+#[derive(Debug)]
 pub struct LintConfig {
     include: HashSet<String>,
     exclude: HashSet<String>,
+    language: Language,
+}
+
+impl Default for LintConfig {
+    fn default() -> Self {
+        LintConfig::all_enabled()
+    }
 }
 
 impl LintConfig {
-    /// 全ルールが有効な設定（設定ファイル無しの状態と同義）。
+    /// 全ルールが有効・言語はデフォルト(English)の設定（設定ファイル無しの状態と同義）。
     pub fn all_enabled() -> Self {
         LintConfig {
             include: HashSet::new(),
             exclude: HashSet::new(),
+            language: Language::default(),
         }
     }
 
     /// `--config`指定または自動探索の結果に応じて設定を読み込む。
     ///
     /// - `explicit_path`が`Some`: そのパスを読む。存在しない・パースエラーは`Err`。
+    ///   自動生成は行わない（明示指定されたパスが無いのはユーザーの意図的な指定
+    ///   ミスの可能性が高く、黙って別の設定を生成すると意図しない挙動になるため）。
     /// - `explicit_path`が`None`: カレントディレクトリの`dat_linter.toml`を探す。
-    ///   存在しなければ`Ok(LintConfig::all_enabled())`（エラーにしない）。
+    ///   存在すればそれを読む。存在しなければ[`generate_default_config_file`]で
+    ///   自動生成を試みた上で（失敗しても無視する）、`Ok(LintConfig::all_enabled())`
+    ///   を返す（エラーにしない。生成の成否に関わらずデフォルト設定で動作を継続する）。
     pub fn load_or_default(explicit_path: Option<&Path>) -> Result<Self, String> {
         match explicit_path {
             Some(path) => Self::load_from(path),
@@ -75,6 +134,9 @@ impl LintConfig {
                 if default_path.is_file() {
                     Self::load_from(&default_path)
                 } else {
+                    // 自動生成の成否はここでは無視する。書き込み権限が無い等の理由で
+                    // 生成に失敗しても、従来通り設定ファイル無しとして動作を継続する。
+                    let _ = generate_default_config_file(&default_path);
                     Ok(Self::all_enabled())
                 }
             }
@@ -86,9 +148,16 @@ impl LintConfig {
             .map_err(|e| format!("{} を読み込めません ({e})", path.display()))?;
         let raw: RawConfig = toml::from_str(&text)
             .map_err(|e| format!("{} のTOML解析に失敗しました ({e})", path.display()))?;
+        let language = raw
+            .general
+            .language
+            .as_deref()
+            .and_then(Language::from_str)
+            .unwrap_or_default();
         Ok(LintConfig {
             include: raw.rules.include.into_iter().collect(),
             exclude: raw.rules.exclude.into_iter().collect(),
+            language,
         })
     }
 
@@ -99,6 +168,25 @@ impl LintConfig {
         let included = self.include.is_empty() || self.include.contains(code);
         included && !self.exclude.contains(code)
     }
+
+    /// 出力言語。設定ファイル無し・`[general] language`未指定の場合は
+    /// `Language::default()`（English）。
+    pub fn language(&self) -> Language {
+        self.language
+    }
+}
+
+/// `path`（通常はカレントディレクトリの`dat_linter.toml`）にコメント付きの
+/// デフォルト設定ファイルを新規作成する。既にファイルが存在する場合は
+/// 上書きしない（呼び出し元は「存在しない」ことを確認済みの前提だが、
+/// 競合（TOCTOU）による意図しない上書きを避けるため`create_new`で書き込む）。
+fn generate_default_config_file(path: &Path) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    file.write_all(DEFAULT_CONFIG_TEMPLATE.as_bytes())
 }
 
 #[cfg(test)]
@@ -113,11 +201,17 @@ mod tests {
     }
 
     #[test]
+    fn all_enabled_defaults_to_english() {
+        assert_eq!(LintConfig::all_enabled().language(), Language::English);
+    }
+
+    #[test]
     fn empty_include_means_all_enabled_by_default() {
         let raw = RawConfig::default();
         let cfg = LintConfig {
             include: raw.rules.include.into_iter().collect(),
             exclude: raw.rules.exclude.into_iter().collect(),
+            language: Language::default(),
         };
         assert!(cfg.is_enabled("obsolete-type"));
     }
@@ -127,6 +221,7 @@ mod tests {
         let cfg = LintConfig {
             include: ["obsolete-type".to_string()].into_iter().collect(),
             exclude: HashSet::new(),
+            language: Language::default(),
         };
         assert!(cfg.is_enabled("obsolete-type"));
         assert!(!cfg.is_enabled("missing-waytype"));
@@ -137,6 +232,7 @@ mod tests {
         let cfg = LintConfig {
             include: ["obsolete-type".to_string()].into_iter().collect(),
             exclude: ["obsolete-type".to_string()].into_iter().collect(),
+            language: Language::default(),
         };
         assert!(!cfg.is_enabled("obsolete-type"));
     }
@@ -146,6 +242,7 @@ mod tests {
         let cfg = LintConfig {
             include: HashSet::new(),
             exclude: ["duplicate-key".to_string()].into_iter().collect(),
+            language: Language::default(),
         };
         assert!(!cfg.is_enabled("duplicate-key"));
         assert!(cfg.is_enabled("obsolete-type"));
@@ -164,9 +261,75 @@ mod tests {
         let cfg = LintConfig {
             include: raw.rules.include.into_iter().collect(),
             exclude: raw.rules.exclude.into_iter().collect(),
+            language: Language::default(),
         };
         assert!(cfg.is_enabled("obsolete-type"));
         assert!(!cfg.is_enabled("missing-waytype"));
         assert!(!cfg.is_enabled("unrelated-code"));
+    }
+
+    #[test]
+    fn parses_language_ja() {
+        let raw: RawConfig = toml::from_str(
+            r#"
+            [general]
+            language = "ja"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(raw.general.language.as_deref(), Some("ja"));
+    }
+
+    #[test]
+    fn missing_language_key_defaults_to_english_via_load_from() {
+        let tmp = std::env::temp_dir().join("dat_linter_test_no_language_key.toml");
+        std::fs::write(&tmp, "[rules]\ninclude = []\n").unwrap();
+        let cfg = LintConfig::load_from(&tmp).unwrap();
+        let _ = std::fs::remove_file(&tmp);
+        assert_eq!(cfg.language(), Language::English);
+    }
+
+    #[test]
+    fn explicit_ja_language_is_honored_via_load_from() {
+        let tmp = std::env::temp_dir().join("dat_linter_test_ja_language.toml");
+        std::fs::write(&tmp, "[general]\nlanguage = \"ja\"\n").unwrap();
+        let cfg = LintConfig::load_from(&tmp).unwrap();
+        let _ = std::fs::remove_file(&tmp);
+        assert_eq!(cfg.language(), Language::Japanese);
+    }
+
+    #[test]
+    fn unknown_language_value_falls_back_to_english() {
+        let tmp = std::env::temp_dir().join("dat_linter_test_unknown_language.toml");
+        std::fs::write(&tmp, "[general]\nlanguage = \"fr\"\n").unwrap();
+        let cfg = LintConfig::load_from(&tmp).unwrap();
+        let _ = std::fs::remove_file(&tmp);
+        assert_eq!(cfg.language(), Language::English);
+    }
+
+    #[test]
+    fn generate_default_config_file_writes_template_with_both_sections() {
+        let tmp = std::env::temp_dir().join("dat_linter_test_generated_config.toml");
+        let _ = std::fs::remove_file(&tmp);
+        generate_default_config_file(&tmp).expect("生成に失敗");
+        let content = std::fs::read_to_string(&tmp).unwrap();
+        let _ = std::fs::remove_file(&tmp);
+        assert!(content.contains("[general]"));
+        assert!(content.contains("language"));
+        assert!(content.contains("[rules]"));
+        // 生成された内容自体が正しくパースできることも確認する。
+        let raw: RawConfig = toml::from_str(&content).expect("生成された設定のパースに失敗");
+        assert_eq!(raw.general.language.as_deref(), Some("en"));
+    }
+
+    #[test]
+    fn generate_default_config_file_does_not_overwrite_existing_file() {
+        let tmp = std::env::temp_dir().join("dat_linter_test_existing_config.toml");
+        std::fs::write(&tmp, "# custom content\n[rules]\ninclude=[\"x\"]\n").unwrap();
+        let result = generate_default_config_file(&tmp);
+        let content_after = std::fs::read_to_string(&tmp).unwrap();
+        let _ = std::fs::remove_file(&tmp);
+        assert!(result.is_err(), "既存ファイルへの上書きはエラーになるべき");
+        assert!(content_after.contains("custom content"));
     }
 }

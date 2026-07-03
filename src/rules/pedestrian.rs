@@ -149,6 +149,7 @@
 
 use super::common::{DIR_CODES, check_image_ref};
 use crate::diagnostics::Diagnostic;
+use crate::i18n::{Language, t};
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
@@ -163,7 +164,11 @@ pub fn all() -> Vec<Box<dyn Rule>> {
 
 /// `check_citycar`と対称的な薄いラッパー。
 pub fn check_pedestrian(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext { dat, dat_dir };
+    let ctx = RuleContext {
+        dat,
+        dat_dir,
+        language: crate::i18n::Language::default(),
+    };
     all().iter().flat_map(|r| r.check(&ctx)).collect()
 }
 
@@ -193,9 +198,9 @@ impl Rule for DirectionImageRefRule {
         });
 
         if is_animated {
-            check_animated_images(dat, ctx.dat_dir, &mut diags);
+            check_animated_images(dat, ctx.dat_dir, &mut diags, ctx.language);
         } else {
-            check_static_images(dat, ctx.dat_dir, &mut diags);
+            check_static_images(dat, ctx.dat_dir, &mut diags, ctx.language);
         }
 
         diags
@@ -204,27 +209,35 @@ impl Rule for DirectionImageRefRule {
 
 /// 静止分岐（is_animated偽）: pedestrian_writer.cc:55-59。citycarの
 /// `DirectionImageRefRule`と全く同じ構造。
-fn check_static_images(dat: &DatFile, dat_dir: &Path, diags: &mut Vec<Diagnostic>) {
+fn check_static_images(dat: &DatFile, dat_dir: &Path, diags: &mut Vec<Diagnostic>, lang: Language) {
     for dir in DIR_CODES {
         let key = format!("image[{dir}]");
         let value = dat.get(&key).unwrap_or("");
         if value.is_empty() {
             diags.push(Diagnostic::debug(
                 "image-omitted",
-                format!(
-                    "{key} が未指定です。makeobjはこれをFATALにしません\
-                     （pedestrianの8方向静止画像は個別に省略可能です）"
+                t!(lang,
+                    ja: "{key} が未指定です。makeobjはこれをFATALにしません\
+                         （pedestrianの8方向静止画像は個別に省略可能です）",
+                    en: "{key} is unspecified. makeobj does not treat this as FATAL \
+                         (each of pedestrian's 8 static-image directions can be omitted individually)",
+                    key = key,
                 ),
             ));
         } else {
-            check_image_ref(value, dat_dir, &key, diags);
+            check_image_ref(value, dat_dir, &key, diags, lang);
         }
     }
 }
 
 /// アニメーション分岐（is_animated真）: pedestrian_writer.cc:42-54。方向ごとに
 /// frame=0から最初の空文字列（またはMAX_ANIMATION_FRAMES）まで走査する。
-fn check_animated_images(dat: &DatFile, dat_dir: &Path, diags: &mut Vec<Diagnostic>) {
+fn check_animated_images(
+    dat: &DatFile,
+    dat_dir: &Path,
+    diags: &mut Vec<Diagnostic>,
+    lang: Language,
+) {
     for dir in DIR_CODES {
         let mut frame = 0u32;
         while frame < MAX_ANIMATION_FRAMES {
@@ -234,18 +247,24 @@ fn check_animated_images(dat: &DatFile, dat_dir: &Path, diags: &mut Vec<Diagnost
                 if frame == 0 {
                     diags.push(Diagnostic::debug(
                         "image-omitted",
-                        format!(
-                            "{key} が未指定です。makeobjはこれをFATALにしません\
-                             （このpedestrianはアニメーション画像を使用しており、\
-                             他方向でimage[<dir>][0]が定義されているため\
-                             アニメーション分岐に入りますが、{dir}方向は\
-                             0フレームのまま許容されます）"
+                        t!(lang,
+                            ja: "{key} が未指定です。makeobjはこれをFATALにしません\
+                                 （このpedestrianはアニメーション画像を使用しており、\
+                                 他方向でimage[<dir>][0]が定義されているため\
+                                 アニメーション分岐に入りますが、{dir}方向は\
+                                 0フレームのまま許容されます）",
+                            en: "{key} is unspecified. makeobj does not treat this as FATAL \
+                                 (this pedestrian uses animated images, since image[<dir>][0] is \
+                                 defined for another direction, entering the animation branch, \
+                                 but direction {dir} is allowed to remain at 0 frames)",
+                            key = key,
+                            dir = dir,
                         ),
                     ));
                 }
                 break;
             }
-            check_image_ref(value, dat_dir, &key, diags);
+            check_image_ref(value, dat_dir, &key, diags, lang);
             frame += 1;
         }
     }

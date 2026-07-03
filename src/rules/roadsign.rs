@@ -111,6 +111,7 @@
 
 use super::common::check_image_ref;
 use crate::diagnostics::Diagnostic;
+use crate::i18n::t;
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
@@ -128,7 +129,11 @@ pub fn all() -> Vec<Box<dyn Rule>> {
 
 /// `check_bridge`/`check_tunnel`と対称的な薄いラッパー。
 pub fn check_roadsign(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext { dat, dat_dir };
+    let ctx = RuleContext {
+        dat,
+        dat_dir,
+        language: crate::i18n::Language::default(),
+    };
     all().iter().flat_map(|r| r.check(&ctx)).collect()
 }
 
@@ -142,7 +147,7 @@ pub fn check_roadsign(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
 struct WaytypeRequiredRule;
 impl Rule for WaytypeRequiredRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        super::common::check_waytype_field(ctx.dat, "waytype")
+        super::common::check_waytype_field(ctx.dat, "waytype", ctx.language)
     }
 }
 
@@ -203,16 +208,20 @@ fn check_numbered(ctx: &RuleContext) -> Vec<Diagnostic> {
             if i % 4 != 0 {
                 diags.push(Diagnostic::error(
                     "roadsign-image-count-not-multiple-of-4",
-                    format!(
-                        "image[{i}] が未指定です。numbered構文（image[0]あり）では \
-                         画像枚数は4の倍数である必要があります（\"image count is {i} but \
-                         must be multiple of 4!\"、roadsign_writerはFATAL ERRORにします）"
+                    t!(ctx.language,
+                        ja: "image[{i}] が未指定です。numbered構文（image[0]あり）では \
+                             画像枚数は4の倍数である必要があります（\"image count is {i} but \
+                             must be multiple of 4!\"、roadsign_writerはFATAL ERRORにします）",
+                        en: "image[{i}] is unspecified. In the numbered syntax (image[0] present), \
+                             the image count must be a multiple of 4 (\"image count is {i} but \
+                             must be multiple of 4!\", roadsign_writer treats this as a FATAL ERROR)",
+                        i = i,
                     ),
                 ));
             }
             break;
         }
-        check_image_ref(value, ctx.dat_dir, &key, &mut diags);
+        check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
     }
     diags
 }
@@ -243,13 +252,17 @@ fn check_2d(ctx: &RuleContext) -> Vec<Diagnostic> {
                 }
                 diags.push(Diagnostic::error(
                     "roadsign-image-missing",
-                    format!(
-                        "{key} が未指定です。roadsign_writerは2D構文（image[0]なし）でこのキーを\
-                         必須として扱います（\"{key} is missing!\"、FATAL ERRORになります）"
+                    t!(ctx.language,
+                        ja: "{key} が未指定です。roadsign_writerは2D構文（image[0]なし）でこのキーを\
+                             必須として扱います（\"{key} is missing!\"、FATAL ERRORになります）",
+                        en: "{key} is unspecified. roadsign_writer treats this key as required in \
+                             the 2D syntax (no image[0]) (\"{key} is missing!\", this becomes a \
+                             FATAL ERROR)",
+                        key = key,
                     ),
                 ));
             } else {
-                check_image_ref(value, ctx.dat_dir, &key, &mut diags);
+                check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
             }
         }
     }

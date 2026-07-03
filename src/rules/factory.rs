@@ -212,6 +212,7 @@
 
 use super::common::check_image_ref;
 use crate::diagnostics::Diagnostic;
+use crate::i18n::{Language, t};
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
@@ -240,7 +241,11 @@ pub fn all(dat: &DatFile) -> Vec<Box<dyn Rule>> {
 
 /// `check_building`等と対称的な薄いラッパー。
 pub fn check_factory(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext { dat, dat_dir };
+    let ctx = RuleContext {
+        dat,
+        dat_dir,
+        language: crate::i18n::Language::default(),
+    };
     all(dat).iter().flat_map(|r| r.check(&ctx)).collect()
 }
 
@@ -259,13 +264,20 @@ impl Rule for TypeOverrideRule {
         }
         vec![Diagnostic::error(
             "factory-type-override",
-            format!(
-                "type={type_name} が明示されています。factory_writer.cc:220の\
-                 obj.put(\"type\",\"fac\")はtabfileobj_t::put()の先勝ち仕様により\
-                 既存のtypeキーを上書きできません。building_writer_t::write_objは\
-                 明示された値のまま分岐するため、obsolete型ならFATAL ERROR、\
-                 fac以外の既知型（res/com/ind等）ならfactoryとして機能しない\
-                 建物が黙って生成されます。obj=factoryではtypeを指定しないでください"
+            t!(ctx.language,
+                ja: "type={type_name} が明示されています。factory_writer.cc:220の\
+                     obj.put(\"type\",\"fac\")はtabfileobj_t::put()の先勝ち仕様により\
+                     既存のtypeキーを上書きできません。building_writer_t::write_objは\
+                     明示された値のまま分岐するため、obsolete型ならFATAL ERROR、\
+                     fac以外の既知型（res/com/ind等）ならfactoryとして機能しない\
+                     建物が黙って生成されます。obj=factoryではtypeを指定しないでください",
+                en: "type={type_name} is explicitly set. factory_writer.cc:220's \
+                     obj.put(\"type\",\"fac\") cannot overwrite an existing type key due to \
+                     tabfileobj_t::put()'s first-write-wins behavior. building_writer_t::write_obj \
+                     then branches on the explicit value, so an obsolete type becomes a FATAL ERROR, \
+                     and any other known type (res/com/ind, etc.) silently produces a building that \
+                     does not function as a factory. Do not specify type= for obj=factory",
+                type_name = type_name,
             ),
         )]
     }
@@ -289,11 +301,17 @@ impl Rule for MapColorRule {
         if resolved == 255 {
             vec![Diagnostic::error(
                 "factory-missing-mapcolor",
-                "mapcolor が未指定（または255）です。factory_writer.cc は\
-                 mapcolorが255のままだとFATAL ERRORにします\
-                 （\"%s missing an identification color! (mapcolor)\"）。\
-                 255を明示的に指定した場合と未指定の場合はmakeobj自体が\
-                 区別しません",
+                t!(ctx.language,
+                    ja: "mapcolor が未指定（または255）です。factory_writer.cc は\
+                         mapcolorが255のままだとFATAL ERRORにします\
+                         （\"%s missing an identification color! (mapcolor)\"）。\
+                         255を明示的に指定した場合と未指定の場合はmakeobj自体が\
+                         区別しません",
+                    en: "mapcolor is unspecified (or 255). factory_writer.cc treats mapcolor \
+                         staying at 255 as a FATAL ERROR (\"%s missing an identification color! \
+                         (mapcolor)\"). makeobj itself cannot distinguish an explicit 255 from \
+                         an unspecified value",
+                ),
             )]
         } else {
             vec![Diagnostic::info(
@@ -335,7 +353,12 @@ impl Rule for DimsRule {
         if size_x * size_y == 0 {
             diags.push(Diagnostic::error(
                 "zero-size",
-                format!("Dims のサイズが0です (size_x={size_x}, size_y={size_y})"),
+                t!(ctx.language,
+                    ja: "Dims のサイズが0です (size_x={size_x}, size_y={size_y})",
+                    en: "Dims size is 0 (size_x={size_x}, size_y={size_y})",
+                    size_x = size_x,
+                    size_y = size_y,
+                ),
             ));
         } else {
             diags.push(Diagnostic::info(
@@ -365,16 +388,20 @@ impl Rule for CursorIconRule {
         if cursor.is_empty() && icon.is_empty() {
             diags.push(Diagnostic::error(
                 "missing-cursor-icon",
-                "cursor と icon が両方とも未指定です。makeobjはエラーを出さずにビルドしますが、ゲーム内のビルドメニューに表示されません",
+                t!(ctx.language,
+                    ja: "cursor と icon が両方とも未指定です。makeobjはエラーを出さずにビルドしますが、ゲーム内のビルドメニューに表示されません",
+                    en: "Both cursor and icon are unspecified. makeobj builds without error, but the \
+                         object will not appear in the in-game build menu",
+                ),
             ));
             return diags;
         }
 
         if !icon.is_empty() {
-            check_image_ref(icon, ctx.dat_dir, "icon", &mut diags);
+            check_image_ref(icon, ctx.dat_dir, "icon", &mut diags, ctx.language);
         }
         if !cursor.is_empty() {
-            check_image_ref(cursor, ctx.dat_dir, "cursor", &mut diags);
+            check_image_ref(cursor, ctx.dat_dir, "cursor", &mut diags, ctx.language);
         }
         diags
     }
@@ -419,8 +446,14 @@ impl Rule for TileImageRule {
                     if front.is_none() && back.is_none() {
                         diags.push(Diagnostic::error(
                             "missing-tile-image",
-                            format!(
-                                "layout {l} tile ({x},{y}) に front/backimage が1枚もありません（makeobjはエラーを出さず空画像のタイルを生成します）"
+                            t!(ctx.language,
+                                ja: "layout {l} tile ({x},{y}) に front/backimage が1枚もありません\
+                                     （makeobjはエラーを出さず空画像のタイルを生成します）",
+                                en: "layout {l} tile ({x},{y}) has no front/backimage \
+                                     (makeobj generates an empty tile without error)",
+                                l = l,
+                                x = x,
+                                y = y,
                             ),
                         ));
                     } else {
@@ -434,6 +467,7 @@ impl Rule for TileImageRule {
                                 dat_dir,
                                 &format!("frontimage[{l}][{y}][{x}]"),
                                 &mut diags,
+                                ctx.language,
                             );
                         }
                         if let Some(v) = back {
@@ -442,6 +476,7 @@ impl Rule for TileImageRule {
                                 dat_dir,
                                 &format!("backimage[{l}][{y}][{x}]"),
                                 &mut diags,
+                                ctx.language,
                             );
                         }
                     }
@@ -459,7 +494,13 @@ impl Rule for TileImageRule {
                 {
                     diags.push(Diagnostic::error(
                         "frontimage-height",
-                        format!("{key} : frontimageの高さ(h)は0のみ有効です（makeobjはエラーログを出すだけで処理を継続します）"),
+                        t!(ctx.language,
+                            ja: "{key} : frontimageの高さ(h)は0のみ有効です\
+                                 （makeobjはエラーログを出すだけで処理を継続します）",
+                            en: "{key}: frontimage height (h) must be 0 \
+                                 (makeobj logs an error but continues processing)",
+                            key = key,
+                        ),
                     ));
                 }
             }
@@ -494,11 +535,16 @@ impl Rule for OutputCapacityRule {
             if cap < 11 {
                 diags.push(Diagnostic::warning(
                     "factory-output-capacity-too-small",
-                    format!(
-                        "{cap_key}={cap} は11未満です。factory_writerは\
-                         outputcapacityが10以下だとエラーログを出しますが\
-                         処理は継続します（\"Factory outputcapacity must be \
-                         larger than 10! (currently {cap})\"）"
+                    t!(ctx.language,
+                        ja: "{cap_key}={cap} は11未満です。factory_writerは\
+                             outputcapacityが10以下だとエラーログを出しますが\
+                             処理は継続します（\"Factory outputcapacity must be \
+                             larger than 10! (currently {cap})\"）",
+                        en: "{cap_key}={cap} is less than 11. factory_writer logs an error when \
+                             outputcapacity is 10 or below, but continues processing \
+                             (\"Factory outputcapacity must be larger than 10! (currently {cap})\")",
+                        cap_key = cap_key,
+                        cap = cap,
                     ),
                 ));
             }
@@ -537,10 +583,15 @@ impl Rule for SmokeOffsetRule {
             if offset.is_empty() {
                 diags.push(Diagnostic::warning(
                     "factory-smoketile-without-offset",
-                    format!(
-                        "{tile_key} が定義されていますが {offset_key} がありません。\
-                         factory_writerはエラーログを出しますが処理は継続します\
-                         （\"{tile_key} defined but not {offset_key}!\"）"
+                    t!(ctx.language,
+                        ja: "{tile_key} が定義されていますが {offset_key} がありません。\
+                             factory_writerはエラーログを出しますが処理は継続します\
+                             （\"{tile_key} defined but not {offset_key}!\"）",
+                        en: "{tile_key} is defined but {offset_key} is missing. factory_writer \
+                             logs an error but continues processing \
+                             (\"{tile_key} defined but not {offset_key}!\")",
+                        tile_key = tile_key,
+                        offset_key = offset_key,
                     ),
                 ));
             }
@@ -568,6 +619,7 @@ impl Rule for ProbabilityClampRule {
             10,
             "probability_to_spawn too large, set to 10,000",
             &mut diags,
+            ctx.language,
         );
         check_probability_field(
             dat,
@@ -575,6 +627,7 @@ impl Rule for ProbabilityClampRule {
             0,
             "expand_probability too large, set to 10,000",
             &mut diags,
+            ctx.language,
         );
         diags
     }
@@ -586,6 +639,7 @@ fn check_probability_field(
     default: i64,
     message: &str,
     diags: &mut Vec<Diagnostic>,
+    lang: Language,
 ) {
     let value = dat
         .get(key)
@@ -594,9 +648,14 @@ fn check_probability_field(
     if value >= 10000 {
         diags.push(Diagnostic::warning(
             "factory-probability-clamped",
-            format!(
-                "{key}={value} は10000以上です。factory_writerはこの値を\
-                 サイレントに10000へクランプします（\"{message}\"）"
+            t!(lang,
+                ja: "{key}={value} は10000以上です。factory_writerはこの値を\
+                     サイレントに10000へクランプします（\"{message}\"）",
+                en: "{key}={value} is 10000 or greater. factory_writer silently clamps this \
+                     value to 10000 (\"{message}\")",
+                key = key,
+                value = value,
+                message = message,
             ),
         ));
     }
@@ -635,11 +694,18 @@ impl Rule for ProductivityZeroRule {
         if productivity == 0 {
             vec![Diagnostic::error(
                 "factory-productivity-zero",
-                "productivity=0 です。ゲームランタイム（simfab.cc）はfactory配置時に\
-                 無条件でupdate_scaled_pax_demand()/update_scaled_mail_demand()を呼び、\
-                 productivityを分母とした整数除算を行いますが、この値がゼロだと\
-                 ゼロ除算（未定義動作、通常はクラッシュ）になります。\
-                 makeobj自体はこの値をノーチェックで通します",
+                t!(ctx.language,
+                    ja: "productivity=0 です。ゲームランタイム（simfab.cc）はfactory配置時に\
+                         無条件でupdate_scaled_pax_demand()/update_scaled_mail_demand()を呼び、\
+                         productivityを分母とした整数除算を行いますが、この値がゼロだと\
+                         ゼロ除算（未定義動作、通常はクラッシュ）になります。\
+                         makeobj自体はこの値をノーチェックで通します",
+                    en: "productivity=0. The game runtime (simfab.cc) unconditionally calls \
+                         update_scaled_pax_demand()/update_scaled_mail_demand() when a factory is \
+                         placed, dividing by productivity. If this value is zero, that becomes a \
+                         division by zero (undefined behavior, usually a crash). makeobj itself \
+                         does not check this value at all",
+                ),
             )]
         } else {
             Vec::new()

@@ -125,6 +125,7 @@
 
 use super::common::{DIR_CODES, check_image_ref};
 use crate::diagnostics::Diagnostic;
+use crate::i18n::t;
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
@@ -135,7 +136,11 @@ pub fn all() -> Vec<Box<dyn Rule>> {
 
 /// `check_tree`/`check_groundobj`と対称的な薄いラッパー。
 pub fn check_citycar(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext { dat, dat_dir };
+    let ctx = RuleContext {
+        dat,
+        dat_dir,
+        language: crate::i18n::Language::default(),
+    };
     all().iter().flat_map(|r| r.check(&ctx)).collect()
 }
 
@@ -155,13 +160,16 @@ impl Rule for DirectionImageRefRule {
             if value.is_empty() {
                 diags.push(Diagnostic::debug(
                     "image-omitted",
-                    format!(
-                        "{key} が未指定です。makeobjはこれをFATALにしません\
-                         （citycarの8方向画像は個別に省略可能です）"
+                    t!(ctx.language,
+                        ja: "{key} が未指定です。makeobjはこれをFATALにしません\
+                             （citycarの8方向画像は個別に省略可能です）",
+                        en: "{key} is unspecified. makeobj does not treat this as FATAL \
+                             (each of citycar's 8 image directions can be omitted individually)",
+                        key = key,
                     ),
                 ));
             } else {
-                check_image_ref(value, ctx.dat_dir, &key, &mut diags);
+                check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
             }
         }
 

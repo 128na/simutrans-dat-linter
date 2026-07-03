@@ -20,6 +20,7 @@
 
 use super::common::check_image_ref;
 use crate::diagnostics::Diagnostic;
+use crate::i18n::t;
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
@@ -34,7 +35,11 @@ pub fn all() -> Vec<Box<dyn Rule>> {
 
 /// `check_building`/`check_vehicle`と対称的な薄いラッパー。
 pub fn check_way(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext { dat, dat_dir };
+    let ctx = RuleContext {
+        dat,
+        dat_dir,
+        language: crate::i18n::Language::default(),
+    };
     all().iter().flat_map(|r| r.check(&ctx)).collect()
 }
 
@@ -48,7 +53,7 @@ pub fn check_way(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
 struct WaytypeRequiredRule;
 impl Rule for WaytypeRequiredRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        super::common::check_waytype_field(ctx.dat, "waytype")
+        super::common::check_waytype_field(ctx.dat, "waytype", ctx.language)
     }
 }
 
@@ -67,23 +72,34 @@ impl Rule for BaseImageRequiredRule {
         if no_season.is_empty() && season0.is_empty() {
             return vec![Diagnostic::error(
                 "missing-base-image",
-                "image[-] （直進画像）が未指定です。image[-][0]（冬季season 0版）も未指定のため、\
-                 makeobjはFATAL ERRORになります（\"image with label image[-] missing\"）",
+                t!(ctx.language,
+                    ja: "image[-] （直進画像）が未指定です。image[-][0]（冬季season 0版）も未指定のため、\
+                         makeobjはFATAL ERRORになります（\"image with label image[-] missing\"）",
+                    en: "image[-] (straight-track image) is unspecified. image[-][0] (winter season \
+                         0 variant) is also unspecified, so makeobj treats this as a FATAL ERROR \
+                         (\"image with label image[-] missing\")",
+                ),
             )];
         }
 
         let mut diags = vec![Diagnostic::info(
             "base-image-ok",
             if !season0.is_empty() {
-                "image[-][0] が定義されています（冬季画像あり分岐）".to_string()
+                t!(ctx.language,
+                    ja: "image[-][0] が定義されています（冬季画像あり分岐）",
+                    en: "image[-][0] is defined (winter-image branch)",
+                )
             } else {
-                "image[-] が定義されています（冬季画像なし分岐）".to_string()
+                t!(ctx.language,
+                    ja: "image[-] が定義されています（冬季画像なし分岐）",
+                    en: "image[-] is defined (no-winter-image branch)",
+                )
             },
         )];
         // 冬季画像なし分岐ではimage[-]が実際に読まれる画像なので、存在確認とサイズ確認を行う
         // （image[-][0]分岐ではimage[-]は評価されない。way_writer.cc:88-96参照）。
         if season0.is_empty() && !no_season.is_empty() {
-            check_image_ref(no_season, ctx.dat_dir, "image[-]", &mut diags);
+            check_image_ref(no_season, ctx.dat_dir, "image[-]", &mut diags, ctx.language);
         }
         diags
     }
@@ -123,9 +139,13 @@ impl Rule for ClipBelowRangeRule {
         if !(0..=1).contains(&value) {
             vec![Diagnostic::warning(
                 "clip-below-out-of-range",
-                format!(
-                    "clip_below={value} は範囲0..1外です。makeobjはFATALにはしませんが警告を出し、\
-                     値を0か1にクランプします（tabfileobj_t::get_int_clamped()）"
+                t!(ctx.language,
+                    ja: "clip_below={value} は範囲0..1外です。makeobjはFATALにはしませんが警告を出し、\
+                         値を0か1にクランプします（tabfileobj_t::get_int_clamped()）",
+                    en: "clip_below={value} is out of range 0..1. makeobj does not treat this as \
+                         FATAL, but warns and clamps the value to 0 or 1 \
+                         (tabfileobj_t::get_int_clamped())",
+                    value = value,
                 ),
             )]
         } else {

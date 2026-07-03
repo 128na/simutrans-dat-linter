@@ -4,6 +4,7 @@
 //! および行番号追跡が正しいかを検証する。
 
 use dat_linter::diagnostics::Severity;
+use dat_linter::i18n::Language;
 use dat_linter::parser::DatFile;
 use dat_linter::rules;
 use std::path::Path;
@@ -105,7 +106,7 @@ fn check_duplicate_keys_reports_warning_with_location() {
     // （パーサレベルの一般的な問題のため）。ここではその診断生成自体を検証する。
     let path = testdata_dir().join("duplicate_key.dat");
     let dat = DatFile::parse(&path).expect("パースに失敗");
-    let diags = rules::check_duplicate_keys(&dat);
+    let diags = rules::check_duplicate_keys(&dat, Language::default());
     assert_eq!(diags.len(), 1);
     let d = &diags[0];
     assert_eq!(d.severity, Severity::Warning);

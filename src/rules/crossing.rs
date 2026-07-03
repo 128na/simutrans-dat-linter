@@ -103,6 +103,7 @@
 
 use super::common::{KNOWN_WAYTYPES, check_image_ref};
 use crate::diagnostics::Diagnostic;
+use crate::i18n::t;
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
@@ -167,7 +168,11 @@ pub fn all() -> Vec<Box<dyn Rule>> {
 
 /// `check_bridge`/`check_tunnel`/`check_roadsign`と対称的な薄いラッパー。
 pub fn check_crossing(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext { dat, dat_dir };
+    let ctx = RuleContext {
+        dat,
+        dat_dir,
+        language: crate::i18n::Language::default(),
+    };
     all().iter().flat_map(|r| r.check(&ctx)).collect()
 }
 
@@ -185,7 +190,9 @@ struct WaytypesRequiredRule;
 impl Rule for WaytypesRequiredRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
         (0..2)
-            .flat_map(|i| super::common::check_waytype_field(ctx.dat, &format!("waytype[{i}]")))
+            .flat_map(|i| {
+                super::common::check_waytype_field(ctx.dat, &format!("waytype[{i}]"), ctx.language)
+            })
             .collect()
     }
 }
@@ -212,10 +219,15 @@ impl Rule for IdenticalWaytypesRule {
         {
             return vec![Diagnostic::error(
                 "crossing-identical-waytypes",
-                format!(
-                    "waytype[0]={w0} と waytype[1]={w1} は同じ種別のwayに解決されます。\
-                     makeobjは同一waytype同士の交差をFATAL ERRORにします\
-                     （\"Identical ways ({w0}) cannot cross (check waytypes)!\"）"
+                t!(ctx.language,
+                    ja: "waytype[0]={w0} と waytype[1]={w1} は同じ種別のwayに解決されます。\
+                         makeobjは同一waytype同士の交差をFATAL ERRORにします\
+                         （\"Identical ways ({w0}) cannot cross (check waytypes)!\"）",
+                    en: "waytype[0]={w0} and waytype[1]={w1} resolve to the same way type. \
+                         makeobj treats crossing identical waytypes as a FATAL ERROR \
+                         (\"Identical ways ({w0}) cannot cross (check waytypes)!\")",
+                    w0 = w0,
+                    w1 = w1,
                 ),
             )];
         }
@@ -242,9 +254,14 @@ impl Rule for SpeedRequiredRule {
         if speed0 == 0 || speed1 == 0 {
             vec![Diagnostic::error(
                 "crossing-missing-speed",
-                "speed[0] と speed[1] の両方に0以外の値が必要です。makeobjは\
-                 どちらか一方でも0（未指定含む）だとFATAL ERRORにします\
-                 （\"A maxspeed MUST be given for both ways!\"）",
+                t!(ctx.language,
+                    ja: "speed[0] と speed[1] の両方に0以外の値が必要です。makeobjは\
+                         どちらか一方でも0（未指定含む）だとFATAL ERRORにします\
+                         （\"A maxspeed MUST be given for both ways!\"）",
+                    en: "Both speed[0] and speed[1] must be non-zero. makeobj treats either \
+                         being 0 (including unspecified) as a FATAL ERROR \
+                         (\"A maxspeed MUST be given for both ways!\")",
+                ),
             )]
         } else {
             Vec::new()
@@ -279,12 +296,19 @@ impl Rule for OpenImageRequiredRule {
         if ns_count == 0 || ew_count == 0 {
             vec![Diagnostic::error(
                 "crossing-missing-openimage",
-                format!(
-                    "openimage[ns][0] と openimage[ew][0] は両方とも最低1枚必要です\
-                     （現在 openimage[ns]={ns_count}枚 / openimage[ew]={ew_count}枚）。\
-                     makeobjは片方でも0枚だとFATAL ERRORにします\
-                     （\"Missing images (at least one openimage! (but {ns_count} and \
-                     {ew_count} found)!)\"）"
+                t!(ctx.language,
+                    ja: "openimage[ns][0] と openimage[ew][0] は両方とも最低1枚必要です\
+                         （現在 openimage[ns]={ns_count}枚 / openimage[ew]={ew_count}枚）。\
+                         makeobjは片方でも0枚だとFATAL ERRORにします\
+                         （\"Missing images (at least one openimage! (but {ns_count} and \
+                         {ew_count} found)!)\"）",
+                    en: "Both openimage[ns][0] and openimage[ew][0] require at least one image \
+                         (currently openimage[ns]={ns_count} / openimage[ew]={ew_count}). \
+                         makeobj treats either being 0 as a FATAL ERROR \
+                         (\"Missing images (at least one openimage! (but {ns_count} and \
+                         {ew_count} found)!)\")",
+                    ns_count = ns_count,
+                    ew_count = ew_count,
                 ),
             )]
         } else {
@@ -315,7 +339,7 @@ impl Rule for ImageRefRule {
         ];
         for key in LIST_KEYS {
             for (value, full_key) in make_list(ctx.dat, key) {
-                check_image_ref(value, ctx.dat_dir, &full_key, &mut diags);
+                check_image_ref(value, ctx.dat_dir, &full_key, &mut diags, ctx.language);
             }
         }
         diags

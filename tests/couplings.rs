@@ -3,6 +3,7 @@
 
 use dat_linter::couplings as vehicle;
 use dat_linter::diagnostics::Severity;
+use dat_linter::i18n::Language;
 use std::path::{Path, PathBuf};
 
 fn testdata(sub: &str) -> PathBuf {
@@ -14,9 +15,12 @@ fn testdata(sub: &str) -> PathBuf {
 /// ディレクトリを読み込み、load/dangling/satisfiability の全診断コードを返す。
 fn analyze(sub: &str) -> Vec<(Severity, &'static str)> {
     let dir = testdata(sub);
-    let (vehicles, mut diags) = vehicle::load_vehicles(&dir);
-    diags.extend(vehicle::check_dangling_refs(&vehicles));
-    diags.extend(vehicle::check_satisfiability(&vehicles));
+    let (vehicles, mut diags) = vehicle::load_vehicles(&dir, Language::default());
+    diags.extend(vehicle::check_dangling_refs(&vehicles, Language::default()));
+    diags.extend(vehicle::check_satisfiability(
+        &vehicles,
+        Language::default(),
+    ));
     diags.into_iter().map(|d| (d.severity, d.code)).collect()
 }
 

@@ -132,7 +132,11 @@ pub fn all() -> Vec<Box<dyn Rule>> {
 
 /// `check_good`/`check_sound`と対称的な薄いラッパー。
 pub fn check_ground(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext { dat, dat_dir };
+    let ctx = RuleContext {
+        dat,
+        dat_dir,
+        language: crate::i18n::Language::default(),
+    };
     all().iter().flat_map(|r| r.check(&ctx)).collect()
 }
 
@@ -159,7 +163,7 @@ impl Rule for SlopeImageRefRule {
                     break;
                 }
                 if value != "-" {
-                    check_image_ref(value, ctx.dat_dir, &key, &mut diags);
+                    check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
                 }
                 phase += 1;
                 // 安全弁: dat構文異常でphaseが際限なく増え続ける事態を避ける

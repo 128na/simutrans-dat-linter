@@ -2,6 +2,7 @@
 //! 検証根拠は `rules/mod.rs` 冒頭コメント参照。
 
 use crate::diagnostics::Diagnostic;
+use crate::i18n::{Language, t};
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
@@ -12,17 +13,22 @@ use std::path::Path;
 /// value is used」により、実際のmakeobjは重複キーを**先勝ち**で無音に無視する。
 /// makeobj自身はfatal/errorにしないためWarning止まりだが、意図しない値の
 /// 上書き忘れである可能性が高いため検出する。
-pub fn check_duplicate_keys(dat: &DatFile) -> Vec<Diagnostic> {
+pub fn check_duplicate_keys(dat: &DatFile, lang: Language) -> Vec<Diagnostic> {
     dat.duplicates
         .iter()
         .map(|d| {
             Diagnostic::warning(
                 "duplicate-key",
-                format!(
-                    "キー \"{}\" が複数回定義されています（{}行目の値が採用され、\
-                     {}行目は無視されます）。makeobjのtabfileobj_t::put()は既存キーを\
-                     上書きしません（先勝ち、tabfile.h:45）",
-                    d.key, d.first_line, d.duplicate_line
+                t!(lang,
+                    ja: "キー \"{key}\" が複数回定義されています（{first}行目の値が採用され、\
+                         {dup}行目は無視されます）。makeobjのtabfileobj_t::put()は既存キーを\
+                         上書きしません（先勝ち、tabfile.h:45）",
+                    en: "Key \"{key}\" is defined more than once (the value on line {first} \
+                         is used, and line {dup} is ignored). makeobj's tabfileobj_t::put() \
+                         does not overwrite existing keys (first-write-wins, tabfile.h:45)",
+                    key = d.key,
+                    first = d.first_line,
+                    dup = d.duplicate_line,
                 ),
             )
             .at(d.duplicate_line, d.key.clone())
@@ -76,20 +82,37 @@ pub const DIR_CODES: [&str; 8] = ["s", "w", "sw", "se", "n", "e", "ne", "nw"];
 /// いずれにも一致しなければ`dbg->fatal("get_waytype()","invalid waytype
 /// \"%s\"\n", ...)`で落とす。`tabfileobj_t::get()`はNULLを返さず欠落キーには
 /// 空文字列を返す（tabfile.cc:48-56）ため、キー未指定も同じfatalパスに入る。
-pub fn check_waytype_field(dat: &DatFile, key: &str) -> Vec<Diagnostic> {
+pub fn check_waytype_field(dat: &DatFile, key: &str, lang: Language) -> Vec<Diagnostic> {
     let waytype = dat.get(key).unwrap_or("").to_ascii_lowercase();
     if waytype.is_empty() {
         vec![Diagnostic::error(
             "missing-waytype",
-            format!("{key} が必須です（get_waytype()は空文字列もFATAL ERRORにします）"),
+            t!(lang,
+                ja: "{key} が必須です（get_waytype()は空文字列もFATAL ERRORにします）",
+                en: "{key} is required (get_waytype() treats an empty string as a FATAL ERROR too)",
+                key = key,
+            ),
         )]
     } else if !KNOWN_WAYTYPES.contains(&waytype.as_str()) {
         vec![Diagnostic::error(
             "unknown-waytype",
-            format!("{key}={waytype} は不正な値です（FATAL ERRORになります）"),
+            t!(lang,
+                ja: "{key}={waytype} は不正な値です（FATAL ERRORになります）",
+                en: "{key}={waytype} is not a valid value (this becomes a FATAL ERROR)",
+                key = key,
+                waytype = waytype,
+            ),
         )]
     } else {
-        vec![Diagnostic::info("waytype-ok", format!("{key}={waytype}"))]
+        vec![Diagnostic::info(
+            "waytype-ok",
+            t!(lang,
+                ja: "{key}={waytype}",
+                en: "{key}={waytype}",
+                key = key,
+                waytype = waytype,
+            ),
+        )]
     }
 }
 
@@ -136,7 +159,13 @@ fn resolve_image_filename(value: &str) -> String {
     }
 }
 
-pub fn check_image_ref(value: &str, dat_dir: &Path, context: &str, diags: &mut Vec<Diagnostic>) {
+pub fn check_image_ref(
+    value: &str,
+    dat_dir: &Path,
+    context: &str,
+    diags: &mut Vec<Diagnostic>,
+    lang: Language,
+) {
     let value = strip_zoomable_prefix_and_trim(value);
     let filename = resolve_image_filename(value);
 
@@ -152,9 +181,12 @@ pub fn check_image_ref(value: &str, dat_dir: &Path, context: &str, diags: &mut V
     if !path.is_file() {
         diags.push(Diagnostic::error(
             "missing-image-file",
-            format!(
-                "{context}: 参照画像 {filename} が見つかりません ({})",
-                path.display()
+            t!(lang,
+                ja: "{context}: 参照画像 {filename} が見つかりません ({p})",
+                en: "{context}: Referenced image {filename} was not found ({p})",
+                context = context,
+                filename = filename,
+                p = path.display(),
             ),
         ));
         return;
@@ -166,8 +198,14 @@ pub fn check_image_ref(value: &str, dat_dir: &Path, context: &str, diags: &mut V
             if w % PAK_TILE_SIZE != 0 || h % PAK_TILE_SIZE != 0 {
                 diags.push(Diagnostic::error(
                     "image-size-not-multiple-of-128",
-                    format!(
-                        "{context}: {filename} のサイズが {w}x{h} です。makeobj pak128 は{PAK_TILE_SIZE}の倍数でないとエラーになります"
+                    t!(lang,
+                        ja: "{context}: {filename} のサイズが {w}x{h} です。makeobj pak128 は{tile}の倍数でないとエラーになります",
+                        en: "{context}: {filename} has size {w}x{h}. makeobj pak128 requires dimensions to be a multiple of {tile}",
+                        context = context,
+                        filename = filename,
+                        w = w,
+                        h = h,
+                        tile = PAK_TILE_SIZE,
                     ),
                 ));
             } else {
@@ -180,7 +218,13 @@ pub fn check_image_ref(value: &str, dat_dir: &Path, context: &str, diags: &mut V
         Err(e) => {
             diags.push(Diagnostic::error(
                 "unreadable-image",
-                format!("{context}: {filename} を画像として読み込めません ({e})"),
+                t!(lang,
+                    ja: "{context}: {filename} を画像として読み込めません ({e})",
+                    en: "{context}: Failed to read {filename} as an image ({e})",
+                    context = context,
+                    filename = filename,
+                    e = e,
+                ),
             ));
         }
     }
@@ -213,7 +257,7 @@ impl Rule for AllImagesRule {
                 break;
             }
             if value != "-" {
-                check_image_ref(value, ctx.dat_dir, &key, &mut diags);
+                check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
             }
             i += 1;
             // 安全弁: dat構文異常でiが際限なく増え続ける事態を避ける

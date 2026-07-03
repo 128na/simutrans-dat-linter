@@ -150,6 +150,7 @@
 
 use super::common::{KNOWN_WAYTYPES, check_image_ref};
 use crate::diagnostics::Diagnostic;
+use crate::i18n::{Language, t};
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
@@ -166,7 +167,11 @@ pub fn all() -> Vec<Box<dyn Rule>> {
 
 /// `check_way`/`check_way_obj`と対称的な薄いラッパー。
 pub fn check_groundobj(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext { dat, dat_dir };
+    let ctx = RuleContext {
+        dat,
+        dat_dir,
+        language: crate::i18n::Language::default(),
+    };
     all().iter().flat_map(|r| r.check(&ctx)).collect()
 }
 
@@ -184,13 +189,22 @@ impl Rule for WaytypeIfPresentValidRule {
         if waytype.is_empty() {
             vec![Diagnostic::info(
                 "waytype-omitted",
-                "obj=ground_obj では waytype は省略可能です（省略時は ignore_wt にフォールバックし、\
-                 FATAL ERRORにはなりません。他のobj種別と異なりwaytype必須ではありません）",
+                t!(ctx.language,
+                    ja: "obj=ground_obj では waytype は省略可能です（省略時は ignore_wt にフォールバックし、\
+                         FATAL ERRORにはなりません。他のobj種別と異なりwaytype必須ではありません）",
+                    en: "waytype is optional for obj=ground_obj (omitting it falls back to \
+                         ignore_wt and does not cause a FATAL ERROR. Unlike other obj types, \
+                         waytype is not required)",
+                ),
             )]
         } else if !KNOWN_WAYTYPES.contains(&waytype.as_str()) {
             vec![Diagnostic::error(
                 "unknown-waytype",
-                format!("waytype={waytype} は不正な値です（FATAL ERRORになります）"),
+                t!(ctx.language,
+                    ja: "waytype={waytype} は不正な値です（FATAL ERRORになります）",
+                    en: "waytype={waytype} is not a valid value (this becomes a FATAL ERROR)",
+                    waytype = waytype,
+                ),
             )]
         } else {
             vec![Diagnostic::info("waytype-ok", format!("waytype={waytype}"))]
@@ -226,9 +240,9 @@ impl Rule for SeasonImageRule {
             .max(1);
 
         if speed == 0 {
-            check_fixed_images(dat, ctx.dat_dir, seasons, &mut diags);
+            check_fixed_images(dat, ctx.dat_dir, seasons, &mut diags, ctx.language);
         } else {
-            check_moving_images(dat, ctx.dat_dir, seasons, &mut diags);
+            check_moving_images(dat, ctx.dat_dir, seasons, &mut diags, ctx.language);
         }
 
         diags
@@ -238,7 +252,13 @@ impl Rule for SeasonImageRule {
 /// 固定物分岐（speed==0）: phase=0,1,2,...と走査し、`image[<phase>][0]`が空文字列に
 /// なった時点で走査終了。それより前のphaseで、season 0が非空なのに後続seasonが
 /// 空文字列だとFATAL相当のerrorを出す。
-fn check_fixed_images(dat: &DatFile, dat_dir: &Path, seasons: i64, diags: &mut Vec<Diagnostic>) {
+fn check_fixed_images(
+    dat: &DatFile,
+    dat_dir: &Path,
+    seasons: i64,
+    diags: &mut Vec<Diagnostic>,
+    lang: Language,
+) {
     let mut phase = 0u32;
     loop {
         let season0_key = format!("image[{phase}][0]");
@@ -247,7 +267,7 @@ fn check_fixed_images(dat: &DatFile, dat_dir: &Path, seasons: i64, diags: &mut V
             // groundobj_writer.cc:66-69: goto finish_images。このphase以降は走査しない。
             break;
         }
-        check_image_ref(season0, dat_dir, &season0_key, diags);
+        check_image_ref(season0, dat_dir, &season0_key, diags, lang);
 
         for season in 1..seasons {
             let key = format!("image[{phase}][{season}]");
@@ -255,14 +275,20 @@ fn check_fixed_images(dat: &DatFile, dat_dir: &Path, seasons: i64, diags: &mut V
             if value.is_empty() {
                 diags.push(Diagnostic::error(
                     "missing-season-image",
-                    format!(
-                        "{key}: phase {phase} の season 0 画像は定義されていますが、\
-                         season {season} の画像が未指定です。makeobjはFATAL ERRORになります\
-                         （\"Season image for season {season} missing!\"）"
+                    t!(lang,
+                        ja: "{key}: phase {phase} の season 0 画像は定義されていますが、\
+                             season {season} の画像が未指定です。makeobjはFATAL ERRORになります\
+                             （\"Season image for season {season} missing!\"）",
+                        en: "{key}: phase {phase} has a season 0 image defined, but season \
+                             {season} is missing. makeobj treats this as a FATAL ERROR \
+                             (\"Season image for season {season} missing!\")",
+                        key = key,
+                        phase = phase,
+                        season = season,
                     ),
                 ));
             } else {
-                check_image_ref(value, dat_dir, &key, diags);
+                check_image_ref(value, dat_dir, &key, diags, lang);
             }
         }
 
@@ -278,15 +304,25 @@ fn check_fixed_images(dat: &DatFile, dat_dir: &Path, seasons: i64, diags: &mut V
     if phase == 0 {
         diags.push(Diagnostic::info(
             "no-images",
-            "image[0][0] が未指定です。makeobjはこれをFATALにしません（画像0枚のground_objも\
-             許容されますが、ゲーム内では何も描画されません）",
+            t!(lang,
+                ja: "image[0][0] が未指定です。makeobjはこれをFATALにしません（画像0枚のground_objも\
+                     許容されますが、ゲーム内では何も描画されません）",
+                en: "image[0][0] is unspecified. makeobj does not treat this as FATAL (a \
+                     ground_obj with zero images is allowed, but nothing renders in-game)",
+            ),
         ));
     }
 }
 
 /// 移動物分岐（speed!=0）: DIR_CODESの8方向 × season 0..seasons-1が全て必須。
 /// いずれか1つでも空文字列ならFATAL相当のerrorを出す。
-fn check_moving_images(dat: &DatFile, dat_dir: &Path, seasons: i64, diags: &mut Vec<Diagnostic>) {
+fn check_moving_images(
+    dat: &DatFile,
+    dat_dir: &Path,
+    seasons: i64,
+    diags: &mut Vec<Diagnostic>,
+    lang: Language,
+) {
     for dir in DIR_CODES {
         for season in 0..seasons {
             let key = format!("image[{dir}][{season}]");
@@ -294,14 +330,19 @@ fn check_moving_images(dat: &DatFile, dat_dir: &Path, seasons: i64, diags: &mut 
             if value.is_empty() {
                 diags.push(Diagnostic::error(
                     "missing-season-image",
-                    format!(
-                        "{key}: speed!=0 (移動物) の ground_obj では8方向 x seasons分の画像が\
-                         全て必須です。makeobjはFATAL ERRORになります\
-                         （\"Season image for season {season} missing (expected {key})!\"）"
+                    t!(lang,
+                        ja: "{key}: speed!=0 (移動物) の ground_obj では8方向 x seasons分の画像が\
+                             全て必須です。makeobjはFATAL ERRORになります\
+                             （\"Season image for season {season} missing (expected {key})!\"）",
+                        en: "{key}: for ground_obj with speed!=0 (moving objects), images for all \
+                             8 directions x seasons are required. makeobj treats this as a FATAL \
+                             ERROR (\"Season image for season {season} missing (expected {key})!\")",
+                        key = key,
+                        season = season,
                     ),
                 ));
             } else {
-                check_image_ref(value, dat_dir, &key, diags);
+                check_image_ref(value, dat_dir, &key, diags, lang);
             }
         }
     }

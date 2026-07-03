@@ -2,6 +2,7 @@
 
 use super::common::{KNOWN_WAYTYPES, check_image_ref};
 use crate::diagnostics::Diagnostic;
+use crate::i18n::{Language, t};
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
@@ -59,7 +60,11 @@ pub fn all(dat: &DatFile) -> Vec<Box<dyn Rule>> {
 
 /// 後方互換の薄いラッパー。`tests/building.rs`はこの関数を直接呼ぶ。
 pub fn check_building(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext { dat, dat_dir };
+    let ctx = RuleContext {
+        dat,
+        dat_dir,
+        language: crate::i18n::Language::default(),
+    };
     all(dat).iter().flat_map(|r| r.check(&ctx)).collect()
 }
 
@@ -71,7 +76,11 @@ impl Rule for PreludeDebugRule {
         vec![
             Diagnostic::debug(
                 "parsed-pairs",
-                format!("{} 個のkey=valueを読み込み", ctx.dat.pairs.len()),
+                t!(ctx.language,
+                    ja: "{n} 個のkey=valueを読み込み",
+                    en: "Loaded {n} key=value pair(s)",
+                    n = ctx.dat.pairs.len(),
+                ),
             ),
             Diagnostic::debug(
                 "raw-type-waytype",
@@ -87,17 +96,24 @@ impl Rule for TypeWaytypeRule {
         let type_name = ctx.dat.get("type").unwrap_or("").to_ascii_lowercase();
         let waytype = ctx.dat.get("waytype").unwrap_or("").to_ascii_lowercase();
         let mut diags = Vec::new();
-        check_type_and_waytype(&type_name, &waytype, &mut diags);
+        check_type_and_waytype(&type_name, &waytype, &mut diags, ctx.language);
         diags
     }
 }
 
-fn check_type_and_waytype(type_name: &str, waytype: &str, diags: &mut Vec<Diagnostic>) {
+fn check_type_and_waytype(
+    type_name: &str,
+    waytype: &str,
+    diags: &mut Vec<Diagnostic>,
+    lang: Language,
+) {
     if OBSOLETE_TYPES.contains(&type_name) {
         diags.push(Diagnostic::error(
             "obsolete-type",
-            format!(
-                "type={type_name} は obsolete です。stop/extension と waytype を使ってください"
+            t!(lang,
+                ja: "type={type_name} は obsolete です。stop/extension と waytype を使ってください",
+                en: "type={type_name} is obsolete. Use stop/extension with waytype instead",
+                type_name = type_name,
             ),
         ));
         return;
@@ -105,7 +121,11 @@ fn check_type_and_waytype(type_name: &str, waytype: &str, diags: &mut Vec<Diagno
     if !KNOWN_TYPES.contains(&type_name) {
         diags.push(Diagnostic::error(
             "unknown-type",
-            format!("type={type_name} は makeobj が認識できない値です（FATAL ERRORになります）"),
+            t!(lang,
+                ja: "type={type_name} は makeobj が認識できない値です（FATAL ERRORになります）",
+                en: "type={type_name} is not a value makeobj recognizes (this becomes a FATAL ERROR)",
+                type_name = type_name,
+            ),
         ));
         return;
     }
@@ -114,12 +134,20 @@ fn check_type_and_waytype(type_name: &str, waytype: &str, diags: &mut Vec<Diagno
         if waytype.is_empty() {
             diags.push(Diagnostic::error(
                 "missing-waytype",
-                format!("type={type_name} では waytype が必須です（未指定だとmakeobjがFATAL ERRORになります）"),
+                t!(lang,
+                    ja: "type={type_name} では waytype が必須です（未指定だとmakeobjがFATAL ERRORになります）",
+                    en: "waytype is required when type={type_name} (omitting it makes makeobj FATAL ERROR)",
+                    type_name = type_name,
+                ),
             ));
         } else if !KNOWN_WAYTYPES.contains(&waytype) {
             diags.push(Diagnostic::error(
                 "unknown-waytype",
-                format!("waytype={waytype} は不正な値です（FATAL ERRORになります）"),
+                t!(lang,
+                    ja: "waytype={waytype} は不正な値です（FATAL ERRORになります）",
+                    en: "waytype={waytype} is not a valid value (this becomes a FATAL ERROR)",
+                    waytype = waytype,
+                ),
             ));
         } else {
             diags.push(Diagnostic::info(
@@ -131,12 +159,20 @@ fn check_type_and_waytype(type_name: &str, waytype: &str, diags: &mut Vec<Diagno
         if waytype.is_empty() {
             diags.push(Diagnostic::warning(
                 "generic-extension",
-                "type=extension で waytype 未指定は「全waytypeに適合する汎用拡張」として解釈されます。意図的でなければ waytype を指定してください",
+                t!(lang,
+                    ja: "type=extension で waytype 未指定は「全waytypeに適合する汎用拡張」として解釈されます。意図的でなければ waytype を指定してください",
+                    en: "type=extension without waytype is interpreted as a \"generic extension \
+                         that fits any waytype\". Specify waytype unless this is intentional",
+                ),
             ));
         } else if !KNOWN_WAYTYPES.contains(&waytype) {
             diags.push(Diagnostic::error(
                 "unknown-waytype",
-                format!("waytype={waytype} は不正な値です（FATAL ERRORになります）"),
+                t!(lang,
+                    ja: "waytype={waytype} は不正な値です（FATAL ERRORになります）",
+                    en: "waytype={waytype} is not a valid value (this becomes a FATAL ERROR)",
+                    waytype = waytype,
+                ),
             ));
         } else {
             diags.push(Diagnostic::info(
@@ -158,7 +194,10 @@ impl Rule for ObsoleteKeywordRule {
         if ctx.dat.get("extension_building").is_some() {
             vec![Diagnostic::error(
                 "obsolete-keyword",
-                "extension_building は obsolete です。type=stop/extension と waytype を使ってください",
+                t!(ctx.language,
+                    ja: "extension_building は obsolete です。type=stop/extension と waytype を使ってください",
+                    en: "extension_building is obsolete. Use type=stop/extension with waytype instead",
+                ),
             )]
         } else {
             Vec::new()
@@ -192,7 +231,12 @@ impl Rule for DimsRule {
         if size_x * size_y == 0 {
             diags.push(Diagnostic::error(
                 "zero-size",
-                format!("Dims のサイズが0です (size_x={size_x}, size_y={size_y})"),
+                t!(ctx.language,
+                    ja: "Dims のサイズが0です (size_x={size_x}, size_y={size_y})",
+                    en: "Dims size is 0 (size_x={size_x}, size_y={size_y})",
+                    size_x = size_x,
+                    size_y = size_y,
+                ),
             ));
         } else {
             diags.push(Diagnostic::info(
@@ -217,16 +261,20 @@ impl Rule for CursorIconRule {
         if cursor.is_empty() && icon.is_empty() {
             diags.push(Diagnostic::error(
                 "missing-cursor-icon",
-                "cursor と icon が両方とも未指定です。makeobjはエラーを出さずにビルドしますが、ゲーム内のビルドメニューに表示されません",
+                t!(ctx.language,
+                    ja: "cursor と icon が両方とも未指定です。makeobjはエラーを出さずにビルドしますが、ゲーム内のビルドメニューに表示されません",
+                    en: "Both cursor and icon are unspecified. makeobj builds without error, but the \
+                         object will not appear in the in-game build menu",
+                ),
             ));
             return diags;
         }
 
         if !icon.is_empty() {
-            check_image_ref(icon, ctx.dat_dir, "icon", &mut diags);
+            check_image_ref(icon, ctx.dat_dir, "icon", &mut diags, ctx.language);
         }
         if !cursor.is_empty() {
-            check_image_ref(cursor, ctx.dat_dir, "cursor", &mut diags);
+            check_image_ref(cursor, ctx.dat_dir, "cursor", &mut diags, ctx.language);
         }
         diags
     }
@@ -268,8 +316,14 @@ impl Rule for TileImageRule {
                     if front.is_none() && back.is_none() {
                         diags.push(Diagnostic::error(
                             "missing-tile-image",
-                            format!(
-                                "layout {l} tile ({x},{y}) に front/backimage が1枚もありません（makeobjはエラーを出さず空画像のタイルを生成します）"
+                            t!(ctx.language,
+                                ja: "layout {l} tile ({x},{y}) に front/backimage が1枚もありません\
+                                     （makeobjはエラーを出さず空画像のタイルを生成します）",
+                                en: "layout {l} tile ({x},{y}) has no front/backimage \
+                                     (makeobj generates an empty tile without error)",
+                                l = l,
+                                x = x,
+                                y = y,
                             ),
                         ));
                     } else {
@@ -283,6 +337,7 @@ impl Rule for TileImageRule {
                                 dat_dir,
                                 &format!("frontimage[{l}][{y}][{x}]"),
                                 &mut diags,
+                                ctx.language,
                             );
                         }
                         if let Some(v) = back {
@@ -291,6 +346,7 @@ impl Rule for TileImageRule {
                                 dat_dir,
                                 &format!("backimage[{l}][{y}][{x}]"),
                                 &mut diags,
+                                ctx.language,
                             );
                         }
                     }
@@ -308,7 +364,13 @@ impl Rule for TileImageRule {
                 {
                     diags.push(Diagnostic::error(
                         "frontimage-height",
-                        format!("{key} : frontimageの高さ(h)は0のみ有効です（makeobjはエラーログを出すだけで処理を継続します）"),
+                        t!(ctx.language,
+                            ja: "{key} : frontimageの高さ(h)は0のみ有効です\
+                                 （makeobjはエラーログを出すだけで処理を継続します）",
+                            en: "{key}: frontimage height (h) must be 0 \
+                                 (makeobj logs an error but continues processing)",
+                            key = key,
+                        ),
                     ));
                 }
             }

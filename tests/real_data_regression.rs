@@ -24,6 +24,7 @@
 
 use dat_linter::config::LintConfig;
 use dat_linter::diagnostics::Severity;
+use dat_linter::i18n::Language;
 use dat_linter::parser::DatFile;
 use dat_linter::registry::RuleSet;
 use dat_linter::rules;
@@ -68,9 +69,13 @@ fn check_all_records(file: &str) -> Vec<Vec<(Severity, &'static str)>> {
         .iter()
         .map(|dat| {
             let obj_type = dat.get("obj").unwrap_or("").to_string();
-            let mut diags = rules::check_duplicate_keys(dat);
+            let mut diags = rules::check_duplicate_keys(dat, Language::default());
             if let Some(rule_set) = RuleSet::for_obj_type(&obj_type, dat) {
-                let ctx = dat_linter::registry::RuleContext { dat, dat_dir: &dir };
+                let ctx = dat_linter::registry::RuleContext {
+                    dat,
+                    dat_dir: &dir,
+                    language: Language::default(),
+                };
                 diags.extend(rule_set.run(&ctx));
             }
             diags.into_iter().map(|d| (d.severity, d.code)).collect()

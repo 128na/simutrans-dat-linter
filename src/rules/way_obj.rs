@@ -175,7 +175,11 @@ pub fn all() -> Vec<Box<dyn Rule>> {
 
 /// `check_way`/`check_bridge`/`check_crossing`と対称的な薄いラッパー。
 pub fn check_way_obj(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext { dat, dat_dir };
+    let ctx = RuleContext {
+        dat,
+        dat_dir,
+        language: crate::i18n::Language::default(),
+    };
     all().iter().flat_map(|r| r.check(&ctx)).collect()
 }
 
@@ -190,7 +194,7 @@ pub fn check_way_obj(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
 struct WaytypeRequiredRule;
 impl Rule for WaytypeRequiredRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        super::common::check_waytype_field(ctx.dat, "waytype")
+        super::common::check_waytype_field(ctx.dat, "waytype", ctx.language)
     }
 }
 
@@ -204,7 +208,7 @@ impl Rule for WaytypeRequiredRule {
 struct OwnWaytypeRequiredRule;
 impl Rule for OwnWaytypeRequiredRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        super::common::check_waytype_field(ctx.dat, "own_waytype")
+        super::common::check_waytype_field(ctx.dat, "own_waytype", ctx.language)
     }
 }
 
@@ -227,7 +231,7 @@ impl Rule for ImageRefRule {
                 let key = format!("{prefix}[{ribi}]");
                 let value = dat.get(&key).unwrap_or("");
                 if !value.is_empty() {
-                    check_image_ref(value, ctx.dat_dir, &key, &mut diags);
+                    check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
                 }
             }
         }
@@ -238,7 +242,7 @@ impl Rule for ImageRefRule {
                 let key = format!("{prefix}[{slope}]");
                 let value = dat.get(&key).unwrap_or("");
                 if !value.is_empty() {
-                    check_image_ref(value, ctx.dat_dir, &key, &mut diags);
+                    check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
                 }
             }
         }
@@ -251,7 +255,7 @@ impl Rule for ImageRefRule {
                 let key = format!("{prefix}[{slope}]");
                 let value = dat.get(&key).unwrap_or("");
                 if !value.is_empty() {
-                    check_image_ref(value, ctx.dat_dir, &key, &mut diags);
+                    check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
                 }
             }
         }
@@ -264,7 +268,7 @@ impl Rule for ImageRefRule {
                 let key = format!("{prefix}[{ribi}]");
                 let value = dat.get(&key).unwrap_or("");
                 if !value.is_empty() {
-                    check_image_ref(value, ctx.dat_dir, &key, &mut diags);
+                    check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
                 }
             }
         }
@@ -274,7 +278,7 @@ impl Rule for ImageRefRule {
         for key in ["cursor", "icon"] {
             let value = dat.get(key).unwrap_or("");
             if !value.is_empty() {
-                check_image_ref(value, ctx.dat_dir, key, &mut diags);
+                check_image_ref(value, ctx.dat_dir, key, &mut diags, ctx.language);
             }
         }
 

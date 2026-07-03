@@ -79,6 +79,10 @@ pub fn all() -> Vec<Box<dyn Rule>> {
 
 /// `check_building`/`check_vehicle`/`check_way`と対称的な薄いラッパー。
 pub fn check_good(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext { dat, dat_dir };
+    let ctx = RuleContext {
+        dat,
+        dat_dir,
+        language: crate::i18n::Language::default(),
+    };
     all().iter().flat_map(|r| r.check(&ctx)).collect()
 }
