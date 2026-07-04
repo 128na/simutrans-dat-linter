@@ -1,6 +1,6 @@
 use clap::{ArgAction, CommandFactory, FromArgMatches, Parser, Subcommand};
 use dat_linter::config::LintConfig;
-use dat_linter::diagnostics::Severity;
+use dat_linter::diagnostics::{Diagnostic, Severity};
 use dat_linter::i18n::{Language, t};
 use dat_linter::parser::{DatFile, read_dat_text};
 use dat_linter::registry::{RuleContext, RuleSet, SUPPORTED_OBJ_TYPES};
@@ -723,8 +723,11 @@ fn run_fmt(args: &FmtArgs, language: Language) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    // 優先順位: --no-reorder指定 > config設定（[fmt] reorder、未指定時デフォルトtrue）。
-    let should_reorder = !args.no_reorder && config.fmt_reorder();
+    // 第11弾: 専用の[fmt] reorder設定を廃止し、[rules] include/excludeの
+    // 仕組みに統合した（reorder自体を"fmt-reorder-applied"というcodeで表現する。
+    // config.rs冒頭のdocコメント「`fmt`のreorder挙動」参照）。
+    // 優先順位: --no-reorder指定 > config設定（excludeに無ければ有効＝デフォルトtrue相当）。
+    let should_reorder = !args.no_reorder && config.is_enabled("fmt-reorder-applied");
 
     let paths = match collect_dat_paths(&args.path, language) {
         Ok(p) => p,
@@ -843,6 +846,25 @@ fn fmt_one_file(
     }
 
     let formatted = if should_reorder {
+        // 第11弾: 専用の[fmt] reorder設定を廃止したため、reorderが実際に適用された
+        // ことそのものを"fmt-reorder-applied"というcode（Info severity）で表現する。
+        // `config.is_enabled`フィルタを通すことで、`[rules] exclude`に
+        // このcodeを指定した場合はこの診断自体も出力されなくなる（ただし
+        // その場合は`should_reorder`自体が既にfalseになっているため、通常この
+        // 分岐に到達した時点でこの診断は常にenabledのはず。将来の一貫性のため
+        // 他の診断と同じフィルタ経路を通しておく）。Info severityのため通常表示には
+        // 影響せず、`-v`相当の詳細ログとしての位置づけ。
+        let reorder_applied = Diagnostic::info(
+            "fmt-reorder-applied",
+            t!(language,
+                ja: "慣習的な順序へキーを並び替えました",
+                en: "Reordered keys into the conventional order",
+            ),
+        );
+        if config.is_enabled(reorder_applied.code) {
+            eprintln!("{}: {reorder_applied}", path.display());
+        }
+
         let obj = formatter::obj_of(&parsed.entries).unwrap_or("").to_string();
         let (out, warnings) = formatter::format_reordered(&parsed.entries, &obj, language);
         let filtered_warnings: Vec<_> = warnings

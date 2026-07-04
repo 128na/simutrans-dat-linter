@@ -15,9 +15,6 @@
 //! [general]
 //! language = "en"  # "en" (デフォルト) または "ja"
 //!
-//! [fmt]
-//! reorder = true  # true (デフォルト) または false
-//!
 //! [rules]
 //! include = ["obsolete-type", "missing-waytype"]
 //! exclude = ["duplicate-key"]
@@ -40,12 +37,20 @@
 //! 変更されている点に注意。第1弾実装時点ではメッセージが日本語固定だったが、
 //! i18n対応後はこのデフォルトに従う）。
 //!
-//! ## `[fmt] reorder`のデフォルト
-//! 設定ファイルが無い場合・`[fmt] reorder`未指定の場合のデフォルトは**`true`**
-//! （`fmt`は慣習的な並び順に並び替えるのがデフォルト挙動。CLIの`--no-reorder`
-//! フラグはこの設定を強制的に上書きしてpreserve-order挙動にする。優先順位は
-//! 「`--no-reorder`指定 > config設定（未指定時デフォルトtrue）」。第5弾で
-//! `--reorder`bool flagから`--no-reorder`へ置き換えた際に導入された設定）。
+//! ## `fmt`のreorder挙動
+//! `fmt`は慣習的な並び順に並び替えるのがデフォルト挙動（第5弾以降）。
+//! 第11弾で専用の`[fmt] reorder`設定セクションを廃止し、既存の
+//! `[rules] include/exclude`（`Diagnostic.code`単位）の仕組みに統合した:
+//! reorder自体は`fmt-reorder-applied`というcode（`Diagnostic::info`、
+//! `src/main.rs::fmt_one_file`が発行）で表現され、`[rules] exclude`に
+//! このcodeを追加すると恒久的にreorderを無効化できる
+//! （`config.is_enabled("fmt-reorder-applied")`が`false`を返すようになる）。
+//! CLIの`--no-reorder`フラグは、その1回の実行に限りconfig設定に関わらず
+//! 強制的に無効化する（優先順位: `--no-reorder`指定 >
+//! config（`[rules] exclude`にfmt-reorder-appliedがあれば無効、無ければ有効
+//! ＝デフォルトtrue相当）)。専用の真偽値フィールドを持たないため、
+//! 「デフォルトで有効」という事実上の初期値は`LintConfig::is_enabled`の
+//! 「excludeに無ければ有効」という一般規則がそのまま担う。
 
 use crate::i18n::{Language, t};
 use serde::Deserialize;
@@ -66,23 +71,20 @@ const DEFAULT_CONFIG_TEMPLATE: &str = r#"# dat_linter configuration file
 #   "en" (default) or "ja".
 # language = "en"
 #
-# [fmt]
-# reorder: whether `fmt` reorders keys into the conventional order by default.
-#   true (default) or false. The CLI flag --no-reorder always overrides this
-#   to false for a single invocation, regardless of this setting.
-# reorder = true
-#
 # [rules]
 # include: rule codes (Diagnostic.code) to enable. Empty = all rules enabled (default).
 # exclude: rule codes to disable, applied after include. exclude always wins.
 # include = []
 # exclude = []
+#
+# Note: `fmt`'s key reordering is enabled by default and is controlled via this
+# same include/exclude mechanism using the "fmt-reorder-applied" code. To
+# permanently disable reordering, add it to exclude below:
+#   exclude = ["fmt-reorder-applied"]
+# (the CLI flag --no-reorder disables it for a single invocation instead).
 
 [general]
 language = "en"
-
-[fmt]
-reorder = true
 
 [rules]
 include = []
@@ -94,8 +96,6 @@ struct RawConfig {
     #[serde(default)]
     general: RawGeneralConfig,
     #[serde(default)]
-    fmt: RawFmtConfig,
-    #[serde(default)]
     rules: RawRulesConfig,
 }
 
@@ -103,12 +103,6 @@ struct RawConfig {
 struct RawGeneralConfig {
     #[serde(default)]
     language: Option<String>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct RawFmtConfig {
-    #[serde(default)]
-    reorder: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -120,14 +114,17 @@ struct RawRulesConfig {
 }
 
 /// 読み込み・正規化済みの設定。`is_enabled`で`Diagnostic.code`ごとに
-/// 有効/無効を判定し、`language()`で出力言語を、`fmt_reorder()`で
-/// `fmt`のデフォルト並び替え挙動を取得する。
+/// 有効/無効を判定し、`language()`で出力言語を取得する。
+///
+/// `fmt`のreorder挙動も`is_enabled("fmt-reorder-applied")`で判定する
+/// （第11弾で専用の`fmt_reorder`フィールド・`[fmt] reorder`設定を廃止し、
+/// 既存の`[rules] include/exclude`の仕組みに統合した。モジュール冒頭の
+/// docコメント「`fmt`のreorder挙動」参照）。
 #[derive(Debug)]
 pub struct LintConfig {
     include: HashSet<String>,
     exclude: HashSet<String>,
     language: Language,
-    fmt_reorder: bool,
 }
 
 impl Default for LintConfig {
@@ -137,14 +134,14 @@ impl Default for LintConfig {
 }
 
 impl LintConfig {
-    /// 全ルールが有効・言語はデフォルト(English)・fmt reorderはデフォルト(true)の設定
-    /// （設定ファイル無しの状態と同義）。
+    /// 全ルールが有効・言語はデフォルト(English)の設定
+    /// （設定ファイル無しの状態と同義。fmtのreorderも
+    /// `is_enabled("fmt-reorder-applied")`が`true`を返すため既定で有効）。
     pub fn all_enabled() -> Self {
         LintConfig {
             include: HashSet::new(),
             exclude: HashSet::new(),
             language: Language::default(),
-            fmt_reorder: true,
         }
     }
 
@@ -212,7 +209,6 @@ impl LintConfig {
             include: raw.rules.include.into_iter().collect(),
             exclude: raw.rules.exclude.into_iter().collect(),
             language,
-            fmt_reorder: raw.fmt.reorder.unwrap_or(true),
         })
     }
 
@@ -228,14 +224,6 @@ impl LintConfig {
     /// `Language::default()`（English）。
     pub fn language(&self) -> Language {
         self.language
-    }
-
-    /// `fmt`のデフォルト並び替え挙動。設定ファイル無し・`[fmt] reorder`未指定の
-    /// 場合は`true`（デフォルトでreorderする）。CLIの`--no-reorder`はこの値を
-    /// 呼び出し元（`main.rs::run_fmt`）で強制的に上書きする（この関数自体は
-    /// CLI引数を関知しない）。
-    pub fn fmt_reorder(&self) -> bool {
-        self.fmt_reorder
     }
 }
 
@@ -275,7 +263,6 @@ mod tests {
             include: raw.rules.include.into_iter().collect(),
             exclude: raw.rules.exclude.into_iter().collect(),
             language: Language::default(),
-            fmt_reorder: true,
         };
         assert!(cfg.is_enabled("obsolete-type"));
     }
@@ -286,7 +273,6 @@ mod tests {
             include: ["obsolete-type".to_string()].into_iter().collect(),
             exclude: HashSet::new(),
             language: Language::default(),
-            fmt_reorder: true,
         };
         assert!(cfg.is_enabled("obsolete-type"));
         assert!(!cfg.is_enabled("missing-waytype"));
@@ -298,7 +284,6 @@ mod tests {
             include: ["obsolete-type".to_string()].into_iter().collect(),
             exclude: ["obsolete-type".to_string()].into_iter().collect(),
             language: Language::default(),
-            fmt_reorder: true,
         };
         assert!(!cfg.is_enabled("obsolete-type"));
     }
@@ -309,7 +294,6 @@ mod tests {
             include: HashSet::new(),
             exclude: ["duplicate-key".to_string()].into_iter().collect(),
             language: Language::default(),
-            fmt_reorder: true,
         };
         assert!(!cfg.is_enabled("duplicate-key"));
         assert!(cfg.is_enabled("obsolete-type"));
@@ -329,7 +313,6 @@ mod tests {
             include: raw.rules.include.into_iter().collect(),
             exclude: raw.rules.exclude.into_iter().collect(),
             language: Language::default(),
-            fmt_reorder: true,
         };
         assert!(cfg.is_enabled("obsolete-type"));
         assert!(!cfg.is_enabled("missing-waytype"));
@@ -375,49 +358,46 @@ mod tests {
         assert_eq!(cfg.language(), Language::English);
     }
 
+    /// 第11弾: `fmt`のreorderは専用設定ではなく`[rules] exclude`に
+    /// `"fmt-reorder-applied"`を書くことで無効化する方式に変わった。
+    /// `LintConfig`自体はこのcode名を特別扱いしないため（`is_enabled`は
+    /// あらゆるcode文字列に対して同じ意味論で動く）、ここでは
+    /// 「excludeに書けば無効、書かなければ有効（デフォルトtrue相当）」という
+    /// 一般的なinclude/exclude意味論がfmt-reorder-appliedにもそのまま
+    /// 適用されることを固定する。
     #[test]
-    fn all_enabled_defaults_fmt_reorder_to_true() {
-        assert!(LintConfig::all_enabled().fmt_reorder());
+    fn all_enabled_treats_fmt_reorder_applied_as_enabled_by_default() {
+        assert!(LintConfig::all_enabled().is_enabled("fmt-reorder-applied"));
     }
 
     #[test]
-    fn missing_fmt_section_defaults_reorder_to_true_via_load_from() {
-        let tmp = std::env::temp_dir().join("dat_linter_test_no_fmt_section.toml");
-        std::fs::write(&tmp, "[rules]\ninclude = []\n").unwrap();
+    fn excluding_fmt_reorder_applied_disables_it_via_load_from() {
+        let tmp = std::env::temp_dir().join("dat_linter_test_exclude_fmt_reorder_applied.toml");
+        std::fs::write(&tmp, "[rules]\nexclude = [\"fmt-reorder-applied\"]\n").unwrap();
         let cfg = LintConfig::load_from(&tmp).unwrap();
         let _ = std::fs::remove_file(&tmp);
-        assert!(cfg.fmt_reorder());
+        assert!(!cfg.is_enabled("fmt-reorder-applied"));
     }
 
     #[test]
-    fn explicit_reorder_false_is_honored_via_load_from() {
-        let tmp = std::env::temp_dir().join("dat_linter_test_reorder_false.toml");
-        std::fs::write(&tmp, "[fmt]\nreorder = false\n").unwrap();
-        let cfg = LintConfig::load_from(&tmp).unwrap();
-        let _ = std::fs::remove_file(&tmp);
-        assert!(!cfg.fmt_reorder());
-    }
-
-    #[test]
-    fn explicit_reorder_true_is_honored_via_load_from() {
-        let tmp = std::env::temp_dir().join("dat_linter_test_reorder_true.toml");
-        std::fs::write(&tmp, "[fmt]\nreorder = true\n").unwrap();
-        let cfg = LintConfig::load_from(&tmp).unwrap();
-        let _ = std::fs::remove_file(&tmp);
-        assert!(cfg.fmt_reorder());
-    }
-
-    #[test]
-    fn generate_default_config_file_includes_fmt_reorder_true() {
-        let tmp = std::env::temp_dir().join("dat_linter_test_generated_config_fmt.toml");
+    fn generate_default_config_file_has_no_fmt_section() {
+        let tmp = std::env::temp_dir().join("dat_linter_test_generated_config_no_fmt.toml");
         let _ = std::fs::remove_file(&tmp);
         generate_default_config_file(&tmp).expect("生成に失敗");
         let content = std::fs::read_to_string(&tmp).unwrap();
         let _ = std::fs::remove_file(&tmp);
-        assert!(content.contains("[fmt]"));
-        assert!(content.contains("reorder"));
+        assert!(
+            !content.contains("[fmt]"),
+            "[fmt] セクションは廃止されたため生成内容に含まれないべき: {content}"
+        );
+        assert!(
+            content.contains("fmt-reorder-applied"),
+            "fmt-reorder-appliedによる無効化方法の案内コメントが含まれるべき: {content}"
+        );
+        // 生成された内容自体が正しくパースできることも確認する（[fmt]セクション無しで
+        // RawConfigがデフォルト値にフォールバックすること）。
         let raw: RawConfig = toml::from_str(&content).expect("生成された設定のパースに失敗");
-        assert_eq!(raw.fmt.reorder, Some(true));
+        assert_eq!(raw.general.language.as_deref(), Some("en"));
     }
 
     /// 設定ファイル自体が存在しない場合の読み込みエラーメッセージは、
@@ -457,7 +437,7 @@ mod tests {
     }
 
     #[test]
-    fn generate_default_config_file_writes_template_with_both_sections() {
+    fn generate_default_config_file_writes_template_with_general_and_rules_sections() {
         let tmp = std::env::temp_dir().join("dat_linter_test_generated_config.toml");
         let _ = std::fs::remove_file(&tmp);
         generate_default_config_file(&tmp).expect("生成に失敗");

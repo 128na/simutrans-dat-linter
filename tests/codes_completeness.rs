@@ -63,6 +63,9 @@ fn all_codes_matches_actual_source_usage() {
     }
     source_files.push(root.join("src").join("couplings.rs"));
     source_files.push(root.join("src").join("formatter").join("mod.rs"));
+    // 第11弾: main.rs::fmt_one_fileが"fmt-reorder-applied"を発行するようになった
+    // （専用の[fmt] reorder設定を廃止し、reorder自体をcodeとして表現する方式に変更）。
+    source_files.push(root.join("src").join("main.rs"));
 
     assert!(
         source_files.len() >= 3,

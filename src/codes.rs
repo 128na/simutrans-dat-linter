@@ -838,6 +838,28 @@ pub const ALL_CODES: &[CodeInfo] = &[
         fix_ja: "clip_belowに0または1を指定してください",
         fix_en: "Specify 0 or 1 for clip_below",
     },
+    // --- fmt: src/main.rs (fmt_one_file) ---
+    CodeInfo {
+        code: "fmt-reorder-applied",
+        source: CodeSource::Fmt,
+        // 第11弾: 専用の[fmt] reorder設定を廃止し、reorder自体をこのcodeで表現する
+        // ([rules] include/excludeの仕組みに統合)。main.rs::fmt_one_fileがreorderを
+        // 実際に適用したタイミングでDiagnostic::info("fmt-reorder-applied", ...)を発行する。
+        why_ja: "fmtが慣習的な順序へキーを並び替える機能を表すcodeです。デフォルトで有効\
+            （`--no-reorder`未指定・このcodeが`[rules] exclude`に無い場合）で、`fmt`実行時に\
+            実際に並び替えを適用したことを示す情報表示（Diagnostic::info）として発行されます。\
+            エラーや警告ではありません",
+        why_en: "This code represents fmt's key-reordering feature itself. It is enabled by \
+            default (unless --no-reorder is passed or this code is listed in [rules] exclude), \
+            and is emitted as an informational message (Diagnostic::info) when `fmt` actually \
+            applies reordering. It is not an error or warning",
+        fix_ja: "恒久的に無効化したい場合は`[rules] exclude`にこのcode\
+            （\"fmt-reorder-applied\"）を追加してください。1回の実行だけ無効化したい場合は\
+            `--no-reorder`フラグを使ってください（`--no-reorder`はconfig設定より常に優先されます）",
+        fix_en: "To permanently disable reordering, add this code (\"fmt-reorder-applied\") to \
+            [rules] exclude. To disable it for a single invocation only, use the --no-reorder \
+            flag (--no-reorder always takes priority over the config setting)",
+    },
     // --- fmt: src/formatter/mod.rs ---
     CodeInfo {
         code: "fmt-leading-space-line",
