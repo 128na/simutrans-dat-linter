@@ -1,0 +1,10 @@
+# Copyright header comment at file start
+# second line of the header
+Obj=building
+# single comment right before type
+type=station
+Name = Hoge
+
+# comment separated from its Pair by a blank line
+enables_pax=1
+copyright=fuga

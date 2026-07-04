@@ -50,6 +50,168 @@ type=station
     assert_eq!(out, expected);
 }
 
+// --- --reorder: コメント行を直後のPair行に紐づける（第4弾で追加） ---------------
+
+#[test]
+fn reorder_binds_single_comment_to_following_pair() {
+    // "single comment right before type" は type=station に紐づき、並び替え後も
+    // type=station の直前に一緒に移動する。
+    let parsed = formatter::parse_entries(&read("fmt_comment_binding.dat"), Language::default());
+    let (out, warnings) =
+        formatter::format_reordered(&parsed.entries, "building", Language::default());
+    assert!(
+        warnings.is_empty(),
+        "全コメントが紐づけ済みのfixtureで警告が出ないべき: {warnings:?}"
+    );
+    assert!(
+        out.contains("# single comment right before type\ntype=station\n"),
+        "単一コメントがtype=の直前に来るべき: {out:?}"
+    );
+}
+
+#[test]
+fn reorder_binds_consecutive_comment_block_to_following_pair() {
+    // ファイル先頭の2行連続コメント（"Copyright header..." / "second line..."）は
+    // ブロックとしてobj=buildingに紐づき、並び替え後の出力先頭に両方とも残る
+    // （obj は BUILDING_NAMED の先頭キーのため、結果的にファイル先頭に来る）。
+    let parsed = formatter::parse_entries(&read("fmt_comment_binding.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "building", Language::default());
+    let expected_header =
+        "# Copyright header comment at file start\n# second line of the header\nobj=building\n";
+    assert!(
+        out.starts_with(expected_header),
+        "連続する2行のヘッダーコメントが両方ともobj=の直前・出力先頭に残るべき: {out:?}"
+    );
+}
+
+#[test]
+fn reorder_binds_comment_across_blank_line_to_following_pair() {
+    // "comment separated from its Pair by a blank line" とenables_pax=1の間には
+    // 空行が1行挟まっているが、空行は読み飛ばされ紐づけは成立する
+    // （出力には空行は含まれない）。
+    let parsed = formatter::parse_entries(&read("fmt_comment_binding.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "building", Language::default());
+    assert!(
+        out.contains("# comment separated from its Pair by a blank line\nenables_pax=1\n"),
+        "空行を挟んだコメントもenables_pax=の直前に紐づくべき: {out:?}"
+    );
+}
+
+#[test]
+fn reorder_comment_binding_matches_full_expected_output() {
+    // 上記3つの個別ケースを統合した、fmt_comment_binding.dat全体の期待出力。
+    let parsed = formatter::parse_entries(&read("fmt_comment_binding.dat"), Language::default());
+    let (out, warnings) =
+        formatter::format_reordered(&parsed.entries, "building", Language::default());
+    assert!(warnings.is_empty(), "予期しない警告: {warnings:?}");
+    let expected = "\
+# Copyright header comment at file start
+# second line of the header
+obj=building
+name=Hoge
+copyright=fuga
+# single comment right before type
+type=station
+# comment separated from its Pair by a blank line
+enables_pax=1
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn reorder_drops_comment_immediately_followed_by_malformed_line() {
+    // "orphan_comment_then_malformed"（コメント直後がMalformed行）は、
+    // コメント・不正行ともにdropされ、削除件数warningに反映される。
+    let text = "\
+Obj=way
+image[-]=road.png.0.0
+waytype=road
+# this comment is immediately followed by a malformed line
+this line has no equals sign
+";
+    let parsed = formatter::parse_entries(text, Language::default());
+    let (out, warnings) = formatter::format_reordered(&parsed.entries, "way", Language::default());
+    assert!(
+        !out.contains("this comment is immediately followed"),
+        "Malformed直前のコメントは出力に残らないべき: {out:?}"
+    );
+    assert!(
+        !out.contains("this line has no equals sign"),
+        "Malformed行自体も出力に残らないべき: {out:?}"
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("2") && w.contains("dropped")),
+        "コメント+Malformedの2件がdropされたことがwarningに反映されるべき: {warnings:?}"
+    );
+}
+
+#[test]
+fn reorder_does_not_bind_comment_across_segment_boundary() {
+    // 区切り行(`-----`)の直前にあるコメントは、次のセグメントのPairには紐づかない
+    // （format_reorderedがセグメントごとに独立してformat_reordered_segmentを
+    // 呼ぶため、セグメントをまたいだ紐づけは構造上発生しない）。
+    let text = "\
+name=StageA
+obj=building
+copyright=fuga
+type=station
+# this trailing comment belongs to segment 1, not segment 2
+-------------------------------------------------------------------------------
+name=StageB
+obj=building
+copyright=fuga
+type=station
+";
+    let parsed = formatter::parse_entries(text, Language::default());
+    let (out, warnings) =
+        formatter::format_reordered(&parsed.entries, "building", Language::default());
+    assert!(
+        !out.contains("this trailing comment belongs to segment 1"),
+        "セグメント末尾の孤立コメントは次セグメントに紐づかず出力に残らないべき: {out:?}"
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("1") && w.contains("dropped")),
+        "セグメント1側で孤立した1件のコメントがdrop件数warningに出るべき: {warnings:?}"
+    );
+}
+
+#[test]
+fn reorder_keeps_each_comment_paired_with_its_own_duplicate_key_pair() {
+    // 同じキー(backimage[0][0][0][0][0])が複数回現れる場合でも、各コメントは
+    // 自分の直後のPairとペアのまま、Vec::sort_by_keyの安定ソート性により
+    // 元の相対順序を保って出力される。
+    let text = "\
+Obj=building
+name=Multi
+copyright=fuga
+type=station
+# comment for first backimage entry
+backimage[0][0][0][0][0]=first.png.0.0
+# comment for second backimage entry (same bracket index, duplicate key)
+backimage[0][0][0][0][0]=second.png.0.0
+";
+    let parsed = formatter::parse_entries(text, Language::default());
+    let (out, warnings) =
+        formatter::format_reordered(&parsed.entries, "building", Language::default());
+    assert!(warnings.is_empty(), "予期しない警告: {warnings:?}");
+    let expected_tail = "\
+# comment for first backimage entry
+backimage[0][0][0][0][0]=first.png.0.0
+# comment for second backimage entry (same bracket index, duplicate key)
+backimage[0][0][0][0][0]=second.png.0.0
+";
+    assert!(
+        out.ends_with(expected_tail),
+        "重複キーでも各コメントが自分のPairとペアのまま、元の相対順序で出力されるべき: {out:?}"
+    );
+}
+
 #[test]
 fn preserve_order_does_not_warn_on_separator_line() {
     // `-`始まりの区切り行はreal makeobjでも正常なobj定義の終端マーカーであり、

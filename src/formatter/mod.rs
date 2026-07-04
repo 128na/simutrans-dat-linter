@@ -149,6 +149,67 @@ pub fn format_reordered(entries: &[Entry], obj: &str, lang: Language) -> (String
     (out, warnings)
 }
 
+/// 「直前に紐づいたコメント（0件以上）+ Pair」を1単位として扱うグループ化・
+/// 並び替え単位。コメントはこの`Pair`と一緒に移動し、出力時は`comments`を
+/// `key=value`の直前にそのまま復元する。
+struct PairGroup<'a> {
+    comments: Vec<&'a str>,
+    key: &'a String,
+    value: &'a String,
+}
+
+/// `entries`を走査し、「`#`始まりコメント（連続可、間の空行はスキップして
+/// 読み飛ばす）が直後に現れる最初の`Entry::Pair`に紐づく」というユーザー承認済みの
+/// 仕様に従って`PairGroup`のリストへ変換する。紐づけ先が見つからなかった
+/// コメント・`Malformed`・`SkippedLeadingSpace`の行数を`dropped`として返す
+/// （これらは`--reorder`後の位置が一意に決まらないため出力から削除される）。
+///
+/// 紐づけが成立しない具体的なケース（ユーザー承認済みの仕様）:
+/// - 保留中のコメントの直後に`Malformed`/`SkippedLeadingSpace`が来た場合
+///   （その行自体とコメントは道連れでdropされる）
+/// - セグメント（`format_reordered`が`Entry::Separator`で分割した単位）の末尾まで
+///   `Pair`が現れなかった場合（末尾コメントとして残りcommentsもdropされる。
+///   `format_reordered`が呼び出し元でセグメントごとに独立してこの関数を呼ぶため、
+///   セグメント境界をまたいだ紐づけは構造上発生しない）
+fn collect_pair_groups<'a>(entries: &'a [Entry]) -> (Vec<PairGroup<'a>>, usize) {
+    let mut groups = Vec::new();
+    let mut pending_comments: Vec<&'a str> = Vec::new();
+    let mut dropped = 0usize;
+
+    for entry in entries {
+        match entry {
+            Entry::Comment(s) => pending_comments.push(s.as_str()),
+            Entry::Blank => {
+                // 保留中のコメントとPairの間の空行は読み飛ばすだけで、
+                // 紐づけ判定には影響しない（保留中コメントはリセットしない）。
+            }
+            Entry::Pair { key, value } => {
+                groups.push(PairGroup {
+                    comments: std::mem::take(&mut pending_comments),
+                    key,
+                    value,
+                });
+            }
+            Entry::SkippedLeadingSpace(_) | Entry::Malformed(_) => {
+                // 保留中のコメント（あれば）とこの行自体は道連れでdropする。
+                dropped += pending_comments.len() + 1;
+                pending_comments.clear();
+            }
+            Entry::Separator(_) => {
+                // format_reorderedがセグメント分割後に呼ぶため、このentries内には
+                // 通常出現しない。念のため保留中コメントを道連れdropする防御的分岐。
+                dropped += pending_comments.len();
+                pending_comments.clear();
+            }
+        }
+    }
+
+    // セグメント末尾まで紐づけ先が見つからなかった末尾コメント。
+    dropped += pending_comments.len();
+
+    (groups, dropped)
+}
+
 fn format_reordered_segment(
     entries: &[Entry],
     spec: &OrderSpec,
@@ -156,16 +217,7 @@ fn format_reordered_segment(
 ) -> (String, Vec<String>) {
     let mut warnings = Vec::new();
 
-    let mut pairs: Vec<(&String, &String)> = Vec::new();
-    let mut dropped = 0usize;
-
-    for entry in entries {
-        match entry {
-            Entry::Pair { key, value } => pairs.push((key, value)),
-            Entry::Blank => {}
-            _ => dropped += 1,
-        }
-    }
+    let (pairs, dropped) = collect_pair_groups(entries);
     if dropped > 0 {
         warnings.push(t!(lang,
             ja: "--reorder: コメント/スキップ行/不正行 {dropped} 件は並び替え後の位置が一意に決まらないため出力から削除されました",
@@ -180,37 +232,34 @@ fn format_reordered_segment(
         .iter()
         .position(|s| matches!(s, Section::Unknown));
 
-    let mut groups: Vec<Vec<(&String, &String)>> =
-        (0..spec.sections.len()).map(|_| Vec::new()).collect();
+    let mut groups: Vec<Vec<PairGroup>> = (0..spec.sections.len()).map(|_| Vec::new()).collect();
 
-    for (k, v) in &pairs {
-        let mut placed = false;
-        for (i, section) in spec.sections.iter().enumerate() {
-            let matched = match section {
-                Section::Named(names) => names.contains(&k.as_str()),
-                Section::Bracket(prefixes) => prefixes.iter().any(|p| k.starts_with(p)),
-                Section::Unknown => false,
-            };
-            if matched {
-                groups[i].push((k, v));
-                placed = true;
-                break;
-            }
-        }
-        if !placed && let Some(i) = unknown_idx {
-            groups[i].push((k, v));
+    for pair in pairs {
+        let matched_idx = spec.sections.iter().position(|section| match section {
+            Section::Named(names) => names.contains(&pair.key.as_str()),
+            Section::Bracket(prefixes) => prefixes.iter().any(|p| pair.key.starts_with(p)),
+            Section::Unknown => false,
+        });
+        // matched_idxが無い場合はunknown_idxへフォールバックする。どちらも無い
+        // （このOrderSpecにSection::Unknownが無い）場合、このpairはどのセクションにも
+        // 属せず出力から漏れる。既存のOrderSpec設計（全obj種別が終端にSection::Unknownを
+        // 持つ）を前提とした従来の挙動をそのまま維持している。
+        if let Some(i) = matched_idx.or(unknown_idx) {
+            groups[i].push(pair);
         }
     }
 
     for (i, section) in spec.sections.iter().enumerate() {
         match section {
             Section::Named(names) => {
-                groups[i].sort_by_key(|(k, _)| names.iter().position(|n| n == k).unwrap());
+                groups[i].sort_by_key(|pair| {
+                    names.iter().position(|n| n == &pair.key.as_str()).unwrap()
+                });
             }
             Section::Bracket(_) => {
-                groups[i].sort_by_key(|(k, _)| (bracket_indices(k), (*k).clone()));
+                groups[i].sort_by_key(|pair| (bracket_indices(pair.key), pair.key.clone()));
             }
-            Section::Unknown => {} // 挿入順（パース順）を保持
+            Section::Unknown => {} // 挿入順（パース順）を保持。安定ソート前提でコメント対応も保たれる
         }
     }
 
@@ -224,10 +273,14 @@ fn format_reordered_segment(
             out.push('\n');
         }
         first_group = false;
-        for (k, v) in group {
-            out.push_str(k);
+        for pair in group {
+            for comment in &pair.comments {
+                out.push_str(comment);
+                out.push('\n');
+            }
+            out.push_str(pair.key);
             out.push('=');
-            out.push_str(v.trim());
+            out.push_str(pair.value.trim());
             out.push('\n');
         }
     }
