@@ -265,8 +265,34 @@ fn format_reordered_segment(
     for (i, section) in spec.sections.iter().enumerate() {
         match section {
             Section::Named(names) => {
+                // 第16弾（code smellレビュー・タスク12）: この`.unwrap()`は
+                // 「`groups[i]`に入っているpairは全て、このループの`section`
+                // （＝`spec.sections[i]`）が`Section::Named(names)`である場合の
+                // `names.contains(&pair.key.as_str())`を満たす」という不変条件に
+                // 支えられている。根拠: 上のマッチングループ（250-263行目付近）で
+                // `matched_idx`は`spec.sections.iter().position(...)`により、
+                // `Section::Named(names)`にマッチしたのと**同じ`spec.sections`の
+                // インデックス`i`**として決まる。`matched_idx`が`None`の場合の
+                // フォールバック先`unknown_idx`は`Section::Unknown`のインデックス
+                // のみを指す（`spec.sections.iter().position(|s| matches!(s,
+                // Section::Unknown))`）ため、`Named`セクションへは`matched_idx`
+                // （＝`names.contains(...)`が真だった場合）経由でしか入らない。
+                // よってこのループで`spec.sections[i]`が`Section::Named(names)`
+                // である以上、`groups[i]`内の全pairについて`names.iter().position`
+                // は必ず`Some`になる（`unwrap()`がpanicすることはない）。
+                // `debug_assert!`で、この不変条件が将来（`order.rs`のOrderSpec定義や
+                // 上のマッチングロジックの変更で）壊れた場合にdebugビルドで
+                // 早期検出できるようにしている（release buildの挙動は変更しない）。
                 groups[i].sort_by_key(|pair| {
-                    names.iter().position(|n| n == &pair.key.as_str()).unwrap()
+                    let pos = names.iter().position(|n| n == &pair.key.as_str());
+                    debug_assert!(
+                        pos.is_some(),
+                        "invariant violated: pair key {:?} was routed into a Section::Named \
+                         group but is not contained in that section's name list {:?}",
+                        pair.key,
+                        names
+                    );
+                    pos.unwrap_or(usize::MAX)
                 });
             }
             Section::Bracket(_) => {
@@ -311,4 +337,75 @@ fn bracket_indices(key: &str) -> Vec<i64> {
         .split("][")
         .map(|s| s.parse::<i64>().unwrap_or(0))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 第16弾（タスク12）: `format_reordered_segment`内の
+    /// `names.iter().position(|n| n == &pair.key.as_str()).unwrap()`が
+    /// 依拠する不変条件（「`groups[i]`に入るpairは、`spec.sections[i]`が
+    /// `Section::Named(names)`である場合、必ず`names`のいずれかにマッチする」）を、
+    /// 複数の`Named`セクションを持つ合成`OrderSpec`で直接検証する。
+    ///
+    /// `SECTION_A`と`SECTION_B`は意図的に異なるキー集合を持ち、`SECTION_B`にしか
+    /// 無いキー（`only_in_b`）を混在させることで、「ある1つのpairが複数の
+    /// Namedセクションのどちらにもマッチしうる」ような紛らわしい状況でも、
+    /// マッチング（`matched_idx`算出）とソート（`names.iter().position`）が
+    /// 常に同じ`spec.sections`インデックスを参照するために食い違わないことを確認する。
+    #[test]
+    fn named_section_sort_never_panics_and_orders_by_declared_position() {
+        const SECTION_A: &[&str] = &["obj", "name"];
+        const SECTION_B: &[&str] = &["waytype", "only_in_b", "cost"];
+        static SPEC: OrderSpec = OrderSpec {
+            sections: &[
+                Section::Named(SECTION_A),
+                Section::Named(SECTION_B),
+                Section::Unknown,
+            ],
+        };
+
+        // わざと宣言順とは逆順・セクションも混在させて入力する。
+        let text = "cost=100\nobj=way\nonly_in_b=x\nname=Test\nwaytype=road\nunmatched_key=1\n";
+        let parsed = parse_entries(text, Language::default());
+        let (out, warnings) = format_reordered_segment(&parsed.entries, &SPEC, Language::default());
+
+        // SECTION_Aは宣言順どおりobj, nameの順。SECTION_Bはwaytype, only_in_b, costの順。
+        // Unknownは挿入順（parsed.entries内での出現順）を維持するので unmatched_key のみ。
+        assert_eq!(
+            out,
+            "obj=way\nname=Test\n\nwaytype=road\nonly_in_b=x\ncost=100\n\nunmatched_key=1\n"
+        );
+        // コメント/不正行等が無いためdropは発生しない。
+        assert!(warnings.is_empty());
+    }
+
+    /// 同一キー文字列が2つの`Named`セクションの両方に含まれるという（実際の
+    /// `order.rs`定義には存在しない）境界ケースでも、`matched_idx`は
+    /// `spec.sections.iter().position(...)`が返す**最初に一致したセクション**の
+    /// インデックスに決まるため、そのpairは必ずそのセクションの`names`に
+    /// 含まれる（後続のセクションと重複していても後続セクションでの
+    /// `position`探索には使われない）ことを確認する。
+    #[test]
+    fn key_present_in_two_named_sections_routes_to_first_match_without_panicking() {
+        const SECTION_A: &[&str] = &["obj", "shared_key"];
+        const SECTION_B: &[&str] = &["shared_key", "waytype"];
+        static SPEC: OrderSpec = OrderSpec {
+            sections: &[
+                Section::Named(SECTION_A),
+                Section::Named(SECTION_B),
+                Section::Unknown,
+            ],
+        };
+
+        let text = "shared_key=1\nobj=way\nwaytype=road\n";
+        let parsed = parse_entries(text, Language::default());
+        let (out, _warnings) =
+            format_reordered_segment(&parsed.entries, &SPEC, Language::default());
+
+        // shared_keyはSECTION_A（最初に一致）へ入り、そこでのposition順
+        // （obj, shared_key）に従ってobjの後に置かれる。SECTION_Bにはwaytypeのみ残る。
+        assert_eq!(out, "obj=way\nshared_key=1\n\nwaytype=road\n");
+    }
 }
