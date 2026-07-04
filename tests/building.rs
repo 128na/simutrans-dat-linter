@@ -28,6 +28,10 @@ fn has_error(diags: &[(Severity, &str)], code: &str) -> bool {
         .any(|(s, c)| *s == Severity::Error && *c == code)
 }
 
+fn has(diags: &[(Severity, &str)], severity: Severity, code: &str) -> bool {
+    diags.iter().any(|(s, c)| *s == severity && *c == code)
+}
+
 #[test]
 fn valid_building_has_no_errors_or_warnings() {
     let diags = check("roundtrip_test.dat");
@@ -84,6 +88,27 @@ fn missing_cursor_and_icon_is_detected() {
         &check("broken_no_icon.dat"),
         "missing-cursor-icon"
     ));
+}
+
+#[test]
+fn cursor_icon_not_applicable_for_res_com_ind_cur_mon_tow() {
+    // 第7弾（項目5）: `builder/hausbauer.cc`を根拠に再調査した結果、
+    // res/com/ind/cur/mon/towはプレイヤーが選ぶビルドメニューに
+    // そもそも現れない（hausbauer_t::fill_menu()はstation_buildingリスト
+    // のみを読み、これらの種別は別リストにしか登録されない）ため、
+    // cursor/icon省略はerrorではなくinfoにすべき。
+    // pak128実データ（cityhouses/com/com_09_18.dat: type=com、cursor/icon
+    // 無し）を最小再現したフィクスチャで、missing-cursor-iconが出ず、
+    // 代わりにcursor-icon-not-applicableが出ることを確認する。
+    let diags = check("building_res_no_cursor_icon_valid.dat");
+    assert!(
+        !has_error(&diags, "missing-cursor-icon"),
+        "type=resはビルドメニュー対象外なのでmissing-cursor-iconを出すべきではない: {diags:?}"
+    );
+    assert!(
+        has(&diags, Severity::Info, "cursor-icon-not-applicable"),
+        "type=resではcursor-icon-not-applicable(info)を出すべき: {diags:?}"
+    );
 }
 
 #[test]

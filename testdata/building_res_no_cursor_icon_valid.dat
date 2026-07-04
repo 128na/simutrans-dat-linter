@@ -1,0 +1,8 @@
+obj=building
+name=test_building_res_no_cursor_icon
+copyright=AI addon test
+type=res
+level=1
+climates=mediterran,temperate,tundra,rocky
+
+backimage[0][0][0][0][0]=station_cube.png.0.0

@@ -34,6 +34,10 @@ fn has_warning(diags: &[(Severity, &str)], code: &str) -> bool {
         .any(|(s, c)| *s == Severity::Warning && *c == code)
 }
 
+fn has(diags: &[(Severity, &str)], severity: Severity, code: &str) -> bool {
+    diags.iter().any(|(s, c)| *s == severity && *c == code)
+}
+
 fn assert_no_errors_or_warnings(diags: &[(Severity, &str)]) {
     let errors: Vec<_> = diags
         .iter()
@@ -74,11 +78,24 @@ fn zero_dims_is_detected() {
 }
 
 #[test]
-fn missing_cursor_icon_is_detected() {
-    assert!(has_error(
-        &check("factory_missing_cursor_icon.dat"),
-        "missing-cursor-icon"
-    ));
+fn cursor_icon_not_applicable_for_factory() {
+    // 第7弾（項目5）: `builder/hausbauer.cc`のsuccessfully_loaded()は
+    // `case building_desc_t::factory: break;`でfactoryをどのリストにも登録せず、
+    // プレイヤーが選ぶビルドメニュー（fill_menu()がstation_buildingのみを読む）
+    // には現れない。配置は`builder/fabrikbauer.cc`（cursorへの言及が一切無い、
+    // 別モジュール）が行うため、missing-cursor-iconをerrorとするのは誤りだった。
+    // このfixtureは元々「missing-cursor-iconが正しく検出される」ことを確認する
+    // 回帰テストだったが、再調査の結果、cursor/icon省略はerrorではなくinfoの
+    // cursor-icon-not-applicableになるべきと判明したため期待値を修正した。
+    let diags = check("factory_missing_cursor_icon.dat");
+    assert!(
+        !has_error(&diags, "missing-cursor-icon"),
+        "factoryはビルドメニュー対象外なのでmissing-cursor-iconを出すべきではない: {diags:?}"
+    );
+    assert!(
+        has(&diags, Severity::Info, "cursor-icon-not-applicable"),
+        "factoryではcursor-icon-not-applicable(info)を出すべき: {diags:?}"
+    );
 }
 
 #[test]

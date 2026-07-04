@@ -372,9 +372,29 @@ impl Rule for DimsRule {
 
 /// building_writer.cc:372-380: `cursor`/`icon`がどちらも空文字列だと
 /// `cursorskin_writer_t::instance()->write_obj`自体が呼ばれない（fatal/warning
-/// にはならない）。building.rsの`CursorIconRule`と同様、ビルドメニュー非表示の
-/// リスクをwarningではなくerrorとして扱う（buildingと同じ実機観察の根拠を
-/// factoryにも適用する。factoryもビルドメニューから選択して建てる建物の一種）。
+/// にはならない）。
+///
+/// REJECTED（第7弾で再調査、errorからinfoへ格下げ）: 当初はbuilding.rsの
+/// `CursorIconRule`と同じ理由で「ビルドメニューに表示されない」ことをerrorとして
+/// 扱っていたが、`builder/hausbauer.cc`/`builder/fabrikbauer.cc`を根拠に
+/// 再調査した結果、**factory（`building_desc_t::factory`）はそもそも
+/// プレイヤーが選ぶビルドメニューに現れない**ことを確認した:
+/// - `hausbauer_t::successfully_loaded()`のswitch文（184行目）は
+///   `case building_desc_t::factory: break;`で、`station_building`を含む
+///   どのリストにも登録しない
+/// - プレイヤーが選択できる唯一のビルドメニュー経路
+///   `hausbauer_t::fill_menu()`は`station_building`（`dock`/`flat_dock`/
+///   `depot`/`generic_stop`/`generic_extension`のみ）しか読まない
+/// - factoryの実際の配置は`builder/fabrikbauer.cc`（cursorへの言及が
+///   一つも無い、全く別のモジュール）が都市の産業需要等に応じて行う
+///
+/// 従って、当初のerror根拠（building.rsと同じ「ビルドメニュー非表示」）は
+/// factoryには当てはまらない誤りだった。pak128実データでも`obj=factory`の
+/// 全ファイル（`type=`を明示しない、通常のfactory）でcursor/iconが
+/// 一貫して省略されていることを確認済み（詳細はbuilding.rsの
+/// `TYPES_WITHOUT_BUILD_MENU`冒頭コメント参照。factoryはfactory-type-override
+/// （`type=`を明示した場合の別ルール）が無い限り常にこの一覧のresidential系と
+/// 同じ扱いになる）。
 struct CursorIconRule;
 impl Rule for CursorIconRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
@@ -386,12 +406,15 @@ impl Rule for CursorIconRule {
         )];
 
         if cursor.is_empty() && icon.is_empty() {
-            diags.push(Diagnostic::error(
-                "missing-cursor-icon",
+            diags.push(Diagnostic::info(
+                "cursor-icon-not-applicable",
                 t!(ctx.language,
-                    ja: "cursor と icon が両方とも未指定です。makeobjはエラーを出さずにビルドしますが、ゲーム内のビルドメニューに表示されません",
-                    en: "Both cursor and icon are unspecified. makeobj builds without error, but the \
-                         object will not appear in the in-game build menu",
+                    ja: "cursor と icon が両方とも未指定ですが、factory（obj=factory）は\
+                         プレイヤーが選ぶビルドメニューに現れない種別（都市の産業需要等に応じて\
+                         自動配置される）のため問題ありません",
+                    en: "Both cursor and icon are unspecified, but factory (obj=factory) is a \
+                         category that never appears in the player-facing build menu (placed \
+                         automatically based on city industry demand, etc.), so this is not an issue",
                 ),
             ));
             return diags;
