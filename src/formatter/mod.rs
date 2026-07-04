@@ -1,3 +1,4 @@
+use crate::diagnostics::Diagnostic;
 use crate::i18n::{Language, t};
 use crate::parser::format_key;
 
@@ -25,7 +26,7 @@ pub enum Entry {
 
 pub struct ParsedDat {
     pub entries: Vec<Entry>,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<Diagnostic>,
 }
 
 pub fn parse_entries(text: &str, lang: Language) -> ParsedDat {
@@ -40,11 +41,14 @@ pub fn parse_entries(text: &str, lang: Language) -> ParsedDat {
         } else if line.starts_with('#') {
             entries.push(Entry::Comment(line.to_string()));
         } else if line.starts_with(' ') {
-            warnings.push(t!(lang,
-                ja: "line {lineno}: 行頭にスペースがあるため makeobj から無視されます（コメント扱い）: \"{line}\"",
-                en: "line {lineno}: ignored by makeobj because it starts with whitespace (treated as a comment): \"{line}\"",
-                lineno = lineno,
-                line = line,
+            warnings.push(Diagnostic::warning(
+                "fmt-leading-space-line",
+                t!(lang,
+                    ja: "line {lineno}: 行頭にスペースがあるため makeobj から無視されます（コメント扱い）: \"{line}\"",
+                    en: "line {lineno}: ignored by makeobj because it starts with whitespace (treated as a comment): \"{line}\"",
+                    lineno = lineno,
+                    line = line,
+                ),
             ));
             entries.push(Entry::SkippedLeadingSpace(line.to_string()));
         } else if line.starts_with('-') {
@@ -55,11 +59,14 @@ pub fn parse_entries(text: &str, lang: Language) -> ParsedDat {
                 value: value.to_string(),
             });
         } else {
-            warnings.push(t!(lang,
-                ja: "line {lineno}: '=' が無いため makeobj から無視されます: \"{line}\"",
-                en: "line {lineno}: ignored by makeobj because it has no '=': \"{line}\"",
-                lineno = lineno,
-                line = line,
+            warnings.push(Diagnostic::warning(
+                "fmt-malformed-line",
+                t!(lang,
+                    ja: "line {lineno}: '=' が無いため makeobj から無視されます: \"{line}\"",
+                    en: "line {lineno}: ignored by makeobj because it has no '=': \"{line}\"",
+                    lineno = lineno,
+                    line = line,
+                ),
             ));
             entries.push(Entry::Malformed(line.to_string()));
         }
@@ -112,14 +119,17 @@ pub fn format_preserve_order(entries: &[Entry]) -> String {
 /// 独立して**並び替える（全セグメントに同じ`obj`の並び順仕様を適用する。
 /// 建物の複数ステージ等、連結された定義は通常すべて同じobj種別のため）。
 /// 区切り行自体は元の位置・原文のまま復元する。
-pub fn format_reordered(entries: &[Entry], obj: &str, lang: Language) -> (String, Vec<String>) {
+pub fn format_reordered(entries: &[Entry], obj: &str, lang: Language) -> (String, Vec<Diagnostic>) {
     let mut warnings = Vec::new();
 
     let Some(spec) = order_for(obj) else {
-        warnings.push(t!(lang,
-            ja: "--reorder: obj={obj} は並び替えに未対応です。元の順序のまま出力します",
-            en: "--reorder: obj={obj} is not supported for reordering. Output uses the original order",
-            obj = obj,
+        warnings.push(Diagnostic::warning(
+            "fmt-reorder-unsupported-obj",
+            t!(lang,
+                ja: "--reorder: obj={obj} は並び替えに未対応です。元の順序のまま出力します",
+                en: "--reorder: obj={obj} is not supported for reordering. Output uses the original order",
+                obj = obj,
+            ),
         ));
         return (format_preserve_order(entries), warnings);
     };
@@ -214,16 +224,19 @@ fn format_reordered_segment(
     entries: &[Entry],
     spec: &OrderSpec,
     lang: Language,
-) -> (String, Vec<String>) {
+) -> (String, Vec<Diagnostic>) {
     let mut warnings = Vec::new();
 
     let (pairs, dropped) = collect_pair_groups(entries);
     if dropped > 0 {
-        warnings.push(t!(lang,
-            ja: "--reorder: コメント/スキップ行/不正行 {dropped} 件は並び替え後の位置が一意に決まらないため出力から削除されました",
-            en: "--reorder: {dropped} comment/skipped/malformed line(s) were dropped from the output \
-                 because their position after reordering would not be well-defined",
-            dropped = dropped,
+        warnings.push(Diagnostic::warning(
+            "fmt-reorder-lines-dropped",
+            t!(lang,
+                ja: "--reorder: コメント/スキップ行/不正行 {dropped} 件は並び替え後の位置が一意に決まらないため出力から削除されました",
+                en: "--reorder: {dropped} comment/skipped/malformed line(s) were dropped from the output \
+                     because their position after reordering would not be well-defined",
+                dropped = dropped,
+            ),
         ));
     }
 

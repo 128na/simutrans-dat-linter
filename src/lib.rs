@@ -3,6 +3,7 @@
 //! CLI 入口は `src/main.rs`。各モジュールを公開し、統合テスト（`tests/`）や
 //! 外部クレートからルール・フォーマッタ・連結制約解析を直接呼べるようにしている。
 
+pub mod codes;
 pub mod config;
 pub mod couplings;
 pub mod diagnostics;

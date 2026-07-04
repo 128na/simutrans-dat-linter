@@ -45,6 +45,8 @@ enum Command {
     Fmt(FmtArgs),
     /// 1ディレクトリ内のdatファイル群を横断的に解析する（種別は--kindで選択）
     Analyze(AnalyzeArgs),
+    /// dat_linter.toml の [rules] include/exclude に書けるcode一覧を表示する
+    List(ListArgs),
 }
 
 /// `lint`の長い説明（22obj種別の一覧を含む）。翻訳対象外、常に日本語のまま
@@ -60,6 +62,39 @@ const ANALYZE_ABOUT_JA: &str =
     "1ディレクトリ内のdatファイル群を横断的に解析する（種別は--kindで選択）";
 const ANALYZE_ABOUT_EN: &str =
     "Analyze dat files across a directory (select the analysis kind with --kind)";
+const LIST_ABOUT_JA: &str = "dat_linter.toml の [rules] include/exclude に書けるcode一覧を表示する";
+const LIST_ABOUT_EN: &str =
+    "List the codes that can be used in dat_linter.toml's [rules] include/exclude";
+
+/// 各引数の短い`help`（JA/EN）。第9弾（項目1）: 第2弾では「サブコマンドの
+/// aboutの一行説明のみ翻訳対象」と決めていたが、これは`lint`/`fmt`/`analyze`
+/// 自体の説明を指しており、個々の引数（`--kind`/`--config`/`-v`等）のhelp文字列は
+/// 対象外のまま日本語ハードコードで残っていた（analyzeは第5弾の新設時点で
+/// この整理に追随していなかった）。ここで同じ粒度（短い一行）で全引数のhelpも
+/// 翻訳対象に揃える。詳細な設計理由（複数段落のdocコメント）はソース上の
+/// コメントとして残し、`--help`に出す文言自体は短い一文に統一する。
+const LINT_PATH_HELP_JA: &str =
+    "単一ファイル・ディレクトリ・globパターン（例 `refs/*.dat`, `refs/**/*.dat`）";
+const LINT_PATH_HELP_EN: &str =
+    "A single file, directory, or glob pattern (e.g. `refs/*.dat`, `refs/**/*.dat`)";
+const LINT_VERBOSE_HELP_JA: &str = "-v: info まで表示 / -vv: debug まで表示";
+const LINT_VERBOSE_HELP_EN: &str = "-v: show up to info / -vv: show up to debug";
+const CONFIG_HELP_JA: &str = "ルールのinclude/exclude等の設定ファイル（TOML）。省略時はカレントディレクトリの dat_linter.toml を自動探索する";
+const CONFIG_HELP_EN: &str = "Configuration file (TOML) for rule include/exclude etc. If omitted, dat_linter.toml in the current directory is auto-discovered";
+const FMT_PATH_HELP_JA: &str = "単一ファイル・ディレクトリ・globパターン（例 `refs/*.dat`, `refs/**/*.dat`）。複数ファイルに解決された場合は --write が必須";
+const FMT_PATH_HELP_EN: &str = "A single file, directory, or glob pattern (e.g. `refs/*.dat`, `refs/**/*.dat`). --write is required when multiple files match";
+const FMT_NO_REORDER_HELP_JA: &str =
+    "並び替えを無効化し、元の行順を保持する（configの[fmt] reorder設定をこの実行に限り上書き）";
+const FMT_NO_REORDER_HELP_EN: &str = "Disable reordering and keep the original line order (overrides [fmt] reorder for this run only)";
+const FMT_WRITE_HELP_JA: &str = "フォーマット結果をファイルへ書き込む";
+const FMT_WRITE_HELP_EN: &str = "Write the formatted output back to the file";
+const ANALYZE_DIR_HELP_JA: &str = "解析対象のディレクトリ";
+const ANALYZE_DIR_HELP_EN: &str = "Directory to analyze";
+const ANALYZE_KIND_HELP_JA: &str =
+    "解析種別。現状は coupling（obj=vehicle の連結制約解析）のみ対応";
+const ANALYZE_KIND_HELP_EN: &str = "Analysis kind. Currently only `coupling` (obj=vehicle coupling constraint analysis) is supported";
+const LIST_SOURCE_HELP_JA: &str = "表示するcodeの由来を絞り込む（省略時は全て表示）";
+const LIST_SOURCE_HELP_EN: &str = "Filter which source's codes to show (omit to show all)";
 
 /// `Cli::command()`が返す`clap::Command`の短い`about`を言語に応じて上書きする。
 /// `long_about`（22obj種別一覧を含む長文）には触れない（翻訳対象外のため常に日本語）。
@@ -69,10 +104,19 @@ const ANALYZE_ABOUT_EN: &str =
 /// そのものを呼ぶと事前に言語を反映する機会が無い。この関数を`Cli::command()`の
 /// 戻り値に適用してから`.get_matches()`することで、`--help`表示にも
 /// 翻訳後の文言を反映できる（`main()`参照）。
+///
+/// 第9弾（項目1）でサブコマンドのaboutと同じ仕組み（`mut_subcommand`）を使い、
+/// 各引数のhelpも`mut_arg`で上書きするよう拡張した。引数IDは`clap::Args`の
+/// フィールド名（スネークケース）がそのまま使われる（`#[arg(long = "...")]`で
+/// 明示的にlong名を変えていても、`mut_arg`が参照するIDはフィールド名のまま）。
 fn apply_language_to_help(cmd: clap::Command, lang: Language) -> clap::Command {
     let top_about = match lang {
         Language::Japanese => CLI_ABOUT_JA,
         Language::English => CLI_ABOUT_EN,
+    };
+    let config_help = match lang {
+        Language::Japanese => CONFIG_HELP_JA,
+        Language::English => CONFIG_HELP_EN,
     };
     cmd.about(top_about)
         .mut_subcommand("lint", |c| {
@@ -80,21 +124,72 @@ fn apply_language_to_help(cmd: clap::Command, lang: Language) -> clap::Command {
                 Language::Japanese => LINT_ABOUT_JA,
                 Language::English => LINT_ABOUT_EN,
             };
+            let path_help = match lang {
+                Language::Japanese => LINT_PATH_HELP_JA,
+                Language::English => LINT_PATH_HELP_EN,
+            };
+            let verbose_help = match lang {
+                Language::Japanese => LINT_VERBOSE_HELP_JA,
+                Language::English => LINT_VERBOSE_HELP_EN,
+            };
             c.about(about)
+                .mut_arg("path", |a| a.help(path_help))
+                .mut_arg("verbose", |a| a.help(verbose_help))
+                .mut_arg("config", |a| a.help(config_help))
         })
         .mut_subcommand("fmt", |c| {
             let about = match lang {
                 Language::Japanese => FMT_ABOUT_JA,
                 Language::English => FMT_ABOUT_EN,
             };
+            let path_help = match lang {
+                Language::Japanese => FMT_PATH_HELP_JA,
+                Language::English => FMT_PATH_HELP_EN,
+            };
+            let no_reorder_help = match lang {
+                Language::Japanese => FMT_NO_REORDER_HELP_JA,
+                Language::English => FMT_NO_REORDER_HELP_EN,
+            };
+            let write_help = match lang {
+                Language::Japanese => FMT_WRITE_HELP_JA,
+                Language::English => FMT_WRITE_HELP_EN,
+            };
             c.about(about)
+                .mut_arg("path", |a| a.help(path_help))
+                .mut_arg("no_reorder", |a| a.help(no_reorder_help))
+                .mut_arg("write", |a| a.help(write_help))
+                .mut_arg("config", |a| a.help(config_help))
         })
         .mut_subcommand("analyze", |c| {
             let about = match lang {
                 Language::Japanese => ANALYZE_ABOUT_JA,
                 Language::English => ANALYZE_ABOUT_EN,
             };
+            let dir_help = match lang {
+                Language::Japanese => ANALYZE_DIR_HELP_JA,
+                Language::English => ANALYZE_DIR_HELP_EN,
+            };
+            let kind_help = match lang {
+                Language::Japanese => ANALYZE_KIND_HELP_JA,
+                Language::English => ANALYZE_KIND_HELP_EN,
+            };
             c.about(about)
+                .mut_arg("dir", |a| a.help(dir_help))
+                .mut_arg("kind", |a| a.help(kind_help))
+                .mut_arg("config", |a| a.help(config_help))
+        })
+        .mut_subcommand("list", |c| {
+            let about = match lang {
+                Language::Japanese => LIST_ABOUT_JA,
+                Language::English => LIST_ABOUT_EN,
+            };
+            let source_help = match lang {
+                Language::Japanese => LIST_SOURCE_HELP_JA,
+                Language::English => LIST_SOURCE_HELP_EN,
+            };
+            c.about(about)
+                .mut_arg("source", |a| a.help(source_help))
+                .mut_arg("config", |a| a.help(config_help))
         })
 }
 
@@ -165,6 +260,43 @@ struct AnalyzeArgs {
     config: Option<PathBuf>,
 }
 
+/// 第9弾（項目2）: `dat_linter.toml`の`[rules] include/exclude`に書けるcode
+/// （`Diagnostic.code`）の一覧が分かる手段が無かったため新設したサブコマンド。
+/// `--source`で`lint`/`fmt`/`analyze`いずれかのcodeだけに絞り込める
+/// （省略時は全て表示）。
+#[derive(clap::Args)]
+struct ListArgs {
+    /// 表示するcodeの由来を絞り込む（省略時は全て表示）。
+    #[arg(long, value_enum)]
+    source: Option<ListSourceArg>,
+    /// 出力言語等の設定ファイル（TOML）。省略時はカレントディレクトリの
+    /// `dat_linter.toml`を自動探索する。
+    #[arg(long)]
+    config: Option<PathBuf>,
+}
+
+/// `--source`で選べる値。`codes::CodeSource`と1対1で対応するが、こちらは
+/// clapの`ValueEnum`用にCLI引数値（`lint`/`fmt`/`analyze`という文字列）を
+/// 持つ別の型として定義する（`codes::CodeSource`をライブラリ側に閉じ、
+/// clap依存をmain.rs側だけに留めるため）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum ListSourceArg {
+    Lint,
+    Fmt,
+    Analyze,
+}
+
+impl ListSourceArg {
+    /// **ワイルドカードarmを持たない網羅match**（このプロジェクトの規約）。
+    fn to_code_source(self) -> dat_linter::codes::CodeSource {
+        match self {
+            ListSourceArg::Lint => dat_linter::codes::CodeSource::Lint,
+            ListSourceArg::Fmt => dat_linter::codes::CodeSource::Fmt,
+            ListSourceArg::Analyze => dat_linter::codes::CodeSource::Analyze,
+        }
+    }
+}
+
 /// `--config <path>`の値だけを事前に取り出す簡易スキャン。
 ///
 /// 言語（`--help`の翻訳含む）は設定ファイルから決まるが、設定ファイルの
@@ -219,6 +351,7 @@ fn main() -> ExitCode {
         Command::Lint(args) => run_lint(&args, language),
         Command::Fmt(args) => run_fmt(&args, language),
         Command::Analyze(args) => run_analyze(&args, language),
+        Command::List(args) => run_list(&args, language),
     }
 }
 
@@ -578,7 +711,7 @@ fn run_fmt(args: &FmtArgs, language: Language) -> ExitCode {
 
     // 単一ファイル指定時は従来通りの出力・終了コードのみ（サマリ行を追加しない）。
     if paths.len() == 1 {
-        return fmt_one_file(&paths[0], should_reorder, args.write, language).0;
+        return fmt_one_file(&paths[0], should_reorder, args.write, &config, language).0;
     }
 
     // 複数ファイルに解決された場合、`--write`が無いと整形結果をどのstdoutへ
@@ -602,7 +735,8 @@ fn run_fmt(args: &FmtArgs, language: Language) -> ExitCode {
     let mut total_warnings = 0usize;
     let mut any_failure = false;
     for path in &paths {
-        let (result, warning_count) = fmt_one_file(path, should_reorder, args.write, language);
+        let (result, warning_count) =
+            fmt_one_file(path, should_reorder, args.write, &config, language);
         total_warnings += warning_count;
         any_failure |= result == ExitCode::FAILURE;
     }
@@ -626,10 +760,16 @@ fn run_fmt(args: &FmtArgs, language: Language) -> ExitCode {
 
 /// 1ファイルを整形する。`(ExitCode, warning_count)`を返す
 /// （`warning_count`は複数ファイル時の集計サマリに使う）。
+///
+/// 第9弾（項目3）: `fmt`が出すwarning（`parse_entries`/`format_reordered`由来）にも
+/// `[rules] include/exclude`（`config.is_enabled`）を`lint`と全く同じ意味論で適用する。
+/// フィルタ後の件数を`warning_count`として返すため、複数ファイル時の集計サマリも
+/// 除外されたwarningを含まない。
 fn fmt_one_file(
     path: &Path,
     should_reorder: bool,
     write: bool,
+    config: &LintConfig,
     language: Language,
 ) -> (ExitCode, usize) {
     let text = match read_dat_text(path) {
@@ -649,16 +789,25 @@ fn fmt_one_file(
     };
 
     let parsed = formatter::parse_entries(&text, language);
-    let mut warning_count = parsed.warnings.len();
-    for w in &parsed.warnings {
+    let filtered_parse_warnings: Vec<_> = parsed
+        .warnings
+        .iter()
+        .filter(|w| config.is_enabled(w.code))
+        .collect();
+    let mut warning_count = filtered_parse_warnings.len();
+    for w in &filtered_parse_warnings {
         eprintln!("{}: {w}", path.display());
     }
 
     let formatted = if should_reorder {
         let obj = formatter::obj_of(&parsed.entries).unwrap_or("").to_string();
         let (out, warnings) = formatter::format_reordered(&parsed.entries, &obj, language);
-        warning_count += warnings.len();
-        for w in &warnings {
+        let filtered_warnings: Vec<_> = warnings
+            .iter()
+            .filter(|w| config.is_enabled(w.code))
+            .collect();
+        warning_count += filtered_warnings.len();
+        for w in &filtered_warnings {
             eprintln!("{}: {w}", path.display());
         }
         out
@@ -699,9 +848,27 @@ fn fmt_one_file(
 /// このリファクタの要点で、将来`AnalyzeKind`に新しいバリアントを追加してこの
 /// matchへのarm追加を忘れると`cargo build`が失敗する（`registry::RuleSet::for_obj_type`
 /// と同じ設計思想）。
+///
+/// 第9弾（項目3）: `lint`/`fmt`と同じく`args.config`から`LintConfig`を読み込み、
+/// `run_analyze_coupling`へ渡して`couplings.rs`が出す`Diagnostic`にも
+/// include/exclude（`config.is_enabled`）を適用する。
 fn run_analyze(args: &AnalyzeArgs, language: Language) -> ExitCode {
+    let config = match LintConfig::load_or_default(args.config.as_deref()) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "{}",
+                t!(language,
+                    ja: "設定ファイルの読み込みに失敗しました ({e})",
+                    en: "Failed to load the configuration file ({e})",
+                    e = e,
+                )
+            );
+            return ExitCode::FAILURE;
+        }
+    };
     match args.kind {
-        AnalyzeKind::Coupling => run_analyze_coupling(&args.dir, language),
+        AnalyzeKind::Coupling => run_analyze_coupling(&args.dir, &config, language),
     }
 }
 
@@ -709,10 +876,11 @@ fn run_analyze(args: &AnalyzeArgs, language: Language) -> ExitCode {
 /// (1) makeobjが検証しないconstraint参照の実在性、(2) 連結制約の充足可能性
 /// （有限な編成として絶対に成立しない車両が無いか）を検査する。
 /// （旧`couplings`サブコマンド相当。`couplings.rs`モジュール自体の関数は変更していない）
-fn run_analyze_coupling(dir: &Path, language: Language) -> ExitCode {
+fn run_analyze_coupling(dir: &Path, config: &LintConfig, language: Language) -> ExitCode {
     let (vehicles, mut diags) = couplings::load_vehicles(dir, language);
     diags.extend(couplings::check_dangling_refs(&vehicles, language));
     diags.extend(couplings::check_satisfiability(&vehicles, language));
+    diags.retain(|d| config.is_enabled(d.code));
 
     println!(
         "{}",
@@ -757,4 +925,56 @@ fn run_analyze_coupling(dir: &Path, language: Language) -> ExitCode {
     } else {
         ExitCode::SUCCESS
     }
+}
+
+/// 第9弾（項目2）: `dat_linter.toml`の`[rules] include/exclude`に書けるcode
+/// （`Diagnostic.code`）の一覧を表示する。一覧自体は`codes::ALL_CODES`
+/// （実ソースとの整合性は`tests/codes_completeness.rs`が保証）から取得する。
+/// `--config`が指定された場合、各codeが現在の設定で有効か無効かも併記する
+/// （設定ファイルを編集する前に効果を確認できるようにするため）。
+fn run_list(args: &ListArgs, language: Language) -> ExitCode {
+    let config = match LintConfig::load_or_default(args.config.as_deref()) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "{}",
+                t!(language,
+                    ja: "設定ファイルの読み込みに失敗しました ({e})",
+                    en: "Failed to load the configuration file ({e})",
+                    e = e,
+                )
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let wanted_source = args.source.map(ListSourceArg::to_code_source);
+    let mut shown = 0usize;
+    for info in dat_linter::codes::ALL_CODES {
+        if let Some(w) = wanted_source
+            && w != info.source
+        {
+            continue;
+        }
+        shown += 1;
+        let enabled = config.is_enabled(info.code);
+        let status = match (enabled, language) {
+            (true, Language::Japanese) => "有効",
+            (true, Language::English) => "enabled",
+            (false, Language::Japanese) => "無効",
+            (false, Language::English) => "disabled",
+        };
+        println!("{:<12} {:<45} {status}", info.source.as_str(), info.code);
+    }
+
+    println!(
+        "{}",
+        t!(language,
+            ja: "合計 {shown} 件のcode",
+            en: "Total: {shown} code(s)",
+            shown = shown,
+        )
+    );
+
+    ExitCode::SUCCESS
 }

@@ -158,7 +158,7 @@ this line has no equals sign
     assert!(
         warnings
             .iter()
-            .any(|w| w.contains("2") && w.contains("dropped")),
+            .any(|w| w.message.contains("2") && w.message.contains("dropped")),
         "コメント+Malformedの2件がdropされたことがwarningに反映されるべき: {warnings:?}"
     );
 }
@@ -190,7 +190,7 @@ type=station
     assert!(
         warnings
             .iter()
-            .any(|w| w.contains("1") && w.contains("dropped")),
+            .any(|w| w.message.contains("1") && w.message.contains("dropped")),
         "セグメント1側で孤立した1件のコメントがdrop件数warningに出るべき: {warnings:?}"
     );
 }
@@ -323,7 +323,7 @@ fn reorder_unsupported_obj_falls_back_to_preserve_order() {
     assert!(
         warnings
             .iter()
-            .any(|w| w.contains("obj=nonexistent-obj-type"))
+            .any(|w| w.message.contains("obj=nonexistent-obj-type"))
     );
 }
 
@@ -340,7 +340,7 @@ fn parse_entries_leading_space_warning_switches_language() {
     assert!(
         ja.warnings
             .iter()
-            .any(|w| w.contains("行頭にスペースがあるため")),
+            .any(|w| w.message.contains("行頭にスペースがあるため")),
         "日本語の行頭スペース警告が出るべき: {:?}",
         ja.warnings
     );
@@ -349,7 +349,7 @@ fn parse_entries_leading_space_warning_switches_language() {
     assert!(
         en.warnings
             .iter()
-            .any(|w| w.contains("starts with whitespace")),
+            .any(|w| w.message.contains("starts with whitespace")),
         "英語の行頭スペース警告が出るべき: {:?}",
         en.warnings
     );
@@ -363,14 +363,16 @@ fn parse_entries_malformed_line_warning_switches_language() {
 
     let ja = formatter::parse_entries(&text, Language::Japanese);
     assert!(
-        ja.warnings.iter().any(|w| w.contains("'=' が無いため")),
+        ja.warnings
+            .iter()
+            .any(|w| w.message.contains("'=' が無いため")),
         "日本語の不正行警告が出るべき: {:?}",
         ja.warnings
     );
 
     let en = formatter::parse_entries(&text, Language::English);
     assert!(
-        en.warnings.iter().any(|w| w.contains("no '='")),
+        en.warnings.iter().any(|w| w.message.contains("no '='")),
         "英語の不正行警告が出るべき: {:?}",
         en.warnings
     );
@@ -386,7 +388,7 @@ fn format_reordered_unsupported_obj_warning_switches_language() {
     assert!(
         ja_warnings
             .iter()
-            .any(|w| w.contains("並び替えに未対応です")),
+            .any(|w| w.message.contains("並び替えに未対応です")),
         "日本語の未対応obj警告が出るべき: {ja_warnings:?}"
     );
 
@@ -395,7 +397,7 @@ fn format_reordered_unsupported_obj_warning_switches_language() {
     assert!(
         en_warnings
             .iter()
-            .any(|w| w.contains("not supported for reordering")),
+            .any(|w| w.message.contains("not supported for reordering")),
         "英語の未対応obj警告が出るべき: {en_warnings:?}"
     );
 }
@@ -410,14 +412,18 @@ fn format_reordered_dropped_lines_warning_switches_language() {
     let (_, ja_warnings) =
         formatter::format_reordered(&parsed.entries, "building", Language::Japanese);
     assert!(
-        ja_warnings.iter().any(|w| w.contains("削除されました")),
+        ja_warnings
+            .iter()
+            .any(|w| w.message.contains("削除されました")),
         "日本語の削除件数警告が出るべき: {ja_warnings:?}"
     );
 
     let (_, en_warnings) =
         formatter::format_reordered(&parsed.entries, "building", Language::English);
     assert!(
-        en_warnings.iter().any(|w| w.contains("were dropped")),
+        en_warnings
+            .iter()
+            .any(|w| w.message.contains("were dropped")),
         "英語の削除件数警告が出るべき: {en_warnings:?}"
     );
 }

@@ -38,11 +38,19 @@ impl fmt::Display for Severity {
 
 /// 診断が指す`.dat`内の位置。全ての診断がこれを持つわけではない
 /// （Dimsサイズ0のようなファイル全体・複数キー由来の診断には自然な単一行が無い）。
+#[derive(Debug)]
 pub struct Location {
     pub line: usize,
     pub key: String,
 }
 
+/// 第9弾（項目3）で`formatter::ParsedDat::warnings`/`format_reordered`の
+/// 戻り値型を`Vec<String>`からこの`Diagnostic`へ統一した（`couplings.rs`は
+/// 元々この型を使っていた）。これにより`fmt`/`analyze`もlintと同じ
+/// `LintConfig::is_enabled(code)`フィルタを適用でき、`code`一覧表示
+/// （`dat_linter list`）にも同じデータ型で対応できる。`#[derive(Debug)]`は
+/// テストの`assert!(..., "{warnings:?}")`のようなデバッグ出力のために必要。
+#[derive(Debug)]
 pub struct Diagnostic {
     pub severity: Severity,
     pub code: &'static str,
