@@ -62,6 +62,14 @@ const BUILDING_NAMED: &[&str] = &[
     "name",
     "copyright",
     "type",
+    // extension_buildingはtype=stop/extension+waytypeに置き換えられた廃止済み
+    // キーワード（building_writer.cc:203-204でdbg->fatalになる）だが、実データ
+    // （refs/linter_test/JpClassicTerminal.dat等の古いpakset）には現存する。
+    // このNamed一覧に無いキーはSection::Unknownへ落ち、他に該当キーが無ければ
+    // 前後を空行で挟まれた1行だけの孤立ブロックになってしまうため、typeの直後に
+    // 明示的に位置を与えている（reorderの見た目を安定させるための対処であり、
+    // obsolete判定自体は引き続きbuilding.rsのlintルールが担う）。
+    "extension_building",
     "waytype",
     "enables_pax",
     "enables_post",

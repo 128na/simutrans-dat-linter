@@ -50,6 +50,20 @@ type=station
     assert_eq!(out, expected);
 }
 
+#[test]
+fn reorder_places_extension_building_next_to_type_without_isolated_blank_block() {
+    // extension_buildingはBUILDING_NAMEDの一覧に無いキーだとSection::Unknownへ
+    // 落ち、他に該当キーが無ければ前後を空行で挟まれた1行だけの孤立ブロックに
+    // なってしまう（refs/linter_test/JpClassicTerminal.datで実際に発生した事例）。
+    // typeの直後に明示位置を与えたことで、孤立ブロックが発生しないことを確認する。
+    let text = "obj=building\nname=Hoge\ncopyright=fuga\ntype=station\nextension_building=1\nenables_pax=1\n";
+    let parsed = formatter::parse_entries(text, Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "building", Language::default());
+    let expected = "obj=building\nname=Hoge\ncopyright=fuga\ntype=station\nextension_building=1\nenables_pax=1\n";
+    assert_eq!(out, expected);
+}
+
 // --- --reorder: コメント行を直後のPair行に紐づける（第4弾で追加） ---------------
 
 #[test]
