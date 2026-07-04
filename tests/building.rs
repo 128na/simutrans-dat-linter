@@ -83,6 +83,37 @@ fn dash_sentinel_tile_image_is_not_a_false_positive() {
 }
 
 #[test]
+fn relative_path_with_double_dot_in_directory_prefix_is_not_a_false_positive() {
+    // 第10弾: 実際のユーザー報告（iss/building/depot/depot.dat の
+    // `icon=> ../../icon_way3.1.0`）の再現。`.dat`が`testdata/`直下から2階層
+    // 下（`testdata/nested/depot/`）にあり、`cursor`/`icon`が`../../station_icon.1.0`
+    // という相対パスで`testdata/station_icon.png`を参照する。
+    //
+    // このテストは`check()`ヘルパー（`dat_dir`を常に`testdata_dir()`に固定する
+    // 簡略化）を使わず、実際の本番コード（`main.rs`の`path.parent()`）と同じ
+    // `dat_dir`解決（`.dat`ファイル自身の親ディレクトリ）を使う。これにより
+    // `resolve_image_filename`（src/rules/common.rs）が値全体ではなく
+    // ディレクトリ接頭辞を除いた部分の中で最初の'.'を探すよう修正されたことを
+    // 実際のディレクトリ構造で確認できる。
+    let file_path = testdata_dir()
+        .join("nested")
+        .join("depot")
+        .join("depot_relative_icon.dat");
+    let dat_dir = file_path.parent().unwrap();
+    let dat = dat_linter::parser::DatFile::parse(&file_path)
+        .unwrap_or_else(|e| panic!("パースに失敗: {e}"));
+    let diags: Vec<_> = rules::check_building(&dat, dat_dir)
+        .into_iter()
+        .map(|d| (d.severity, d.code))
+        .collect();
+
+    assert!(
+        !has_error(&diags, "missing-image-file"),
+        "実在する画像（../../station_icon.png）が見つからないと誤検知された: {diags:?}"
+    );
+}
+
+#[test]
 fn missing_cursor_and_icon_is_detected() {
     assert!(has_error(
         &check("broken_no_icon.dat"),

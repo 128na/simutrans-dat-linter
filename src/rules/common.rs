@@ -166,26 +166,63 @@ fn strip_zoomable_prefix_and_trim(value: &str) -> &str {
 }
 
 /// 画像参照からファイル名を取り出す。`image_writer_t::write_obj`
-/// （image_writer.cc:372-388）は最初の`'.'`より**前だけ**をファイル名の幹として
-/// 取り出し、無条件で`".png"`を付与する
-/// （`imagekey.substr(0, imagekey.size()-numkey.size()-1) + ".png"`、
-/// `numkey`は最初の`'.'`より後ろの全体）。1文字目の`'.'`の直後に続く文字列
-/// （`"foo.png.0.0"`のように慣習的に`"png"`と書かれることが多いが、数字で
-/// 始まらない限り何が書かれていても構わない）は行番号として`atoi()`され、
-/// 非数値の先頭文字列は単に`0`になるだけで実質無視される。つまり
-/// `"foo.png.0.0"`と`"foo.0.0"`は実際には全く同じ`"foo.png"`を指しており、
-/// `"png"`という文字列自体に構文上の意味は無い。
-/// 参照が`".png"`を含まない場合（実際に配布されているpak128.japan系
+/// （image_writer.cc:372-388）は次の2段階でファイル名の幹を取り出し、
+/// 無条件で`".png"`を付与する:
+///
+/// 1. `int j = imagekey.rfind('/');` — 値全体から**最後の`'/'`**を探す
+///    （無ければ`numkey`=値全体）。`numkey`はこの`'/'`より後ろの部分
+///    （ディレクトリ接頭辞を除いたベース名+行列番号部分）になる
+/// 2. `int i = numkey.find('.');` — **`numkey`（ディレクトリ接頭辞を除いた
+///    部分）の中で**最初の`'.'`を探す。ここが値全体ではなく`numkey`基準である
+///    点が重要で、`"../../icon_way3.1.0"`のようにディレクトリ接頭辞自体に
+///    `'.'`を含む相対パス参照（`../`）では、値全体基準で最初の`'.'`を探すと
+///    誤って`..`内の`'.'`にヒットしてしまう（第10弾で発見された実際の誤検知:
+///    `iss/building/depot/depot.dat`の`icon=> ../../icon_way3.1.0`が
+///    空文字列+`.png`に誤って解決されていた）
+/// 3. `imagekey = inpath + imagekey.substr(0, imagekey.size()-numkey.size()-1) + ".png"`
+///    — **元の値全体**（ディレクトリ接頭辞を含む）から、末尾の
+///    `numkey.size()+1`文字（手順2で見つけた`'.'`より後ろの部分＋その`'.'`
+///    自身）を取り除いた上で`.png`を付与する。つまりディレクトリ接頭辞は
+///    保持されたまま、ベース名部分の最初の`'.'`だけを基準に切り詰められる
+///    （`"../../icon_way3.1.0"` → `numkey`(1)="icon_way3.1.0" →
+///    `numkey`内の最初の`.`直後="1.0"(3文字) → 元の値全体から末尾4文字
+///    （"1.0"の3文字+直前の"."の1文字）を除去 → `"../../icon_way3"` +
+///    `".png"` = `"../../icon_way3.png"`）
+///
+/// 1文字目の`'.'`の直後に続く文字列（`"foo.png.0.0"`のように慣習的に
+/// `"png"`と書かれることが多いが、数字で始まらない限り何が書かれていても
+/// 構わない）は行番号として`atoi()`され、非数値の先頭文字列は単に`0`になる
+/// だけで実質無視される。つまり`"foo.png.0.0"`と`"foo.0.0"`は実際には
+/// 全く同じ`"foo.png"`を指しており、`"png"`という文字列自体に構文上の
+/// 意味は無い。参照が`".png"`を含まない場合（実際に配布されているpak128.japan系
 /// アドオンでよく見る`"basename.col.row"`形式、例:
 /// `icon=> JpClassicTerminal.4.0`）でも、makeobjと同じく`.png`を補って
 /// 正しく解決できなければならない（以前の実装は`"最後の2つが数値なら
 /// それより前を丸ごとファイル名とする"`というヒューリスティックで、
 /// `.png`の補完が漏れていた）。
+///
+/// **`'/'`のみを区切りとして扱い、`'\'`（バックスラッシュ）は区切りとして
+/// 扱わない**（`rfind('/')`のみを見るmakeobjに忠実。Windows的な直感に
+/// 反するが、実データが`/`区切りで書かれている以上makeobjと同じ挙動に
+/// 揃えるのが正しい）。
 fn resolve_image_filename(value: &str) -> String {
-    match value.find('.') {
-        Some(dot_idx) => format!("{}.png", &value[..dot_idx]),
-        None => value.to_string(),
-    }
+    // 手順1: 最後の'/'より後ろ（無ければ値全体）を`numkey`とする。
+    let numkey = match value.rfind('/') {
+        Some(slash_idx) => &value[slash_idx + 1..],
+        None => value,
+    };
+    // 手順2: `numkey`の中で最初の'.'を探す。無ければmakeobjはfatalにするが
+    // （"no image number in %s"）、この関数はfilenameだけを返す設計のため、
+    // 呼び出し元（check_image_ref）が"見つからない"エラーとして自然に
+    // 検出できるよう値全体をそのまま返す（既存の`None`分岐の挙動を維持）。
+    let Some(dot_idx_in_numkey) = numkey.find('.') else {
+        return value.to_string();
+    };
+    // 手順3: 元の値全体から、`numkey`内で見つけた'.'より後ろの部分+その'.'
+    // 自身（合計 numkey.len() - dot_idx_in_numkey 文字）を末尾から取り除く。
+    let strip_len = numkey.len() - dot_idx_in_numkey;
+    let stem = &value[..value.len() - strip_len];
+    format!("{stem}.png")
 }
 
 /// `image_writer_t::write_obj`（image_writer.cc:348-453）は全obj種別が画像参照を
@@ -328,5 +365,59 @@ impl Rule for AllImagesRule {
         }
 
         diags
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // 第10弾: resolve_image_filenameのディレクトリ接頭辞対応の回帰テスト。
+    // image_writer_t::write_obj（image_writer.cc:372-388）のアルゴリズムを
+    // 正確に再現しているかを、`resolve_image_filename`関数単体で確認する。
+
+    #[test]
+    fn no_directory_prefix_resolves_as_before() {
+        // ディレクトリ接頭辞が無い既存ケース。従来通り最初の'.'より前がファイル名。
+        assert_eq!(resolve_image_filename("foo.png.0.0"), "foo.png");
+        assert_eq!(resolve_image_filename("foo.0.0"), "foo.png");
+    }
+
+    #[test]
+    fn relative_path_with_double_dot_resolves_correctly() {
+        // 第10弾で発見された実際の誤検知の再現（iss/building/depot/depot.dat の
+        // `icon=> ../../icon_way3.1.0`）。値全体基準で最初の'.'を探すと
+        // ".."内の'.'に誤ってヒットし、ファイル名が空文字列になっていた。
+        // 正しくは最後の'/'より後ろ（"icon_way3.1.0"）の中で最初の'.'を探し、
+        // ディレクトリ接頭辞"../../"は保持したまま切り詰める必要がある。
+        assert_eq!(
+            resolve_image_filename("../../icon_way3.1.0"),
+            "../../icon_way3.png"
+        );
+    }
+
+    #[test]
+    fn single_level_relative_path_resolves_correctly() {
+        assert_eq!(resolve_image_filename("../icon.1.0"), "../icon.png");
+    }
+
+    #[test]
+    fn subdirectory_path_resolves_correctly() {
+        // 親ディレクトリへ遡らない、下位ディレクトリを指す参照でも同様に動作する
+        // べき（rfind('/')は"最後の/"を探すだけで、".."かどうかは関知しない）。
+        assert_eq!(
+            resolve_image_filename("icons/station_icon.png.0.0"),
+            "icons/station_icon.png"
+        );
+    }
+
+    #[test]
+    fn backslash_is_not_treated_as_a_separator() {
+        // makeobj（image_writer.cc:372の`rfind('/')`）は'/'のみを区切りとして
+        // 扱い、'\'は区切りとして扱わない。Windows的な直感に反するが、
+        // makeobjに忠実に合わせる（`\`はただの通常の文字として扱われ、
+        // 値全体の中で最初の'.'を探す従来の（ディレクトリ接頭辞が無い場合の）
+        // 挙動と同じになる）。
+        assert_eq!(resolve_image_filename("dir\\icon.1.0"), "dir\\icon.png");
     }
 }
