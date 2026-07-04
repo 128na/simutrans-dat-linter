@@ -102,3 +102,23 @@ fn bad_image_size_is_detected() {
         "image-size-not-multiple-of-128"
     ));
 }
+
+/// 第6弾: pak128実データ
+/// （`infrastructure/road_rail_crossings/p128_crossing_road040_rail080.dat`の
+/// `OpenImage[NS,EW][0-1]=...<0+$1>.<2*$0+1>`）で確認された、方向名（ribi）
+/// 文字列パラメータ展開のcrossingでの回帰テスト。展開が効いていなければ
+/// `openimage[ns][0]`/`openimage[ew][0]`が存在せず`crossing-missing-openimage`が
+/// 誤検知される。
+#[test]
+fn ribi_parameter_expansion_resolves_openimage_and_avoids_false_positive() {
+    let diags = check("crossing_ribi_param_expansion.dat");
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|(s, _)| *s == Severity::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "ribiパラメータ展開後は openimage[ns][0]/openimage[ew][0] が存在するはずで、\
+         crossing-missing-openimage 等のerrorは出ないべき: {errors:?}"
+    );
+}

@@ -57,7 +57,36 @@ pub const KNOWN_WAYTYPES: &[&str] = &[
 ];
 
 /// pak128の画像タイルサイズ。このプロジェクトは現状pak128のみを対象とする
-/// （image_writer.cc: `if ((width%img_size!=0)||(height%img_size!=0)) dbg->fatal(...)`）。
+/// （image_writer.cc:270-275 `block_load()`: `if ((width%img_size!=0)||
+/// (height%img_size!=0)) dbg->error(...)`で読み込み失敗を返し、
+/// `write_obj`側（image_writer.cc:409-413）が`throw obj_pak_exception_t(...)`で
+/// pak生成全体を中断させる。実質的にビルドを失敗させる意味でFATAL相当）。
+///
+/// REJECTED（第6弾で再調査、対応不要と判断）: pak128実データ全体への`lint`実行で
+/// `base/misc_GUI_64/`配下のファイル（`wkz_icons.png`が3136x384等、128の倍数でない）
+/// が`image-size-not-multiple-of-128`として大量に誤検知しているように見えたため、
+/// `image_writer.cc`と`obj_writer.cc`を再調査した。結果:
+/// - `img_size`は固定の128ではなく**実行時に決まるグローバル変数**
+///   （`image_writer_t::img_size`、デフォルト64）で、`obj_writer_t::write()`
+///   （obj_writer.cc:50）が`.dat`ごとに`obj.get_int("cell_size", default_image_size)`で
+///   設定し直す。`default_image_size`自体は`makeobj pak<N>`のCLI引数
+///   （`makeobj.cc:85-91`、`atoi(argv[0]+3)`）で決まる、つまり**「どのサイズで
+///   ビルドするか」はコマンドライン引数次第**であり、`.dat`ファイル自体には
+///   通常このサイズ情報を持たない（`cell_size=`フィールドで個別に上書きできるが、
+///   pak128の実データにはこのフィールドを使う`.dat`が1件も無いことも確認した）
+/// - `pak128/Makefile`（`DIRS64`/`DIRS128`の変数分け、`$(MAKEOBJ) PAK`と
+///   `$(MAKEOBJ) verbose PAK128`の呼び分け）を確認したところ、
+///   `base/misc_GUI_64`はpak128ビルドの対象**外**で、意図的に`PAK`
+///   （デフォルトサイズ、実質pak64）でビルドされる別系統のアセットだった
+/// - つまりこの誤検知は「本ツールが128チェックのロジックを誤っている」のではなく、
+///   「pak128という1つのsubmodule内に、実際にはpak128としてビルドされない
+///   pak64専用アセットが同居している」という、`.dat`ファイル単体からは
+///   判別不可能な外部のビルド設定に起因するもの。`.dat`内に`cell_size=`が
+///   無い以上、本ツール（1ファイルを見て検証する設計）に判別する手段が無い
+///
+/// 結論: 128チェック自体はpak128としてビルドする`.dat`に対しては正しく、
+/// `misc_GUI_64`はそもそも本ツールの対象範囲（pak128）外のアセットである。
+/// 誤検知ではないため`check_image_ref`のロジックは変更しない。
 pub const PAK_TILE_SIZE: u32 = 128;
 
 /// `vehicle_writer.cc`/`citycar_writer.cc:38`/`pedestrian_writer.cc:25-27`の

@@ -1,39 +1,57 @@
 //! `tabfile_t::read()`（`dataobj/tabfile.cc:331-512`）が実装するパラメータ展開構文を
 //! パーサの前処理として再現するモジュール。
 //!
-//! ## 対応する構文（実データで確認できた範囲）
+//! ## 対応する構文
 //! - キー中の`[...]`フィールドに書かれた**数値**のカンマ区切りリスト
 //!   （例 `[0,1,2,3,4,5,6,7]`）またはダッシュ範囲（例 `[0-7]`）。1行のキーが
 //!   その`[...]`フィールドの値の個数だけ複数の実キーに展開される。
+//! - キー中の`[...]`フィールドに書かれた**方向名（ribi）文字列**のカンマ区切りリスト
+//!   （例 `[n,e,s,w]`、`[NS,EW]`）。`tabfile.cc`の`match_ribi()`（319-327行目）が
+//!   「先頭が`n`/`e`/`s`/`w`（大小文字不問）、または`-`の直後が数字でない」場合に
+//!   ribi文字列パラメータと判定する分岐で、数値パラメータとは別の展開ロジック
+//!   （`parameter_name[]`配列に文字列を蓄積し、展開時は数値の代わりにこの文字列を
+//!   キーへ埋め込む）を持つ。第6弾で`E:\simutrans_addon\pak128`の実データ
+//!   （`infrastructure/road_rail_crossings/*.dat`の`OpenImage[NS,EW][0-1]=...`、
+//!   `infrastructure/road_signs/*.dat`の`Image[N,S,W,E,...][...]=...`、
+//!   `vehicles/trams/trambordeaux.dat`の`EmptyImage[E,SE,S,NE,N,NW,W,SW]=...`等
+//!   11ファイル）で実際に使用されていることを確認し、対応した。
 //! - 値中の`<...>`算術式。`$N`はN番目（0始まり）の`[...]`フィールドの、その回の
 //!   展開における実際の値を指す。`+`/`-`/`*`/`/`/`%`の二項演算子に対応する。
-//!
-//! ## スコープ外（REJECTED）: 方向名（ribi）文字列パラメータ展開
-//! `tabfile.cc`の`match_ribi()`（319-327行目）は`[...]`フィールドの中身が
-//! `"n"`/`"e"`/`"s"`/`"w"`で始まる、または`"-"`直後が数字でない場合に
-//! 「ribi文字列パラメータ」として扱う分岐を持つ（`parameter_name[]`配列に文字列を
-//! 蓄積し、展開時は数値の代わりにこの文字列をキーへ埋め込む）。しかし
-//! `refs/linter_test`の実データ（`KSN-128op_Rail-yard_0001.dat`等）で確認できた
-//! パラメータ展開は数値カンマリスト・数値ダッシュ範囲・`$N`算術参照のみで、
-//! 方向名文字列を使うキーは1つも出現しなかった。実データで検証できない構文を
-//! 実装すると根拠の無い挙動を持ち込むことになるため、今回はこのribi文字列分岐を
-//! 意図的に対象外とする（`match_ribi`自体は`tabfile.cc`に実在し、将来ribiパラメータ
-//! 展開を使う`.dat`が見つかった場合は本モジュールの拡張対象になる）。
+//!   ribiフィールドの場合、`$N`はそのフィールド内でのribi名の**位置インデックス**
+//!   （0始まり、リスト内の出現順）を指す（`tabfile.cc`:
+//!   `parameter_value[i][parameter_values[i]++] = value`でribiの場合`value`に
+//!   その時点の`parameter_values[i]`＝連番インデックスが入る実装のため。文字列
+//!   そのものが数式に使われることはない）。
 //!
 //! ## `*`/`%`演算子について
-//! `tabfile.cc`の`calculate_internal`は`+`/`-`/`*`/`/`/`%`の5演算子全てに対応するが、
-//! 実データで確認できたのは`<$0>`（参照そのまま）と`<$-8>`（`$`直後に数字が続かない
-//! ため`strtok`が`$`と`8`に分割し`-`が減算演算子になる、実質`$0 - 8`）の2パターンのみ。
-//! `*`/`%`は実データに出現しないが、`calculate_internal`の実装は演算子を機械的に
-//! 走査するだけで`+`/`-`と扱いに差が無いため、REJECTEDにはせず併せて実装する
-//! （数値展開自体をサポートする以上、同じ`calculate_internal`ロジックの一部である
-//! 演算子だけを恣意的に除外する理由が無いため）。
+//! `tabfile.cc`の`calculate_internal`は`+`/`-`/`*`/`/`/`%`の5演算子全てに対応する。
+//! 実データでは単項の`$N`単体・`$N op literal`程度の単純な左結合式のみ確認できたため、
+//! 本モジュールも左結合の素朴な評価器で実装している（括弧を含む式は実データに
+//! 出現しないためサポートしない）。
 
 #[cfg(test)]
 use std::collections::BTreeMap;
 
-/// 1つの`[...]`パラメータフィールドが展開する数値のリスト。
-type ParamValues = Vec<i64>;
+/// 1つの`[...]`パラメータフィールドの展開結果。
+enum FieldExpansion {
+    /// 数値カンマリスト/ダッシュ範囲。要素は実際の数値
+    /// （`$N`はこの値そのものを参照する）。
+    Numeric(Vec<i64>),
+    /// 方向名（ribi）文字列のカンマリスト。要素はリスト内の出現順そのままの名前
+    /// （`n`/`ns`等、大小文字はそのまま保持）。`$N`はこのリスト内の**位置インデックス**
+    /// （0始まり）を参照する（`tabfile.cc`の`parameter_value[i][k]=k`という実装のため、
+    /// 文字列そのものは数式に現れない）。
+    Ribi(Vec<String>),
+}
+
+impl FieldExpansion {
+    fn len(&self) -> usize {
+        match self {
+            FieldExpansion::Numeric(v) => v.len(),
+            FieldExpansion::Ribi(v) => v.len(),
+        }
+    }
+}
 
 /// 1行の`key=value`をパラメータ展開する。展開が不要な行（`[...]`にカンマ/ダッシュを
 /// 含まない、または`<...>`を含まない）はそのまま`vec![(key, value)]`を返す。
@@ -49,13 +67,13 @@ pub fn expand_line(key: &str, value: &str) -> Vec<(String, String)> {
         return vec![(key.to_string(), value.to_string())];
     }
 
-    // パラメータフィールド(bracket index -> 展開後の値リスト)を解決する。
+    // パラメータフィールド(bracket index -> 展開結果)を解決する。
     // 展開対象でない([...]内にカンマもダッシュも無い)フィールドはNoneのままにし、
     // 元の中身をそのまま1要素のリストとして扱う。
-    let mut resolved: Vec<Option<ParamValues>> = Vec::new();
+    let mut resolved: Vec<Option<FieldExpansion>> = Vec::new();
     for p in &params {
         if p.is_expansion {
-            resolved.push(Some(expand_numeric_field(&p.content)));
+            resolved.push(Some(expand_field(&p.content)));
         } else {
             resolved.push(None);
         }
@@ -77,14 +95,19 @@ pub fn expand_line(key: &str, value: &str) -> Vec<(String, String)> {
 
     let mut out = Vec::with_capacity(combinations);
     for c in 0..combinations {
-        // tabfile.cc:438-444 と同じ「桁上げ」方式でこの回の各フィールドの値を決める。
+        // tabfile.cc:438-444 と同じ「桁上げ」方式でこの回の各フィールドの位置
+        // インデックス(idx)を決める。数値フィールドは`$N`参照が実際の値を指すため
+        // combinationにはvalues[idx]（実際の値）を格納するが、ribiフィールドは
+        // `$N`参照が位置インデックスそのものを指すため、combinationにはidxを
+        // そのまま格納する（tabfile.cc: parameter_value[i][k]=k の実装に対応）。
         let mut combination: Vec<i64> = Vec::with_capacity(params.len());
         let mut acc = c;
         for (i, count) in counts.iter().enumerate() {
             let idx = acc % count;
             acc /= count;
             let value = match &resolved[i] {
-                Some(values) => values[idx],
+                Some(FieldExpansion::Numeric(values)) => values[idx],
+                Some(FieldExpansion::Ribi(_)) => idx as i64,
                 // 非展開フィールドは値を持たないが、$N参照の対象にはなり得ないため
                 // プレースホルダとして0を入れる（実際には使われない）。
                 None => 0,
@@ -152,10 +175,39 @@ fn find_bracket_params(key: &str) -> Vec<BracketParam> {
     params
 }
 
+/// 1つの`[...]`フィールドの中身（カンマ/ダッシュ区切り）を展開する。
+/// `tabfile.cc:378-429`のロジックを再現する: 最初のカンマ区切りトークンで
+/// `match_ribi()`判定を行い、以降その判定に従って数値展開かribi文字列展開かを
+/// 選ぶ（1つのフィールド内で数値/ribiが混在することは無い前提。実際の
+/// `tabfile.cc`も最初のトークンの判定結果`parameter_ribi[i]`をフィールド全体に
+/// 適用する）。
+fn expand_field(content: &str) -> FieldExpansion {
+    let first_token = content.split(',').next().unwrap_or("");
+    if match_ribi(first_token) {
+        FieldExpansion::Ribi(expand_ribi_field(content))
+    } else {
+        FieldExpansion::Numeric(expand_numeric_field(content))
+    }
+}
+
+/// `tabfile.cc:319-327`の`match_ribi()`をそのまま再現する:
+/// 「先頭が`-`かつ直後が数字でない」、または「先頭文字が大小文字を問わず
+/// n/e/s/wのいずれか」でribi文字列パラメータと判定する。
+fn match_ribi(token: &str) -> bool {
+    let mut chars = token.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if first == '-' {
+        let second_is_digit = chars.next().is_some_and(|c| c.is_ascii_digit());
+        return !second_is_digit;
+    }
+    matches!(first.to_ascii_lowercase(), 'n' | 'e' | 's' | 'w')
+}
+
 /// 1つの`[...]`フィールドの中身（カンマ/ダッシュ区切り）を数値リストへ展開する。
-/// `tabfile.cc:384-428`の数値専用パスを再現する（ribi文字列分岐は対象外、
-/// モジュール冒頭のREJECTEDコメント参照）。
-fn expand_numeric_field(content: &str) -> ParamValues {
+/// `tabfile.cc:384-428`の数値専用パスを再現する。
+fn expand_numeric_field(content: &str) -> Vec<i64> {
     let mut values = Vec::new();
     // strtokは"-,"をデリミタとして扱うため、まず","で素朴に分割してから
     // それぞれのトークンを"-"でさらに分割し、range展開する。
@@ -184,12 +236,27 @@ fn expand_numeric_field(content: &str) -> ParamValues {
     values
 }
 
-/// この回の`combination`を使ってキーを展開する。展開対象フィールドは実際の値の
-/// 数値へ、非展開フィールドは元の中身のまま書き戻す。
+/// 1つの`[...]`フィールドの中身（カンマ区切りのribi文字列リスト）を展開する。
+/// `tabfile.cc:384-411`のribi専用パスを再現する: ダッシュはribiの場合区切り文字
+/// としては使われない（`case '-':`のribi分岐は単に次のカンマ区切りトークンを
+/// 読むだけで、数値のような範囲展開はしない。`match_ribi`が先頭`-`を「非数字が
+/// 続く場合のribi」と判定するのはこのため）。よって単純にカンマ分割するだけでよい。
+fn expand_ribi_field(content: &str) -> Vec<String> {
+    let names: Vec<String> = content.split(',').map(|s| s.trim().to_string()).collect();
+    if names.is_empty() {
+        vec![String::new()]
+    } else {
+        names
+    }
+}
+
+/// この回の`combination`を使ってキーを展開する。数値フィールドは実際の値の
+/// 数値へ、ribiフィールドは該当位置の方向名文字列へ、非展開フィールドは
+/// 元の中身のまま書き戻す。
 fn build_expanded_key(
     key: &str,
     params: &[BracketParam],
-    resolved: &[Option<ParamValues>],
+    resolved: &[Option<FieldExpansion>],
     combination: &[i64],
 ) -> String {
     let mut out = String::with_capacity(key.len());
@@ -197,10 +264,14 @@ fn build_expanded_key(
     for (i, p) in params.iter().enumerate() {
         out.push_str(&key[prev_end..p.span.0]);
         out.push('[');
-        if resolved[i].is_some() {
-            out.push_str(&combination[i].to_string());
-        } else {
-            out.push_str(&p.content);
+        match &resolved[i] {
+            Some(FieldExpansion::Numeric(_)) => out.push_str(&combination[i].to_string()),
+            Some(FieldExpansion::Ribi(names)) => {
+                // combination[i]はこのribiフィールド内の位置インデックス
+                // （expand_lineでidx as i64を格納済み）。
+                out.push_str(&names[combination[i] as usize]);
+            }
+            None => out.push_str(&p.content),
         }
         out.push(']');
         prev_end = p.span.1;
@@ -442,5 +513,111 @@ mod tests {
         assert_eq!(out.get("name"), Some(&"12".to_string()));
         let out = expand_to_map("name2", "<10%3>");
         assert_eq!(out.get("name2"), Some(&"1".to_string()));
+    }
+
+    // --- 第6弾: ribi(方向名)文字列パラメータ展開（pak128実データで確認済み） ---
+
+    #[test]
+    fn match_ribi_recognizes_direction_letters_case_insensitively() {
+        assert!(match_ribi("n"));
+        assert!(match_ribi("N"));
+        assert!(match_ribi("ns"));
+        assert!(match_ribi("NS"));
+        assert!(match_ribi("e"));
+        assert!(match_ribi("SE"));
+        assert!(!match_ribi("0"));
+        assert!(!match_ribi("7"));
+    }
+
+    #[test]
+    fn match_ribi_treats_leading_dash_followed_by_non_digit_as_ribi() {
+        // tabfile.cc: `(p[0] == '-' && (p[1] < '0' || p[1] > '9'))`
+        assert!(match_ribi("-x"));
+        // "-8"のように直後が数字なら数値の負数扱い(ribiではない)。
+        assert!(!match_ribi("-8"));
+    }
+
+    #[test]
+    fn ribi_field_expands_key_with_direction_name_strings() {
+        // pak128実データ: vehicles/trams/trambordeaux.dat
+        // EmptyImage[E,SE,S,NE,N,NW,W,SW]=trambordeaux.0.<$0>
+        let out = expand_line("emptyimage[e,se,s,ne,n,nw,w,sw]", "trambordeaux.0.<$0>");
+        assert_eq!(out.len(), 8);
+        assert_eq!(
+            out[0],
+            ("emptyimage[e]".to_string(), "trambordeaux.0.0".to_string())
+        );
+        assert_eq!(
+            out[1],
+            ("emptyimage[se]".to_string(), "trambordeaux.0.1".to_string())
+        );
+        assert_eq!(
+            out[7],
+            ("emptyimage[sw]".to_string(), "trambordeaux.0.7".to_string())
+        );
+    }
+
+    #[test]
+    fn ribi_field_combined_with_numeric_field_expands_to_cross_product() {
+        // pak128実データ: infrastructure/road_rail_crossings/p128_crossing_road040_rail080.dat
+        // OpenImage[NS,EW][0-1]=p128_crossing_road040_rail080.<0+$1>.<2*$0+1>
+        let out = expand_to_map(
+            "openimage[ns,ew][0-1]",
+            "p128_crossing_road040_rail080.<0+$1>.<2*$0+1>",
+        );
+        assert_eq!(out.len(), 4);
+        // field0(ribi)=ns(idx0)/ew(idx1), field1(numeric)=0/1
+        // $0=field0の位置インデックス, $1=field1の実値
+        assert_eq!(
+            out.get("openimage[ns][0]"),
+            Some(&"p128_crossing_road040_rail080.0.1".to_string())
+        );
+        assert_eq!(
+            out.get("openimage[ns][1]"),
+            Some(&"p128_crossing_road040_rail080.1.1".to_string())
+        );
+        assert_eq!(
+            out.get("openimage[ew][0]"),
+            Some(&"p128_crossing_road040_rail080.0.3".to_string())
+        );
+        assert_eq!(
+            out.get("openimage[ew][1]"),
+            Some(&"p128_crossing_road040_rail080.1.3".to_string())
+        );
+    }
+
+    #[test]
+    fn ribi_field_with_four_directions_and_numeric_range() {
+        // pak128実データ: infrastructure/road_signs/p128_sign_road_trafficlights.dat
+        // Image[N,S,W,E,NW,SE,SW,NE][0-3]=p128_sign_road_trafficlights.<$1>.<$0>
+        let out = expand_to_map(
+            "image[n,s,w,e,nw,se,sw,ne][0-3]",
+            "p128_sign_road_trafficlights.<$1>.<$0>",
+        );
+        assert_eq!(out.len(), 8 * 4);
+        assert_eq!(
+            out.get("image[n][0]"),
+            Some(&"p128_sign_road_trafficlights.0.0".to_string())
+        );
+        assert_eq!(
+            out.get("image[ne][3]"),
+            Some(&"p128_sign_road_trafficlights.3.7".to_string())
+        );
+    }
+
+    #[test]
+    fn ribi_field_lowercase_single_letters_with_dollar_zero() {
+        // pak128実データ: infrastructure/airport_ways_items/p128_sign_air_oneway_runway.dat
+        // Image[n,e,s,w][0]=p128_sign_air_oneway_runway.0.<$0>
+        let out = expand_to_map("image[n,e,s,w][0]", "p128_sign_air_oneway_runway.0.<$0>");
+        assert_eq!(out.len(), 4);
+        assert_eq!(
+            out.get("image[n][0]"),
+            Some(&"p128_sign_air_oneway_runway.0.0".to_string())
+        );
+        assert_eq!(
+            out.get("image[w][0]"),
+            Some(&"p128_sign_air_oneway_runway.0.3".to_string())
+        );
     }
 }

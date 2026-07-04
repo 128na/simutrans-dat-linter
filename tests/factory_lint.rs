@@ -90,6 +90,16 @@ fn missing_tile_image_is_detected() {
 }
 
 #[test]
+fn dash_sentinel_tile_image_is_not_a_false_positive() {
+    // 第6弾: pak128実データ（factories/cotton_farm_w_fields.dat の
+    // `BackImage[0][0][0][0][0][0]=-`。"the building has three tiles and one
+    // empty"というコメント通り、複数タイルのfactoryで意図的に1タイルだけ
+    // 空にする実例）で確認された、"-"（画像なしセンチネル）の
+    // missing-image-file誤検知が解消されていることの回帰テスト。
+    assert_no_errors_or_warnings(&check("factory_dash_sentinel_valid.dat"));
+}
+
+#[test]
 fn output_capacity_too_small_is_detected() {
     assert!(has_warning(
         &check("factory_output_capacity_too_small.dat"),

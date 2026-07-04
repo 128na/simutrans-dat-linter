@@ -1,0 +1,21 @@
+obj=factory
+name=DashSentinelFactory
+copyright=fuga
+
+location=land
+mapcolor=194
+
+outputgood[0]=glass
+outputcapacity[0]=400
+
+dims=2,2,1
+cursor=station_icon.png.0.0
+icon=station_icon.png.0.0
+
+# real pak128 factories/cotton_farm_w_fields.dat pattern:
+# one tile of a multi-tile factory is intentionally left blank via "-"
+# while the other tiles have real images.
+backimage[0][0][0][0][0][0]=-
+backimage[0][0][1][0][0][0]=station_cube.png.0.0
+backimage[0][1][0][0][0][0]=station_cube.png.0.0
+backimage[0][1][1][0][0][0]=station_cube.png.0.0

@@ -331,7 +331,18 @@ impl Rule for TileImageRule {
                             "tile-image-ok",
                             format!("layout {l} tile ({x},{y})"),
                         ));
-                        if let Some(v) = front {
+                        // "-"は`image_writer_t::write_obj`（image_writer.cc:366）が
+                        // 空文字列と同様「画像なし」の共通センチネルとして無条件に扱う値
+                        // （tile画像に限らずcursor/icon/menu/cursor/symbol等、
+                        // image_writer_t::write_objを通る全ての画像キーで共通）。
+                        // building/factoryのタイル画像は実データ
+                        // （pak128 factories/cotton_farm_w_fields.dat の
+                        // `BackImage[0][0][0][0][0][0]=-`等）で実際にこの値が
+                        // 使われることを確認したため、ファイル名として解決しようと
+                        // せず単にスキップする（ground/menu/cursor/tunnel等と同じ扱い）。
+                        if let Some(v) = front
+                            && v != "-"
+                        {
                             check_image_ref(
                                 v,
                                 dat_dir,
@@ -340,7 +351,9 @@ impl Rule for TileImageRule {
                                 ctx.language,
                             );
                         }
-                        if let Some(v) = back {
+                        if let Some(v) = back
+                            && v != "-"
+                        {
                             check_image_ref(
                                 v,
                                 dat_dir,

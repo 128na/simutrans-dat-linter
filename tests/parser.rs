@@ -101,6 +101,39 @@ fn shift_jis_encoded_file_is_decoded_as_fallback() {
 }
 
 #[test]
+fn ribi_parameter_expansion_matches_real_pak128_crossing_syntax() {
+    // E:\simutrans_addon\pak128\infrastructure\road_rail_crossings\
+    // p128_crossing_road040_rail080.dat の実際の記述をそのまま再現したfixture:
+    //   OpenImage[NS,EW][0-1]=p128_crossing_road040_rail080.<0+$1>.<2*$0+1>
+    // 展開ロジックの手計算結果:
+    //   field0(ribi)=ns(idx0)/ew(idx1) が $0、field1(numeric)=0/1 が $1
+    //   ns,0 -> "0.1"(0+0, 2*0+1) / ns,1 -> "1.1"(0+1, 2*0+1)
+    //   ew,0 -> "0.3"(0+0, 2*1+1) / ew,1 -> "1.3"(0+1, 2*1+1)
+    let path = testdata_dir().join("crossing_ribi_param_expansion_arithmetic.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    assert_eq!(
+        dat.get("openimage[ns][0]"),
+        Some("p128_crossing.0.1"),
+        "openimage[ns][0]の展開結果が実データの手計算と一致しない"
+    );
+    assert_eq!(
+        dat.get("openimage[ns][1]"),
+        Some("p128_crossing.1.1"),
+        "openimage[ns][1]の展開結果が実データの手計算と一致しない"
+    );
+    assert_eq!(
+        dat.get("openimage[ew][0]"),
+        Some("p128_crossing.0.3"),
+        "openimage[ew][0]の展開結果が実データの手計算と一致しない"
+    );
+    assert_eq!(
+        dat.get("openimage[ew][1]"),
+        Some("p128_crossing.1.3"),
+        "openimage[ew][1]の展開結果が実データの手計算と一致しない"
+    );
+}
+
+#[test]
 fn check_duplicate_keys_reports_warning_with_location() {
     // rules::check_duplicate_keys はobj種別を問わずrun_lintから無条件に呼ばれる
     // （パーサレベルの一般的な問題のため）。ここではその診断生成自体を検証する。

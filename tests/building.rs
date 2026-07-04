@@ -61,6 +61,24 @@ fn image_ref_without_literal_png_resolves_correctly() {
 }
 
 #[test]
+fn dash_sentinel_tile_image_is_not_a_false_positive() {
+    // 第6弾: pak128実データ（factories/cotton_farm_w_fields.dat の
+    // `BackImage[0][0][0][0][0][0]=-`）で確認された、タイル画像の"-"（画像なし
+    // センチネル）が missing-image-file として誤検知されないことの回帰テスト。
+    // image_writer_t::write_obj（image_writer.cc:366）は"-"を空文字列と同様
+    // 「画像なし」として無条件に扱う（tile画像に限らない共通ロジック）。
+    let diags = check("building_dash_sentinel_valid.dat");
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|(s, _)| *s == Severity::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "\"-\"センチネルのタイル画像はerrorを出さないべき: {errors:?}"
+    );
+}
+
+#[test]
 fn missing_cursor_and_icon_is_detected() {
     assert!(has_error(
         &check("broken_no_icon.dat"),

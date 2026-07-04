@@ -1,0 +1,7 @@
+obj=crossing
+name=RibiParamExpansionArithmetic
+waytype[0]=road
+waytype[1]=track
+speed[0]=40
+speed[1]=80
+openimage[ns,ew][0-1]=p128_crossing.<0+$1>.<2*$0+1>

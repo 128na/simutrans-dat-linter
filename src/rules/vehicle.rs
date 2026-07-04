@@ -22,6 +22,28 @@ use std::path::Path;
 /// vehicle_writer.cc:26-53 get_engine_type() がSTRICMPで受理する既知値。
 /// これ以外の値（typo・空文字含む）は fatal/error なしで初期値 diesel に
 /// 静かにフォールバックする。
+///
+/// REJECTED（第6弾で再調査、"none"を追加しないと判断）: pak128実データの
+/// `lint`実行で`engine_type=none`が`unknown-engine-type`警告として161件検出され、
+/// 「無動力車両（貨車等）の正当な慣習値では」という仮説が立ったため、
+/// `vehicle_writer.cc`（`get_engine_type()`, 26-53行目）と`vehicle_desc.h`
+/// （`enum engine_t`, 51-61行目）を再確認した。結果:
+/// - `enum engine_t`は`{unknown=-1, steam, diesel, electric, bio, sail,
+///   fuel_cell, hydrogene, battery}`の9値のみで、`none`に相当する値は存在しない
+/// - `get_engine_type()`のSTRICMP if-elseチェーンにも`"none"`の分岐は無く、
+///   一致しない場合は関数冒頭の`uv8 = vehicle_desc_t::diesel;`にそのまま
+///   フォールバックする（本ルールの警告文言通りの実際の挙動）
+/// - `engine_type`フィールド自体は`write_obj`内で無条件に書き込まれる
+///   （`waytype=electrified_track`の場合のみ`electric`に強制される特別扱いが
+///   あるが、`power=0`の無動力車両を`engine_type`の検証から除外する分岐は無い）
+/// - `"none"`という文字列自体は`get_waytype.cc:18`（`waytype=none`）と
+///   `vehicle_writer.cc:277,295`（`constraint[prev/next]=none`）で特別扱いされる
+///   既知の慣習語であり、pak128の記述者が`engine_type`にも同じ「none」慣習を
+///   誤って転用した可能性が高い
+///
+/// 結論: `engine_type=none`は実際のmakeobjでも`diesel`へ静かにフォールバックする
+/// **本物の**問題（記述者の意図した値と異なる値が使われている）であり、
+/// linterの誤検知ではない。よって`KNOWN_ENGINE_TYPES`に`"none"`は追加しない。
 const KNOWN_ENGINE_TYPES: &[&str] = &[
     "diesel",
     "electric",
