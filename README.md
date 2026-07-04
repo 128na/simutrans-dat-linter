@@ -1374,14 +1374,26 @@ CI は Linux / Windows の両方でビルド・テストします。
 
 ```
 src/
-  main.rs                clap による CLI 入口（lint/fmt/analyze/list/describe。lint/fmtは複数
-                         ファイル（ディレクトリ再帰・globパターン）・--configに対応。fmtは
-                         デフォルトで並び替える（無効化は--no-reorder）。analyzeは--kindで
-                         解析種別を選択（現状coupling一種のみ、ワイルドカードarmを持たない
-                         網羅match）。lint/fmt/analyzeは指摘0件時はstdoutへ一切出力せず
-                         （サイレント成功）、診断本文はstderrに出す。warning以上の指摘が
-                         1件でもあれば終了コードは非0。--helpの短い説明文はconfigの
-                         languageに応じて動的に翻訳する）
+  main.rs                 バイナリ入口。`--config`の先読み→言語決定→clapパース→
+                         各サブコマンドへのディスパッチのみを行う薄いエントリポイント
+                         （第13弾でSRP分割し、以前ここに同居していたCLI定義・各サブ
+                         コマンドの実行ロジック・ファイル収集ユーティリティを下記の
+                         モジュールへ切り出した）
+  cli.rs                  clapの`Cli`/`Command`/各`*Args`構造体、ヘルプ文言のJA/EN定数、
+                         `apply_language_to_help`（`--help`短い説明文をconfigの
+                         languageに応じて動的翻訳）、`peek_config_arg`
+  fs_walk.rs               `lint`/`fmt`共通のファイル収集ユーティリティ（単一ファイル・
+                         ディレクトリ再帰・globパターンの3通りをdatファイル一覧へ解決）
+  commands/
+    lint.rs                  `run_lint`。lintは複数ファイル（ディレクトリ再帰・globパターン）
+                            に対応し、指摘0件時はstdoutへ一切出力しない（サイレント成功）。
+                            診断本文はstderr、warning以上の指摘が1件でもあれば終了コードは非0
+    fmt.rs                   `run_fmt`。デフォルトで並び替える（無効化は--no-reorderまたは
+                            configの[rules] excludeにfmt-reorder-applied）
+    analyze.rs                `run_analyze`。--kindで解析種別を選択（現状coupling一種のみ、
+                            ワイルドカードarmを持たない網羅match）
+    list.rs                    `run_list`
+    describe.rs                 `run_describe`
   config.rs               lint/fmt/analyze共通設定（TOML）。[rules]診断ルールinclude/exclude
                          （Diagnostic.code単位）・[general] languageの2セクション。
                          fmtのreorder挙動も専用フィールドではなく[rules] exclude内の
