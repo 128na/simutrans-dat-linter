@@ -368,6 +368,256 @@ impl Rule for AllImagesRule {
     }
 }
 
+// `building`/`factory`で共有される`Dims=`解決・タイル画像・cursor/icon検証。
+//
+// 第14弾: `factory_writer_t::write_obj`は`building_writer_t::write_obj`を
+// そのまま呼び出す（`factory.rs`冒頭のdocコメント参照）ため、`Dims`解決・
+// タイル画像走査・cursor/icon検証の3つのRuleはbuilding.rsとfactory.rsに
+// ほぼ同一のコードとして重複していた（code smellレビューで指摘）。
+// この3つをここに1本化し、両モジュールから薄いラッパー経由で呼ぶ。
+// cursor/icon省略時の扱いだけがbuilding/factoryで異なる（`CursorIconPolicy`
+// 参照）ため、そこだけパラメータ化した。
+
+/// `Dims=`を`(size_x, size_y, layouts)`へ解決する。診断は伴わない純粋な計算。
+/// `DimsRule`（診断を出す）と`TileImageRule`（値だけ必要）の両方から呼ばれる。
+pub fn resolve_dims(dat: &DatFile) -> (i64, i64, i64) {
+    let ints = dat.get_ints("dims");
+    let size_x = ints.first().copied().unwrap_or(1);
+    let size_y = ints.get(1).copied().unwrap_or(1);
+    let mut layouts = ints.get(2).copied().unwrap_or(0);
+    if layouts == 0 {
+        layouts = if size_x == size_y { 1 } else { 2 };
+    }
+    (size_x, size_y, layouts)
+}
+
+/// building_writer.cc:95-97: `size.x*size.y == 0`だと
+/// `dbg->fatal("building_writer_t::write_obj", "Cannot create a building with
+/// zero size (%i,%i)", ...)`。factoryはbuilding_writer_t::write_objを
+/// そのまま呼ぶため同じ検証が適用される。
+pub struct DimsRule;
+impl Rule for DimsRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let ints = ctx.dat.get_ints("dims");
+        let (size_x, size_y, layouts) = resolve_dims(ctx.dat);
+        let mut diags = vec![Diagnostic::debug(
+            "dims-resolved",
+            format!("Dims={ints:?} -> size_x={size_x} size_y={size_y} layouts={layouts}"),
+        )];
+
+        if size_x * size_y == 0 {
+            diags.push(Diagnostic::error(
+                "zero-size",
+                t!(ctx.language,
+                    ja: "Dims のサイズが0です (size_x={size_x}, size_y={size_y})",
+                    en: "Dims size is 0 (size_x={size_x}, size_y={size_y})",
+                    size_x = size_x,
+                    size_y = size_y,
+                ),
+            ));
+        } else {
+            diags.push(Diagnostic::info(
+                "dims-ok",
+                format!("size={size_x}x{size_y} layouts={layouts}"),
+            ));
+        }
+        diags
+    }
+}
+
+/// cursor/icon両方未指定の場合に`CursorIconRule`がどう扱うかの方針。
+///
+/// - `Building`: `type=`の値が`types_without_build_menu`（呼び出し元が渡す一覧）に
+///   含まれる場合のみ`cursor-icon-not-applicable`（info）、それ以外は
+///   `missing-cursor-icon`（error）。building.rsの`TYPES_WITHOUT_BUILD_MENU`
+///   （res/com/ind/cur/mon/tow）がこの一覧に対応する。
+/// - `AlwaysNotApplicable`: `type=`の値によらず常に`cursor-icon-not-applicable`
+///   （info）。factory（`obj=factory`）はそもそもプレイヤーが選ぶビルドメニューに
+///   現れないため（`factory.rs`の`CursorIconRule`旧実装のdocコメント参照）、
+///   `type=`を見る必要が無い。
+pub enum CursorIconPolicy {
+    Building {
+        types_without_build_menu: &'static [&'static str],
+    },
+    AlwaysNotApplicable,
+}
+
+/// building_writer.cc:372-380: `cursor`/`icon`がどちらも空文字列だと
+/// `cursorskin_writer_t::instance()->write_obj`自体が呼ばれない（fatal/warning
+/// にはならない）。cursor/icon省略時に「見送ってよいケース」かどうかの判定は
+/// `policy`（`CursorIconPolicy`）に委ねる（building/factoryで判定基準が異なるため）。
+pub struct CursorIconRule {
+    pub policy: CursorIconPolicy,
+}
+impl Rule for CursorIconRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let cursor = ctx.dat.get("cursor").unwrap_or("");
+        let icon = ctx.dat.get("icon").unwrap_or("");
+        let mut diags = vec![Diagnostic::debug(
+            "raw-cursor-icon",
+            format!("cursor=\"{cursor}\" icon=\"{icon}\""),
+        )];
+
+        if cursor.is_empty() && icon.is_empty() {
+            let type_name = ctx.dat.get("type").unwrap_or("").to_ascii_lowercase();
+            let not_applicable = match &self.policy {
+                CursorIconPolicy::Building {
+                    types_without_build_menu,
+                } => types_without_build_menu.contains(&type_name.as_str()),
+                CursorIconPolicy::AlwaysNotApplicable => true,
+            };
+            if not_applicable {
+                // res/com/ind/cur/mon/tow（building）またはfactory全般は
+                // プレイヤーが選ぶビルドメニューにそもそも現れないため、
+                // cursor/icon未指定はerrorではない。ただし完全に無言にはせず、
+                // 「対象外と判断した」ことが分かるようinfoで残す。
+                diags.push(Diagnostic::info(
+                    "cursor-icon-not-applicable",
+                    t!(ctx.language,
+                        ja: "cursor と icon が両方とも未指定ですが、type={type_name} は\
+                             プレイヤーが選ぶビルドメニューに現れない種別（都市成長や\
+                             特殊建造物として自動配置される）のため問題ありません",
+                        en: "Both cursor and icon are unspecified, but type={type_name} is a \
+                             category that never appears in the player-facing build menu \
+                             (placed automatically by city growth or as a special building), \
+                             so this is not an issue",
+                        type_name = type_name,
+                    ),
+                ));
+                return diags;
+            }
+            diags.push(Diagnostic::error(
+                "missing-cursor-icon",
+                t!(ctx.language,
+                    ja: "cursor と icon が両方とも未指定です。makeobjはエラーを出さずにビルドしますが、ゲーム内のビルドメニューに表示されません",
+                    en: "Both cursor and icon are unspecified. makeobj builds without error, but the \
+                         object will not appear in the in-game build menu",
+                ),
+            ));
+            return diags;
+        }
+
+        if !icon.is_empty() {
+            check_image_ref(icon, ctx.dat_dir, "icon", &mut diags, ctx.language);
+        }
+        if !cursor.is_empty() {
+            check_image_ref(cursor, ctx.dat_dir, "cursor", &mut diags, ctx.language);
+        }
+        diags
+    }
+}
+
+/// building_writer.cc:266-345: タイル画像の走査ロジック。`building`/`factory`共通
+/// （factoryは`building_writer_t::write_obj`をそのまま呼ぶため）。
+pub struct TileImageRule {
+    pub size_x: i64,
+    pub size_y: i64,
+    pub layouts: i64,
+}
+impl Rule for TileImageRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        let dat = ctx.dat;
+        let dat_dir = ctx.dat_dir;
+
+        for l in 0..self.layouts {
+            // building_writer.cc: 奇数レイアウトは縦横を入れ替えて走査する
+            let (w, h) = if l % 2 == 1 {
+                (self.size_y, self.size_x)
+            } else {
+                (self.size_x, self.size_y)
+            };
+            for y in 0..h {
+                for x in 0..w {
+                    let front5 = format!("frontimage[{l}][{y}][{x}][0][0]");
+                    let back5 = format!("backimage[{l}][{y}][{x}][0][0]");
+                    let front6 = format!("frontimage[{l}][{y}][{x}][0][0][0]");
+                    let back6 = format!("backimage[{l}][{y}][{x}][0][0][0]");
+
+                    diags.push(Diagnostic::debug(
+                        "tile-key-lookup",
+                        format!("layout {l} tile ({x},{y}): {front5} / {back5} ({front6} / {back6} もfallback確認)"),
+                    ));
+
+                    let front = dat.get(&front5).or_else(|| dat.get(&front6));
+                    let back = dat.get(&back5).or_else(|| dat.get(&back6));
+
+                    if front.is_none() && back.is_none() {
+                        diags.push(Diagnostic::error(
+                            "missing-tile-image",
+                            t!(ctx.language,
+                                ja: "layout {l} tile ({x},{y}) に front/backimage が1枚もありません\
+                                     （makeobjはエラーを出さず空画像のタイルを生成します）",
+                                en: "layout {l} tile ({x},{y}) has no front/backimage \
+                                     (makeobj generates an empty tile without error)",
+                                l = l,
+                                x = x,
+                                y = y,
+                            ),
+                        ));
+                    } else {
+                        diags.push(Diagnostic::info(
+                            "tile-image-ok",
+                            format!("layout {l} tile ({x},{y})"),
+                        ));
+                        // "-"（画像なしセンチネル）の判定は`check_image_ref`側に
+                        // 一元化されている。building/factoryのタイル画像は実データ
+                        // （pak128 factories/cotton_farm_w_fields.dat の
+                        // `BackImage[0][0][0][0][0][0]=-`等）で実際にこの値が
+                        // 使われることを確認済み（第6弾）。以前はここに`v != "-"`
+                        // ガードを個別追加していたが、第8弾でway_obj.rsに同種の
+                        // 誤検知が再発したことを受け、`check_image_ref`自身が
+                        // `-`を判定するよう共通化したため、ここでの個別ガードは不要
+                        // （`check_image_ref`冒頭のdocコメント参照）。
+                        if let Some(v) = front {
+                            check_image_ref(
+                                v,
+                                dat_dir,
+                                &format!("frontimage[{l}][{y}][{x}]"),
+                                &mut diags,
+                                ctx.language,
+                            );
+                        }
+                        if let Some(v) = back {
+                            check_image_ref(
+                                v,
+                                dat_dir,
+                                &format!("backimage[{l}][{y}][{x}]"),
+                                &mut diags,
+                                ctx.language,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // frontimage の高さ(h)は0のみ許可。h>0が定義されていないか確認する
+        for key in dat.pairs.keys() {
+            if let Some(rest) = key.strip_prefix("frontimage[") {
+                let indices: Vec<&str> = rest.trim_end_matches(']').split("][").collect();
+                // [l][y][x][h][phase] (+season)
+                if let Some(h_str) = indices.get(3)
+                    && h_str.parse::<i64>().unwrap_or(0) > 0
+                {
+                    diags.push(Diagnostic::error(
+                        "frontimage-height",
+                        t!(ctx.language,
+                            ja: "{key} : frontimageの高さ(h)は0のみ有効です\
+                                 （makeobjはエラーログを出すだけで処理を継続します）",
+                            en: "{key}: frontimage height (h) must be 0 \
+                                 (makeobj logs an error but continues processing)",
+                            key = key,
+                        ),
+                    ));
+                }
+            }
+        }
+
+        diags
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
