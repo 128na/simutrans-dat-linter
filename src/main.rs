@@ -1,6 +1,6 @@
 use clap::{ArgAction, CommandFactory, FromArgMatches, Parser, Subcommand};
 use dat_linter::config::LintConfig;
-use dat_linter::diagnostics::{Diagnostic, Severity};
+use dat_linter::diagnostics::Severity;
 use dat_linter::i18n::{Language, t};
 use dat_linter::parser::{DatFile, read_dat_text};
 use dat_linter::registry::{RuleContext, RuleSet, SUPPORTED_OBJ_TYPES};
@@ -846,25 +846,17 @@ fn fmt_one_file(
     }
 
     let formatted = if should_reorder {
-        // 第11弾: 専用の[fmt] reorder設定を廃止したため、reorderが実際に適用された
-        // ことそのものを"fmt-reorder-applied"というcode（Info severity）で表現する。
-        // `config.is_enabled`フィルタを通すことで、`[rules] exclude`に
-        // このcodeを指定した場合はこの診断自体も出力されなくなる（ただし
-        // その場合は`should_reorder`自体が既にfalseになっているため、通常この
-        // 分岐に到達した時点でこの診断は常にenabledのはず。将来の一貫性のため
-        // 他の診断と同じフィルタ経路を通しておく）。Info severityのため通常表示には
-        // 影響せず、`-v`相当の詳細ログとしての位置づけ。
-        let reorder_applied = Diagnostic::info(
-            "fmt-reorder-applied",
-            t!(language,
-                ja: "慣習的な順序へキーを並び替えました",
-                en: "Reordered keys into the conventional order",
-            ),
-        );
-        if config.is_enabled(reorder_applied.code) {
-            eprintln!("{}: {reorder_applied}", path.display());
-        }
-
+        // 第12弾: 第11弾では、reorderが実際に適用されたことを示すInfo診断
+        // （code "fmt-reorder-applied"）をここで生成・eprintln!していたが、
+        // これにより問題の無い通常のfmt実行が毎回1行stderrへ出力するようになり、
+        // 「指摘が無ければ完全silent」というlint/analyzeと同じ方針に反する副作用が
+        // あった（Main側で発見）。"fmt-reorder-applied"はreorder機能の有効/無効を
+        // `[rules] include/exclude`で切り替えるためだけの機能トグルcodeであり、
+        // 実際に診断として発行する必要は無い（有効/無効の判定自体は
+        // `should_reorder`の算出（上部の`config.is_enabled`呼び出し）に残っている）。
+        // `tests/codes_completeness.rs::FEATURE_TOGGLE_ONLY_CODES`にこの種のcode向けの
+        // 明示的allowlistを設けたため、ここで診断オブジェクト自体を生成・出力する
+        // 必要が無くなった。
         let obj = formatter::obj_of(&parsed.entries).unwrap_or("").to_string();
         let (out, warnings) = formatter::format_reordered(&parsed.entries, &obj, language);
         let filtered_warnings: Vec<_> = warnings

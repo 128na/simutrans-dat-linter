@@ -838,27 +838,38 @@ pub const ALL_CODES: &[CodeInfo] = &[
         fix_ja: "clip_belowに0または1を指定してください",
         fix_en: "Specify 0 or 1 for clip_below",
     },
-    // --- fmt: src/main.rs (fmt_one_file) ---
+    // --- fmt: src/main.rs (fmt_one_file) — 機能トグル専用code。
+    // tests/codes_completeness.rs::FEATURE_TOGGLE_ONLY_CODES に登録済み
+    // （実ソースでDiagnostic::x()として発行されることは無い。理由は同定数のコメント参照）。
     CodeInfo {
         code: "fmt-reorder-applied",
         source: CodeSource::Fmt,
-        // 第11弾: 専用の[fmt] reorder設定を廃止し、reorder自体をこのcodeで表現する
-        // ([rules] include/excludeの仕組みに統合)。main.rs::fmt_one_fileがreorderを
-        // 実際に適用したタイミングでDiagnostic::info("fmt-reorder-applied", ...)を発行する。
-        why_ja: "fmtが慣習的な順序へキーを並び替える機能を表すcodeです。デフォルトで有効\
-            （`--no-reorder`未指定・このcodeが`[rules] exclude`に無い場合）で、`fmt`実行時に\
-            実際に並び替えを適用したことを示す情報表示（Diagnostic::info）として発行されます。\
-            エラーや警告ではありません",
-        why_en: "This code represents fmt's key-reordering feature itself. It is enabled by \
-            default (unless --no-reorder is passed or this code is listed in [rules] exclude), \
-            and is emitted as an informational message (Diagnostic::info) when `fmt` actually \
-            applies reordering. It is not an error or warning",
+        // 第11弾: 専用の[fmt] reorder設定を廃止し、reorder機能の有効/無効自体を
+        // このcodeで表現する（[rules] include/excludeの仕組みに統合）。
+        // 第12弾: 当初は実際にreorderを適用するたびDiagnostic::info(...)を発行して
+        // いたが、これにより問題の無い通常のfmt実行が毎回1行stderrへ出力される
+        // 副作用があった（「指摘が無ければ完全silent」というlint/analyzeと同じ方針に
+        // 反する）ため撤回した。このcodeは診断メッセージとして表示されることは無く、
+        // `config.is_enabled("fmt-reorder-applied")`という設定判定のためだけに
+        // 存在する（`dat_linter list`/`describe`から参照できるようにするための
+        // 純粋な設定キー名としての登録）。
+        why_ja: "fmtが慣習的な順序へキーを並び替える機能そのものを表すcodeです。\
+            診断メッセージとして表示されることはありません。デフォルトで有効\
+            （`--no-reorder`未指定・このcodeが`[rules] exclude`に無い場合）で、\
+            `[rules] include/exclude`を通じてreorder機能自体の有効/無効を\
+            切り替えるためだけに使う設定キー名です",
+        why_en: "This code represents fmt's key-reordering feature itself. It is never shown \
+            as a diagnostic message. It is enabled by default (unless --no-reorder is passed or \
+            this code is listed in [rules] exclude), and exists purely as a setting-key name used \
+            via [rules] include/exclude to toggle the reordering feature on or off",
         fix_ja: "恒久的に無効化したい場合は`[rules] exclude`にこのcode\
             （\"fmt-reorder-applied\"）を追加してください。1回の実行だけ無効化したい場合は\
-            `--no-reorder`フラグを使ってください（`--no-reorder`はconfig設定より常に優先されます）",
+            `--no-reorder`フラグを使ってください（`--no-reorder`はconfig設定より常に優先されます）。\
+            このcode自体を「修正」する必要はありません（診断ではないため）",
         fix_en: "To permanently disable reordering, add this code (\"fmt-reorder-applied\") to \
             [rules] exclude. To disable it for a single invocation only, use the --no-reorder \
-            flag (--no-reorder always takes priority over the config setting)",
+            flag (--no-reorder always takes priority over the config setting). There is nothing \
+            to \"fix\" about this code itself (it is not a diagnostic)",
     },
     // --- fmt: src/formatter/mod.rs ---
     CodeInfo {

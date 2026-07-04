@@ -14,6 +14,24 @@ fn crate_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf()
 }
 
+/// 「実ソース中で`Diagnostic::error/warning/info/debug("code", ...)`として
+/// 発行されることは無いが、`src/codes.rs::ALL_CODES`（延いては`dat_linter list`/
+/// `describe`）には正規のcodeとして載せたい」機能トグル専用codeの明示的allowlist。
+///
+/// 第12弾: `fmt-reorder-applied`が該当する。これは`fmt`のreorder機能そのものを
+/// 表すcodeで、`[rules] include/exclude`で機能の有効/無効を切り替えるためだけに
+/// 使われる（`config.is_enabled("fmt-reorder-applied")`）。第11弾では実際に
+/// `Diagnostic::info("fmt-reorder-applied", ...)`を生成しeprintln!していたが、
+/// これにより問題の無い通常の`fmt`実行が毎回1行stderrへ出力するようになり、
+/// 「指摘が無ければ完全silent」というlint/analyzeと同じ方針に反する副作用が
+/// あった（Main側で発見）。診断として表示する必要は無い（`dat_linter describe
+/// fmt-reorder-applied`で説明を見られれば十分）ため、このallowlistへ登録して
+/// `Diagnostic::x()`呼び出しを完全に取りやめた。
+///
+/// 新しくこの種のcode（実際には診断として発行しない、include/exclude専用の
+/// 機能トグル）を追加する場合は、ここに追記した上でその理由をコメントに残すこと。
+const FEATURE_TOGGLE_ONLY_CODES: &[&str] = &["fmt-reorder-applied"];
+
 /// 1ファイルのテキストから`Diagnostic::(error|warning|info|debug)(\s*\n?\s*"code"`
 /// の形を素朴に走査してcode文字列を抽出する。`common::check_image_ref`のような
 /// 関数越しの間接呼び出しは対象外（呼び出し元の`Diagnostic::error(...)`自体を
@@ -63,9 +81,6 @@ fn all_codes_matches_actual_source_usage() {
     }
     source_files.push(root.join("src").join("couplings.rs"));
     source_files.push(root.join("src").join("formatter").join("mod.rs"));
-    // 第11弾: main.rs::fmt_one_fileが"fmt-reorder-applied"を発行するようになった
-    // （専用の[fmt] reorder設定を廃止し、reorder自体をcodeとして表現する方式に変更）。
-    source_files.push(root.join("src").join("main.rs"));
 
     assert!(
         source_files.len() >= 3,
@@ -86,7 +101,12 @@ fn all_codes_matches_actual_source_usage() {
         .collect();
 
     let missing_from_declared: Vec<_> = actual.difference(&declared).collect();
-    let stale_in_declared: Vec<_> = declared.difference(&actual).collect();
+    // `FEATURE_TOGGLE_ONLY_CODES`（実ソースで`Diagnostic::x()`として発行されることが
+    // 無いと分かっている機能トグル専用code）は「古くなったcode」の判定から除外する。
+    let stale_in_declared: Vec<_> = declared
+        .difference(&actual)
+        .filter(|code| !FEATURE_TOGGLE_ONLY_CODES.contains(&code.as_str()))
+        .collect();
 
     assert!(
         missing_from_declared.is_empty(),
@@ -95,8 +115,25 @@ fn all_codes_matches_actual_source_usage() {
     assert!(
         stale_in_declared.is_empty(),
         "src/codes.rs::ALL_CODES に登録されているが、実際にはどのソースファイルでも \
-         使われていない（古くなった）codeがあります: {stale_in_declared:?}"
+         使われていない（古くなった）codeがあります（FEATURE_TOGGLE_ONLY_CODESに\
+         登録済みのものは除く）: {stale_in_declared:?}"
     );
+}
+
+/// `FEATURE_TOGGLE_ONLY_CODES`自体が古くならないよう、登録されているcodeが
+/// `src/codes.rs::ALL_CODES`に実在することを固定する（typo・削除漏れの検出）。
+#[test]
+fn feature_toggle_only_codes_exist_in_all_codes() {
+    let declared: BTreeSet<&str> = dat_linter::codes::ALL_CODES
+        .iter()
+        .map(|c| c.code)
+        .collect();
+    for code in FEATURE_TOGGLE_ONLY_CODES {
+        assert!(
+            declared.contains(code),
+            "FEATURE_TOGGLE_ONLY_CODESに登録された{code:?}がsrc/codes.rs::ALL_CODESに存在しません"
+        );
+    }
 }
 
 #[test]
