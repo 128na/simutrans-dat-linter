@@ -1,5 +1,11 @@
 /target
 
+# ローカルでdat_linterを直接実行（cargo run/target/*/dat_linter.exe）した際に
+# リポジトリ直下へ自動生成される設定ファイル（config.rsのgenerate_default_config_file）。
+# 開発用の作業ディレクトリでの実行時に生成されうる副産物であり、リポジトリの
+# 成果物ではないため管理対象外にする。
+/dat_linter.toml
+
 # サードパーティ製の実アドオンデータ（refs/linter_test/からのローカルコピー）。
 # 回帰テスト(tests/real_data_regression.rs)専用のローカル検証用フィクスチャで、
 # ライセンス上git管理対象にしない。フィクスチャが無い環境ではこのディレクトリを

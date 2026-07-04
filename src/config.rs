@@ -15,6 +15,9 @@
 //! [general]
 //! language = "en"  # "en" (デフォルト) または "ja"
 //!
+//! [fmt]
+//! reorder = true  # true (デフォルト) または false
+//!
 //! [rules]
 //! include = ["obsolete-type", "missing-waytype"]
 //! exclude = ["duplicate-key"]
@@ -36,6 +39,13 @@
 //! **英語（`en`）**（ユーザー確認済みの決定事項。既存の日本語固定挙動から
 //! 変更されている点に注意。第1弾実装時点ではメッセージが日本語固定だったが、
 //! i18n対応後はこのデフォルトに従う）。
+//!
+//! ## `[fmt] reorder`のデフォルト
+//! 設定ファイルが無い場合・`[fmt] reorder`未指定の場合のデフォルトは**`true`**
+//! （`fmt`は慣習的な並び順に並び替えるのがデフォルト挙動。CLIの`--no-reorder`
+//! フラグはこの設定を強制的に上書きしてpreserve-order挙動にする。優先順位は
+//! 「`--no-reorder`指定 > config設定（未指定時デフォルトtrue）」。第5弾で
+//! `--reorder`bool flagから`--no-reorder`へ置き換えた際に導入された設定）。
 
 use crate::i18n::{Language, t};
 use serde::Deserialize;
@@ -52,9 +62,15 @@ const DEFAULT_CONFIG_TEMPLATE: &str = r#"# dat_linter configuration file
 # Auto-generated on first run. Feel free to edit or delete this file.
 #
 # [general]
-# language: message language for lint/fmt/couplings output.
+# language: message language for lint/fmt/analyze output.
 #   "en" (default) or "ja".
 # language = "en"
+#
+# [fmt]
+# reorder: whether `fmt` reorders keys into the conventional order by default.
+#   true (default) or false. The CLI flag --no-reorder always overrides this
+#   to false for a single invocation, regardless of this setting.
+# reorder = true
 #
 # [rules]
 # include: rule codes (Diagnostic.code) to enable. Empty = all rules enabled (default).
@@ -64,6 +80,9 @@ const DEFAULT_CONFIG_TEMPLATE: &str = r#"# dat_linter configuration file
 
 [general]
 language = "en"
+
+[fmt]
+reorder = true
 
 [rules]
 include = []
@@ -75,6 +94,8 @@ struct RawConfig {
     #[serde(default)]
     general: RawGeneralConfig,
     #[serde(default)]
+    fmt: RawFmtConfig,
+    #[serde(default)]
     rules: RawRulesConfig,
 }
 
@@ -82,6 +103,12 @@ struct RawConfig {
 struct RawGeneralConfig {
     #[serde(default)]
     language: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RawFmtConfig {
+    #[serde(default)]
+    reorder: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -93,12 +120,14 @@ struct RawRulesConfig {
 }
 
 /// 読み込み・正規化済みの設定。`is_enabled`で`Diagnostic.code`ごとに
-/// 有効/無効を判定し、`language()`で出力言語を取得する。
+/// 有効/無効を判定し、`language()`で出力言語を、`fmt_reorder()`で
+/// `fmt`のデフォルト並び替え挙動を取得する。
 #[derive(Debug)]
 pub struct LintConfig {
     include: HashSet<String>,
     exclude: HashSet<String>,
     language: Language,
+    fmt_reorder: bool,
 }
 
 impl Default for LintConfig {
@@ -108,12 +137,14 @@ impl Default for LintConfig {
 }
 
 impl LintConfig {
-    /// 全ルールが有効・言語はデフォルト(English)の設定（設定ファイル無しの状態と同義）。
+    /// 全ルールが有効・言語はデフォルト(English)・fmt reorderはデフォルト(true)の設定
+    /// （設定ファイル無しの状態と同義）。
     pub fn all_enabled() -> Self {
         LintConfig {
             include: HashSet::new(),
             exclude: HashSet::new(),
             language: Language::default(),
+            fmt_reorder: true,
         }
     }
 
@@ -181,6 +212,7 @@ impl LintConfig {
             include: raw.rules.include.into_iter().collect(),
             exclude: raw.rules.exclude.into_iter().collect(),
             language,
+            fmt_reorder: raw.fmt.reorder.unwrap_or(true),
         })
     }
 
@@ -196,6 +228,14 @@ impl LintConfig {
     /// `Language::default()`（English）。
     pub fn language(&self) -> Language {
         self.language
+    }
+
+    /// `fmt`のデフォルト並び替え挙動。設定ファイル無し・`[fmt] reorder`未指定の
+    /// 場合は`true`（デフォルトでreorderする）。CLIの`--no-reorder`はこの値を
+    /// 呼び出し元（`main.rs::run_fmt`）で強制的に上書きする（この関数自体は
+    /// CLI引数を関知しない）。
+    pub fn fmt_reorder(&self) -> bool {
+        self.fmt_reorder
     }
 }
 
@@ -235,6 +275,7 @@ mod tests {
             include: raw.rules.include.into_iter().collect(),
             exclude: raw.rules.exclude.into_iter().collect(),
             language: Language::default(),
+            fmt_reorder: true,
         };
         assert!(cfg.is_enabled("obsolete-type"));
     }
@@ -245,6 +286,7 @@ mod tests {
             include: ["obsolete-type".to_string()].into_iter().collect(),
             exclude: HashSet::new(),
             language: Language::default(),
+            fmt_reorder: true,
         };
         assert!(cfg.is_enabled("obsolete-type"));
         assert!(!cfg.is_enabled("missing-waytype"));
@@ -256,6 +298,7 @@ mod tests {
             include: ["obsolete-type".to_string()].into_iter().collect(),
             exclude: ["obsolete-type".to_string()].into_iter().collect(),
             language: Language::default(),
+            fmt_reorder: true,
         };
         assert!(!cfg.is_enabled("obsolete-type"));
     }
@@ -266,6 +309,7 @@ mod tests {
             include: HashSet::new(),
             exclude: ["duplicate-key".to_string()].into_iter().collect(),
             language: Language::default(),
+            fmt_reorder: true,
         };
         assert!(!cfg.is_enabled("duplicate-key"));
         assert!(cfg.is_enabled("obsolete-type"));
@@ -285,6 +329,7 @@ mod tests {
             include: raw.rules.include.into_iter().collect(),
             exclude: raw.rules.exclude.into_iter().collect(),
             language: Language::default(),
+            fmt_reorder: true,
         };
         assert!(cfg.is_enabled("obsolete-type"));
         assert!(!cfg.is_enabled("missing-waytype"));
@@ -328,6 +373,51 @@ mod tests {
         let cfg = LintConfig::load_from(&tmp).unwrap();
         let _ = std::fs::remove_file(&tmp);
         assert_eq!(cfg.language(), Language::English);
+    }
+
+    #[test]
+    fn all_enabled_defaults_fmt_reorder_to_true() {
+        assert!(LintConfig::all_enabled().fmt_reorder());
+    }
+
+    #[test]
+    fn missing_fmt_section_defaults_reorder_to_true_via_load_from() {
+        let tmp = std::env::temp_dir().join("dat_linter_test_no_fmt_section.toml");
+        std::fs::write(&tmp, "[rules]\ninclude = []\n").unwrap();
+        let cfg = LintConfig::load_from(&tmp).unwrap();
+        let _ = std::fs::remove_file(&tmp);
+        assert!(cfg.fmt_reorder());
+    }
+
+    #[test]
+    fn explicit_reorder_false_is_honored_via_load_from() {
+        let tmp = std::env::temp_dir().join("dat_linter_test_reorder_false.toml");
+        std::fs::write(&tmp, "[fmt]\nreorder = false\n").unwrap();
+        let cfg = LintConfig::load_from(&tmp).unwrap();
+        let _ = std::fs::remove_file(&tmp);
+        assert!(!cfg.fmt_reorder());
+    }
+
+    #[test]
+    fn explicit_reorder_true_is_honored_via_load_from() {
+        let tmp = std::env::temp_dir().join("dat_linter_test_reorder_true.toml");
+        std::fs::write(&tmp, "[fmt]\nreorder = true\n").unwrap();
+        let cfg = LintConfig::load_from(&tmp).unwrap();
+        let _ = std::fs::remove_file(&tmp);
+        assert!(cfg.fmt_reorder());
+    }
+
+    #[test]
+    fn generate_default_config_file_includes_fmt_reorder_true() {
+        let tmp = std::env::temp_dir().join("dat_linter_test_generated_config_fmt.toml");
+        let _ = std::fs::remove_file(&tmp);
+        generate_default_config_file(&tmp).expect("生成に失敗");
+        let content = std::fs::read_to_string(&tmp).unwrap();
+        let _ = std::fs::remove_file(&tmp);
+        assert!(content.contains("[fmt]"));
+        assert!(content.contains("reorder"));
+        let raw: RawConfig = toml::from_str(&content).expect("生成された設定のパースに失敗");
+        assert_eq!(raw.fmt.reorder, Some(true));
     }
 
     /// 設定ファイル自体が存在しない場合の読み込みエラーメッセージは、

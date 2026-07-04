@@ -43,8 +43,8 @@ enum Command {
     Lint(LintArgs),
     /// .dat ファイルを正規化・並び替えする
     Fmt(FmtArgs),
-    /// 1ディレクトリ内の obj=vehicle 群を連結制約について解析する
-    Couplings(CouplingsArgs),
+    /// 1ディレクトリ内のdatファイル群を横断的に解析する（種別は--kindで選択）
+    Analyze(AnalyzeArgs),
 }
 
 /// `lint`の長い説明（22obj種別の一覧を含む）。翻訳対象外、常に日本語のまま
@@ -56,9 +56,10 @@ const LINT_ABOUT_JA: &str = ".dat ファイル1件を静的検証する";
 const LINT_ABOUT_EN: &str = "Statically validate a single .dat file";
 const FMT_ABOUT_JA: &str = ".dat ファイルを正規化・並び替えする";
 const FMT_ABOUT_EN: &str = "Normalize and reorder a .dat file";
-const COUPLINGS_ABOUT_JA: &str = "1ディレクトリ内の obj=vehicle 群を連結制約について解析する";
-const COUPLINGS_ABOUT_EN: &str =
-    "Analyze coupling constraints across obj=vehicle definitions in a directory";
+const ANALYZE_ABOUT_JA: &str =
+    "1ディレクトリ内のdatファイル群を横断的に解析する（種別は--kindで選択）";
+const ANALYZE_ABOUT_EN: &str =
+    "Analyze dat files across a directory (select the analysis kind with --kind)";
 
 /// `Cli::command()`が返す`clap::Command`の短い`about`を言語に応じて上書きする。
 /// `long_about`（22obj種別一覧を含む長文）には触れない（翻訳対象外のため常に日本語）。
@@ -88,10 +89,10 @@ fn apply_language_to_help(cmd: clap::Command, lang: Language) -> clap::Command {
             };
             c.about(about)
         })
-        .mut_subcommand("couplings", |c| {
+        .mut_subcommand("analyze", |c| {
             let about = match lang {
-                Language::Japanese => COUPLINGS_ABOUT_JA,
-                Language::English => COUPLINGS_ABOUT_EN,
+                Language::Japanese => ANALYZE_ABOUT_JA,
+                Language::English => ANALYZE_ABOUT_EN,
             };
             c.about(about)
         })
@@ -114,10 +115,17 @@ struct LintArgs {
 
 #[derive(clap::Args)]
 struct FmtArgs {
-    path: PathBuf,
-    /// 慣習的な順序に並び替える（デフォルトは元の行順を保持）
+    /// 単一ファイル・ディレクトリ・globパターン（例 `refs/*.dat`, `refs/**/*.dat`）を指定できる。
+    /// `lint`と同じ`collect_dat_paths`で解決する（ディレクトリは再帰的に`.dat`を収集）。
+    /// 複数ファイルに解決された場合、`--write`（`-w`）を指定しないとエラー終了する
+    /// （整形結果を複数ファイル分stdoutへ混在させて出すのは実用性が低いため）。
+    path: String,
+    /// 並び替えを無効化し、元の行順を保持する（configの`[fmt] reorder`設定を
+    /// このプロセスの実行に限り強制的に上書きする）。デフォルトでは
+    /// `[fmt] reorder`（未設定時true）に従って並び替える。優先順位:
+    /// `--no-reorder`指定 > config設定。
     #[arg(long)]
-    reorder: bool,
+    no_reorder: bool,
     /// フォーマット結果をファイルへ書き込む
     #[arg(short = 'w', long)]
     write: bool,
@@ -127,9 +135,30 @@ struct FmtArgs {
     config: Option<PathBuf>,
 }
 
+/// `analyze`が対応する解析種別。`registry::ObjType`と同じ「ワイルドカードarmを
+/// 持たない網羅match」規約に従い、新しい解析種別を追加する際は`run_analyze`の
+/// match（および将来追加されるであろう解析関数群）を必ず更新しないと
+/// `cargo build`が非網羅match errorで失敗するようにする。
+///
+/// 現状は`Coupling`（旧`couplings`サブコマンド相当、`obj=vehicle`の連結制約解析）
+/// の1種類のみ。将来的に別の横断解析（例: obj間の参照整合性チェック等）を
+/// 追加する際にこの列挙へバリアントを増やす想定。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum AnalyzeKind {
+    /// `obj=vehicle`群の`constraint[prev]`/`constraint[next]`について、
+    /// (1) makeobjが検証しないdangling参照の実在性、(2) 連結制約の充足可能性
+    /// （有限な編成として絶対に成立しない車両が無いか）を検査する
+    /// （旧`couplings`サブコマンド相当）。
+    Coupling,
+}
+
 #[derive(clap::Args)]
-struct CouplingsArgs {
+struct AnalyzeArgs {
     dir: PathBuf,
+    /// 解析種別。現状は`coupling`（`obj=vehicle`の連結制約解析）のみ対応
+    /// （将来の解析種別追加に備えたclap ValueEnum。デフォルトは`coupling`）。
+    #[arg(long, value_enum, default_value_t = AnalyzeKind::Coupling)]
+    kind: AnalyzeKind,
     /// 出力言語等の設定ファイル（TOML）。省略時はカレントディレクトリの
     /// `dat_linter.toml`を自動探索する。
     #[arg(long)]
@@ -189,7 +218,7 @@ fn main() -> ExitCode {
     match cli.command {
         Command::Lint(args) => run_lint(&args, language),
         Command::Fmt(args) => run_fmt(&args, language),
-        Command::Couplings(args) => run_couplings(&args, language),
+        Command::Analyze(args) => run_analyze(&args, language),
     }
 }
 
@@ -510,8 +539,99 @@ fn lint_one_file_counts(
 }
 
 fn run_fmt(args: &FmtArgs, language: Language) -> ExitCode {
-    let path = args.path.as_path();
+    let config = match LintConfig::load_or_default(args.config.as_deref()) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "{}",
+                t!(language,
+                    ja: "設定ファイルの読み込みに失敗しました ({e})",
+                    en: "Failed to load the configuration file ({e})",
+                    e = e,
+                )
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    // 優先順位: --no-reorder指定 > config設定（[fmt] reorder、未指定時デフォルトtrue）。
+    let should_reorder = !args.no_reorder && config.fmt_reorder();
 
+    let paths = match collect_dat_paths(&args.path, language) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("{}: {e}", args.path);
+            return ExitCode::FAILURE;
+        }
+    };
+
+    if paths.is_empty() {
+        eprintln!(
+            "{}",
+            t!(language,
+                ja: "{path}: 該当する .dat ファイルが見つかりません",
+                en: "{path}: No matching .dat files were found",
+                path = args.path,
+            )
+        );
+        return ExitCode::FAILURE;
+    }
+
+    // 単一ファイル指定時は従来通りの出力・終了コードのみ（サマリ行を追加しない）。
+    if paths.len() == 1 {
+        return fmt_one_file(&paths[0], should_reorder, args.write, language).0;
+    }
+
+    // 複数ファイルに解決された場合、`--write`が無いと整形結果をどのstdoutへ
+    // 出すべきか一意に決まらない（複数ファイル分の内容が混在してしまう）ため、
+    // ユーザー確認済みの仕様としてエラー終了する。
+    if !args.write {
+        eprintln!(
+            "{}",
+            t!(language,
+                ja: "{path}: 複数ファイル（{n}件）に一致しましたが --write が指定されていません。\
+                     複数ファイルを整形する場合は -w/--write を指定してください",
+                en: "{path}: Matched {n} files, but --write was not specified. \
+                     Pass -w/--write to format multiple files",
+                path = args.path,
+                n = paths.len(),
+            )
+        );
+        return ExitCode::FAILURE;
+    }
+
+    let mut total_warnings = 0usize;
+    let mut any_failure = false;
+    for path in &paths {
+        let (result, warning_count) = fmt_one_file(path, should_reorder, args.write, language);
+        total_warnings += warning_count;
+        any_failure |= result == ExitCode::FAILURE;
+    }
+
+    println!(
+        "{}",
+        t!(language,
+            ja: "合計: 対象ファイル {n} 件 / warning {total_warnings} 件",
+            en: "Total: {n} file(s) / {total_warnings} warning(s)",
+            n = paths.len(),
+            total_warnings = total_warnings,
+        )
+    );
+
+    if any_failure {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+/// 1ファイルを整形する。`(ExitCode, warning_count)`を返す
+/// （`warning_count`は複数ファイル時の集計サマリに使う）。
+fn fmt_one_file(
+    path: &Path,
+    should_reorder: bool,
+    write: bool,
+    language: Language,
+) -> (ExitCode, usize) {
     let text = match read_dat_text(path) {
         Ok(t) => t,
         Err(e) => {
@@ -524,18 +644,20 @@ fn run_fmt(args: &FmtArgs, language: Language) -> ExitCode {
                     e = e,
                 )
             );
-            return ExitCode::FAILURE;
+            return (ExitCode::FAILURE, 0);
         }
     };
 
     let parsed = formatter::parse_entries(&text, language);
+    let mut warning_count = parsed.warnings.len();
     for w in &parsed.warnings {
         eprintln!("{}: {w}", path.display());
     }
 
-    let formatted = if args.reorder {
+    let formatted = if should_reorder {
         let obj = formatter::obj_of(&parsed.entries).unwrap_or("").to_string();
         let (out, warnings) = formatter::format_reordered(&parsed.entries, &obj, language);
+        warning_count += warnings.len();
         for w in &warnings {
             eprintln!("{}: {w}", path.display());
         }
@@ -544,7 +666,7 @@ fn run_fmt(args: &FmtArgs, language: Language) -> ExitCode {
         formatter::format_preserve_order(&parsed.entries)
     };
 
-    if args.write {
+    if write {
         if let Err(e) = std::fs::write(path, &formatted) {
             eprintln!(
                 "{}",
@@ -555,7 +677,7 @@ fn run_fmt(args: &FmtArgs, language: Language) -> ExitCode {
                     e = e,
                 )
             );
-            return ExitCode::FAILURE;
+            return (ExitCode::FAILURE, warning_count);
         }
         eprintln!(
             "{}",
@@ -569,15 +691,25 @@ fn run_fmt(args: &FmtArgs, language: Language) -> ExitCode {
         print!("{formatted}");
     }
 
-    ExitCode::SUCCESS
+    (ExitCode::SUCCESS, warning_count)
+}
+
+/// `analyze`サブコマンドの入口。`args.kind`に応じた解析関数へディスパッチする。
+/// `AnalyzeKind`に対する**ワイルドカードarmを持たない網羅match**であることが
+/// このリファクタの要点で、将来`AnalyzeKind`に新しいバリアントを追加してこの
+/// matchへのarm追加を忘れると`cargo build`が失敗する（`registry::RuleSet::for_obj_type`
+/// と同じ設計思想）。
+fn run_analyze(args: &AnalyzeArgs, language: Language) -> ExitCode {
+    match args.kind {
+        AnalyzeKind::Coupling => run_analyze_coupling(&args.dir, language),
+    }
 }
 
 /// 静的解析(PHPStan的な層)のPoC: 1ディレクトリ内の vehicle dat 群を読み込み、
 /// (1) makeobjが検証しないconstraint参照の実在性、(2) 連結制約の充足可能性
 /// （有限な編成として絶対に成立しない車両が無いか）を検査する。
-fn run_couplings(args: &CouplingsArgs, language: Language) -> ExitCode {
-    let dir = args.dir.as_path();
-
+/// （旧`couplings`サブコマンド相当。`couplings.rs`モジュール自体の関数は変更していない）
+fn run_analyze_coupling(dir: &Path, language: Language) -> ExitCode {
     let (vehicles, mut diags) = couplings::load_vehicles(dir, language);
     diags.extend(couplings::check_dangling_refs(&vehicles, language));
     diags.extend(couplings::check_satisfiability(&vehicles, language));
