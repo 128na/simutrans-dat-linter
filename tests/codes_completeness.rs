@@ -107,3 +107,34 @@ fn all_codes_has_no_duplicate_entries() {
         );
     }
 }
+
+/// 第10弾（項目6）: `dat_linter describe <code>`が空の説明を表示してしまう
+/// リグレッションを防ぐ。新規codeを追加する際に`why`/`how_to_fix`のいずれかの
+/// 言語を書き忘れると、このテストが落ちる。
+#[test]
+fn all_codes_have_non_empty_descriptions_in_both_languages() {
+    use dat_linter::i18n::Language;
+
+    for c in dat_linter::codes::ALL_CODES {
+        assert!(
+            !c.why(Language::English).trim().is_empty(),
+            "{}: why(English) が空です",
+            c.code
+        );
+        assert!(
+            !c.why(Language::Japanese).trim().is_empty(),
+            "{}: why(Japanese) が空です",
+            c.code
+        );
+        assert!(
+            !c.how_to_fix(Language::English).trim().is_empty(),
+            "{}: how_to_fix(English) が空です",
+            c.code
+        );
+        assert!(
+            !c.how_to_fix(Language::Japanese).trim().is_empty(),
+            "{}: how_to_fix(Japanese) が空です",
+            c.code
+        );
+    }
+}

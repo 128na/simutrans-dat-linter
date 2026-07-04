@@ -300,3 +300,73 @@ fn analyze_without_config_shows_dangling_constraint_by_default() {
         "config指定無し(=all許可)ではdangling-vehicle-constraintが出力されるべき: {stderr}"
     );
 }
+
+// --- 第10弾項目6: `describe`サブコマンドでcodeの説明を表示できること ------------
+
+#[test]
+fn describe_known_code_shows_why_and_how_to_fix() {
+    let output = bin()
+        .args(["describe", "obsolete-type"])
+        .output()
+        .expect("起動に失敗");
+    assert!(output.status.success(), "既知のcodeはexit成功であるべき");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("obsolete-type"),
+        "指定したcode自体が表示されるべき: {stdout}"
+    );
+    assert!(
+        stdout.contains("Why:"),
+        "英語(デフォルト)では\"Why:\"見出しが表示されるべき: {stdout}"
+    );
+    assert!(
+        stdout.contains("How to fix:"),
+        "\"How to fix:\"見出しが表示されるべき: {stdout}"
+    );
+}
+
+#[test]
+fn describe_unknown_code_fails_with_list_hint() {
+    let output = bin()
+        .args(["describe", "this-code-does-not-exist"])
+        .output()
+        .expect("起動に失敗");
+    assert!(!output.status.success(), "不明なcodeはexit失敗であるべき");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("this-code-does-not-exist"),
+        "指定した不明なcode自体がエラーメッセージに含まれるべき: {stderr}"
+    );
+    assert!(
+        stderr.contains("dat_linter list"),
+        "listコマンドへの案内が含まれるべき: {stderr}"
+    );
+}
+
+#[test]
+fn describe_switches_to_japanese_via_config() {
+    let output = run_with_ja_config(&["describe", "obsolete-type"], "describe_ja");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("なぜNGか"),
+        "config経由で見出しが日本語に切り替わるべき: {stdout}"
+    );
+    assert!(
+        stdout.contains("どう直すか"),
+        "config経由で見出しが日本語に切り替わるべき: {stdout}"
+    );
+}
+
+#[test]
+fn describe_help_arg_text_is_english_by_default() {
+    let output = bin().args(["describe", "-h"]).output().expect("起動に失敗");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Show the description"),
+        "デフォルト(English)でaboutが翻訳されているべき: {stdout}"
+    );
+    assert!(
+        stdout.contains("dat_linter list"),
+        "CODE引数のhelpが表示されるべき: {stdout}"
+    );
+}

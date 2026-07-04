@@ -47,6 +47,8 @@ enum Command {
     Analyze(AnalyzeArgs),
     /// dat_linter.toml の [rules] include/exclude に書けるcode一覧を表示する
     List(ListArgs),
+    /// 指定したcodeの説明（なぜNGか・どう直すか）を表示する
+    Describe(DescribeArgs),
 }
 
 /// `lint`の長い説明（22obj種別の一覧を含む）。翻訳対象外、常に日本語のまま
@@ -65,6 +67,9 @@ const ANALYZE_ABOUT_EN: &str =
 const LIST_ABOUT_JA: &str = "dat_linter.toml の [rules] include/exclude に書けるcode一覧を表示する";
 const LIST_ABOUT_EN: &str =
     "List the codes that can be used in dat_linter.toml's [rules] include/exclude";
+const DESCRIBE_ABOUT_JA: &str = "指定したcodeの説明（なぜNGか・どう直すか）を表示する";
+const DESCRIBE_ABOUT_EN: &str =
+    "Show the description (why it's flagged, how to fix it) for the given code";
 
 /// 各引数の短い`help`（JA/EN）。第9弾（項目1）: 第2弾では「サブコマンドの
 /// aboutの一行説明のみ翻訳対象」と決めていたが、これは`lint`/`fmt`/`analyze`
@@ -95,6 +100,10 @@ const ANALYZE_KIND_HELP_JA: &str =
 const ANALYZE_KIND_HELP_EN: &str = "Analysis kind. Currently only `coupling` (obj=vehicle coupling constraint analysis) is supported";
 const LIST_SOURCE_HELP_JA: &str = "表示するcodeの由来を絞り込む（省略時は全て表示）";
 const LIST_SOURCE_HELP_EN: &str = "Filter which source's codes to show (omit to show all)";
+const DESCRIBE_CODE_HELP_JA: &str =
+    "説明を表示するcode（例 obsolete-type）。一覧は`dat_linter list`で確認できる";
+const DESCRIBE_CODE_HELP_EN: &str =
+    "The code to describe (e.g. obsolete-type). See `dat_linter list` for the full list";
 
 /// `Cli::command()`が返す`clap::Command`の短い`about`を言語に応じて上書きする。
 /// `long_about`（22obj種別一覧を含む長文）には触れない（翻訳対象外のため常に日本語）。
@@ -190,6 +199,17 @@ fn apply_language_to_help(cmd: clap::Command, lang: Language) -> clap::Command {
             c.about(about)
                 .mut_arg("source", |a| a.help(source_help))
                 .mut_arg("config", |a| a.help(config_help))
+        })
+        .mut_subcommand("describe", |c| {
+            let about = match lang {
+                Language::Japanese => DESCRIBE_ABOUT_JA,
+                Language::English => DESCRIBE_ABOUT_EN,
+            };
+            let code_help = match lang {
+                Language::Japanese => DESCRIBE_CODE_HELP_JA,
+                Language::English => DESCRIBE_CODE_HELP_EN,
+            };
+            c.about(about).mut_arg("code", |a| a.help(code_help))
         })
 }
 
@@ -297,6 +317,18 @@ impl ListSourceArg {
     }
 }
 
+/// 第10弾（項目6）: 指定したcodeの説明（なぜNGか・どう直すか）を表示する
+/// `describe`サブコマンドの引数。
+#[derive(clap::Args)]
+struct DescribeArgs {
+    /// 説明を表示するcode（例 obsolete-type）。一覧は`dat_linter list`で確認できる。
+    code: String,
+    /// 出力言語等の設定ファイル（TOML）。省略時はカレントディレクトリの
+    /// `dat_linter.toml`を自動探索する。
+    #[arg(long)]
+    config: Option<PathBuf>,
+}
+
 /// `--config <path>`の値だけを事前に取り出す簡易スキャン。
 ///
 /// 言語（`--help`の翻訳含む）は設定ファイルから決まるが、設定ファイルの
@@ -352,6 +384,7 @@ fn main() -> ExitCode {
         Command::Fmt(args) => run_fmt(&args, language),
         Command::Analyze(args) => run_analyze(&args, language),
         Command::List(args) => run_list(&args, language),
+        Command::Describe(args) => run_describe(&args, language),
     }
 }
 
@@ -1002,6 +1035,72 @@ fn run_list(args: &ListArgs, language: Language) -> ExitCode {
             shown = shown,
         )
     );
+
+    ExitCode::SUCCESS
+}
+
+/// 第10弾（項目6）: 指定したcodeの説明（なぜNGか・どう直すか）を表示する。
+/// `codes::ALL_CODES`（`list`と同じ一覧、`tests/codes_completeness.rs`が実ソースとの
+/// 整合性を保証）からcodeを検索し、見つかれば`why`/`how_to_fix`をJA/ENに応じて表示する。
+/// 見つからない場合は`list`コマンドの案内を添えてexit failureにする。
+fn run_describe(args: &DescribeArgs, language: Language) -> ExitCode {
+    let config = match LintConfig::load_or_default(args.config.as_deref()) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "{}",
+                t!(language,
+                    ja: "設定ファイルの読み込みに失敗しました ({e})",
+                    en: "Failed to load the configuration file ({e})",
+                    e = e,
+                )
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let Some(info) = dat_linter::codes::ALL_CODES
+        .iter()
+        .find(|info| info.code == args.code)
+    else {
+        eprintln!(
+            "{}",
+            t!(language,
+                ja: "{code}: 不明なcodeです。`dat_linter list` で有効なcode一覧を確認してください",
+                en: "{code}: Unknown code. Run `dat_linter list` to see the list of valid codes",
+                code = args.code,
+            )
+        );
+        return ExitCode::FAILURE;
+    };
+
+    let enabled = config.is_enabled(info.code);
+    let status = match (enabled, language) {
+        (true, Language::Japanese) => "有効",
+        (true, Language::English) => "enabled",
+        (false, Language::Japanese) => "無効",
+        (false, Language::English) => "disabled",
+    };
+
+    println!("{:<12} {} ({status})", info.source.as_str(), info.code);
+    println!();
+    println!(
+        "{}",
+        t!(language,
+            ja: "なぜNGか:",
+            en: "Why:",
+        )
+    );
+    println!("{}", info.why(language));
+    println!();
+    println!(
+        "{}",
+        t!(language,
+            ja: "どう直すか:",
+            en: "How to fix:",
+        )
+    );
+    println!("{}", info.how_to_fix(language));
 
     ExitCode::SUCCESS
 }
