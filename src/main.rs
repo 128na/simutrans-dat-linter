@@ -496,16 +496,20 @@ fn run_lint(args: &LintArgs, language: Language) -> ExitCode {
         any_failure |= failed;
     }
 
-    println!(
-        "{}",
-        t!(language,
-            ja: "合計: 対象ファイル {n} 件 / error {total_error} 件 / warning {total_warning} 件",
-            en: "Total: {n} file(s) / {total_error} error(s) / {total_warning} warning(s)",
-            n = paths.len(),
-            total_error = total_error,
-            total_warning = total_warning,
-        )
-    );
+    // 第10弾（項目1）: 指摘が一切無い（合計error/warningが共に0、かつ個々のファイルで
+    // unsupported等の失敗も無い）場合は合計行も出力しない（サイレント成功）。
+    if total_error > 0 || total_warning > 0 || any_failure {
+        println!(
+            "{}",
+            t!(language,
+                ja: "合計: 対象ファイル {n} 件 / error {total_error} 件 / warning {total_warning} 件",
+                en: "Total: {n} file(s) / {total_error} error(s) / {total_warning} warning(s)",
+                n = paths.len(),
+                total_error = total_error,
+                total_warning = total_warning,
+            )
+        );
+    }
 
     if any_failure {
         ExitCode::FAILURE
@@ -614,7 +618,7 @@ fn lint_one_file_counts(
         record_diags.retain(|d| config.is_enabled(d.code));
 
         for d in record_diags.iter().filter(|d| d.severity <= level) {
-            println!("{}{label}: {d}", path.display());
+            eprintln!("{}{label}: {d}", path.display());
         }
         diags.extend(record_diags);
     }
@@ -633,15 +637,12 @@ fn lint_one_file_counts(
         .filter(|d| d.severity == Severity::Warning)
         .count();
 
+    // 第10弾（項目1）: 指摘が1件も無い（error=0 && warning=0 && unsupported=0）場合、
+    // stdoutへは一切出力しない（サイレント成功。CI/スクリプトでの利用を想定した
+    // Unix系リンタの一般的な流儀）。従来はここで"OK"行を出力していたが、
+    // 「指摘無し = 無音」を採用したため、この分岐からは何も出力しない。
     if error_count == 0 && warning_count == 0 && unsupported == 0 {
-        println!(
-            "{}",
-            t!(language,
-                ja: "{p}: OK（既知ルールの範囲では問題なし）",
-                en: "{p}: OK (no issues found within known rules)",
-                p = path.display(),
-            )
-        );
+        // 何も出力しない（silent success）。
     } else if unsupported > 0 {
         println!(
             "{}",
@@ -667,7 +668,10 @@ fn lint_one_file_counts(
         );
     }
 
-    let failed = error_count > 0 || unsupported > 0;
+    // 第10弾（項目3）: warning以上（error or warning）が1件でもあれば異常終了扱いにする
+    // （従来はerror_count>0またはunsupported>0のみが失敗条件で、warningのみの場合は
+    // exit 0のままだった）。
+    let failed = error_count > 0 || warning_count > 0 || unsupported > 0;
     (error_count, warning_count, failed)
 }
 
@@ -741,15 +745,21 @@ fn run_fmt(args: &FmtArgs, language: Language) -> ExitCode {
         any_failure |= result == ExitCode::FAILURE;
     }
 
-    println!(
-        "{}",
-        t!(language,
-            ja: "合計: 対象ファイル {n} 件 / warning {total_warnings} 件",
-            en: "Total: {n} file(s) / {total_warnings} warning(s)",
-            n = paths.len(),
-            total_warnings = total_warnings,
-        )
-    );
+    // 第10弾（項目1）: warningが無ければ合計行も出力しない（サイレント成功）。
+    // ただしwrite失敗（any_failureがtrueだがtotal_warnings==0）のケースは
+    // 個々のファイルのエラーメッセージが既にstderrに出ているため、ここでの
+    // 合計行は「warningの集計」目的のみと割り切り、warning自体が無ければ省略する。
+    if total_warnings > 0 {
+        println!(
+            "{}",
+            t!(language,
+                ja: "合計: 対象ファイル {n} 件 / warning {total_warnings} 件",
+                en: "Total: {n} file(s) / {total_warnings} warning(s)",
+                n = paths.len(),
+                total_warnings = total_warnings,
+            )
+        );
+    }
 
     if any_failure {
         ExitCode::FAILURE
@@ -828,7 +838,10 @@ fn fmt_one_file(
             );
             return (ExitCode::FAILURE, warning_count);
         }
-        eprintln!(
+        // 第10弾（項目4）: 書き込み成功メッセージは診断ではなく純粋な情報メッセージ
+        // なので、他の情報メッセージ（OK行・件数サマリ行等）と同じくstdoutに統一する
+        // （従来はeprintln!でstderrに出ていた）。
+        println!(
             "{}",
             t!(language,
                 ja: "{p}: フォーマット結果を書き込みました",
@@ -840,7 +853,14 @@ fn fmt_one_file(
         print!("{formatted}");
     }
 
-    (ExitCode::SUCCESS, warning_count)
+    // 第10弾（項目3）: warningが1件でもあれば異常終了扱いにする
+    // （従来はwrite失敗以外は常にSUCCESSを返していた）。
+    let result = if warning_count > 0 {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    };
+    (result, warning_count)
 }
 
 /// `analyze`サブコマンドの入口。`args.kind`に応じた解析関数へディスパッチする。
@@ -882,6 +902,7 @@ fn run_analyze_coupling(dir: &Path, config: &LintConfig, language: Language) -> 
     diags.extend(couplings::check_satisfiability(&vehicles, language));
     diags.retain(|d| config.is_enabled(d.code));
 
+    // 第10弾（項目4）: 情報メッセージ（読み込み件数）はstdout、診断本文はstderrに分離する。
     println!(
         "{}",
         t!(language,
@@ -892,35 +913,41 @@ fn run_analyze_coupling(dir: &Path, config: &LintConfig, language: Language) -> 
         )
     );
     for d in &diags {
-        println!("{}: {d}", dir.display());
+        eprintln!("{}: {d}", dir.display());
     }
 
     let error_count = diags
         .iter()
         .filter(|d| d.severity == Severity::Error)
         .count();
-    if error_count == 0 {
-        println!(
-            "{}",
-            t!(language,
-                ja: "{d}: OK（既知ルールの範囲では問題なし）",
-                en: "{d}: OK (no issues found within known rules)",
-                d = dir.display(),
-            )
-        );
+    let warning_count = diags
+        .iter()
+        .filter(|d| d.severity == Severity::Warning)
+        .count();
+
+    // 第10弾（項目1）: 指摘が無ければ"OK"行も出力しない（サイレント成功）。
+    // couplings.rsは現状Diagnostic::errorのみ発行しwarningは無いが、将来warningが
+    // 追加された場合にも備えてerror_count/warning_countの両方を判定に含める
+    // （一貫性のため、`lint`/`fmt`と同じ扱い）。
+    if error_count == 0 && warning_count == 0 {
+        // 何も出力しない（silent success）。
     } else {
         println!(
             "{}",
             t!(language,
-                ja: "{d}: error {error_count} 件",
-                en: "{d}: {error_count} error(s)",
+                ja: "{d}: error {error_count} 件 / warning {warning_count} 件",
+                en: "{d}: {error_count} error(s) / {warning_count} warning(s)",
                 d = dir.display(),
                 error_count = error_count,
+                warning_count = warning_count,
             )
         );
     }
 
-    if error_count > 0 {
+    // 第10弾（項目3）: warning以上（error or warning）が1件でもあれば異常終了扱いにする
+    // （従来はerror_count>0のみが失敗条件だった。couplings.rsは現状warningを発行しないため
+    // 実害は無いが、lint/fmtとの一貫性のため一般化しておく）。
+    if error_count > 0 || warning_count > 0 {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS

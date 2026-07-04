@@ -174,6 +174,7 @@ fn fmt_include_restricts_to_listed_code() {
 fn analyze_excludes_configured_code() {
     // couplings_danglingは dangling-vehicle-constraint を必ず1件出す。
     // excludeで抑制されることを確認する。
+    // 第10弾（項目4）で診断本文はstderrへ移動したため、ここではstderrを確認する。
     let tmp = std::env::temp_dir().join("dat_linter_cli_test_analyze_exclude");
     let _ = std::fs::create_dir_all(&tmp);
     std::fs::write(
@@ -188,12 +189,12 @@ fn analyze_excludes_configured_code() {
         .current_dir(&tmp)
         .output()
         .expect("起動に失敗");
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
     let _ = std::fs::remove_dir_all(&tmp);
 
     assert!(
-        !stdout.contains("dangling-vehicle-constraint"),
-        "excludeで指定したdangling-vehicle-constraintは出力されるべきではない: {stdout}"
+        !stderr.contains("dangling-vehicle-constraint"),
+        "excludeで指定したdangling-vehicle-constraintは出力されるべきではない: {stderr}"
     );
 }
 
@@ -278,6 +279,7 @@ fn list_shows_disabled_status_when_excluded_via_config() {
 #[test]
 fn analyze_without_config_shows_dangling_constraint_by_default() {
     // configを指定しない（デフォルト=all）場合は従来通り出力されることの対照実験。
+    // 第10弾（項目4）で診断本文はstderrへ移動したため、ここではstderrを確認する。
     let tmp = std::env::temp_dir().join("dat_linter_cli_test_analyze_default");
     let _ = std::fs::create_dir_all(&tmp);
     // 明示的にdat_linter.tomlを置かない（自動生成されるデフォルトは
@@ -289,12 +291,12 @@ fn analyze_without_config_shows_dangling_constraint_by_default() {
         .current_dir(&tmp)
         .output()
         .expect("起動に失敗");
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
     let _ = std::fs::remove_file(tmp.join("dat_linter.toml"));
     let _ = std::fs::remove_dir_all(&tmp);
 
     assert!(
-        stdout.contains("dangling-vehicle-constraint"),
-        "config指定無し(=all許可)ではdangling-vehicle-constraintが出力されるべき: {stdout}"
+        stderr.contains("dangling-vehicle-constraint"),
+        "config指定無し(=all許可)ではdangling-vehicle-constraintが出力されるべき: {stderr}"
     );
 }
