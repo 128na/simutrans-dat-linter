@@ -162,9 +162,11 @@ impl Rule for SlopeImageRefRule {
                     // ground_writer.cc:32-34: キー欠落（空文字列）でphase走査終了。
                     break;
                 }
-                if value != "-" {
-                    check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
-                }
+                // "-"（画像なしセンチネル）の判定は`check_image_ref`
+                // （src/rules/common.rs）側に一元化されている。以前はここに
+                // `value != "-"`ガードを個別追加していたが、第8弾で共通化した
+                // ため不要（`check_image_ref`冒頭のdocコメント参照）。
+                check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
                 phase += 1;
                 // 安全弁: dat構文異常でphaseが際限なく増え続ける事態を避ける
                 // （makeobj自身は無限ループ`for (;;phase++)`だが、実用上十分大きい

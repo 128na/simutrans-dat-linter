@@ -394,18 +394,16 @@ impl Rule for TileImageRule {
                             "tile-image-ok",
                             format!("layout {l} tile ({x},{y})"),
                         ));
-                        // "-"は`image_writer_t::write_obj`（image_writer.cc:366）が
-                        // 空文字列と同様「画像なし」の共通センチネルとして無条件に扱う値
-                        // （tile画像に限らずcursor/icon/menu/cursor/symbol等、
-                        // image_writer_t::write_objを通る全ての画像キーで共通）。
-                        // building/factoryのタイル画像は実データ
-                        // （pak128 factories/cotton_farm_w_fields.dat の
-                        // `BackImage[0][0][0][0][0][0]=-`等）で実際にこの値が
-                        // 使われることを確認したため、ファイル名として解決しようと
-                        // せず単にスキップする（ground/menu/cursor/tunnel等と同じ扱い）。
-                        if let Some(v) = front
-                            && v != "-"
-                        {
+                        // "-"（画像なしセンチネル）の判定は`check_image_ref`
+                        // （src/rules/common.rs）側に一元化されている。building/factoryの
+                        // タイル画像は実データ（pak128 factories/cotton_farm_w_fields.dat
+                        // の`BackImage[0][0][0][0][0][0]=-`等）で実際にこの値が
+                        // 使われることを確認済み（第6弾）。以前はここに`v != "-"`
+                        // ガードを個別追加していたが、第8弾でway_obj.rsに同種の
+                        // 誤検知が再発したことを受け、`check_image_ref`自身が
+                        // `-`を判定するよう共通化したため、ここでの個別ガードは不要
+                        // （`check_image_ref`冒頭のdocコメント参照）。
+                        if let Some(v) = front {
                             check_image_ref(
                                 v,
                                 dat_dir,
@@ -414,9 +412,7 @@ impl Rule for TileImageRule {
                                 ctx.language,
                             );
                         }
-                        if let Some(v) = back
-                            && v != "-"
-                        {
+                        if let Some(v) = back {
                             check_image_ref(
                                 v,
                                 dat_dir,

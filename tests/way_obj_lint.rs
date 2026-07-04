@@ -46,6 +46,26 @@ fn valid_way_obj_has_no_errors_or_warnings() {
 }
 
 #[test]
+fn dash_sentinel_in_backdiagonal_is_not_a_false_positive() {
+    // 第8弾: ユーザー報告された実際の誤検知
+    // (`iss/way-object/road/wall_1.dat`の`backdiagonal[nw]=-`が
+    // `missing-image-file: Referenced image - was not found`として誤検知されていた)
+    // の最小再現。RIBI_CODES[9]="nw"（DIAGONAL_RIBI_INDICESの一つ）。
+    // image_writer_t::write_obj（image_writer.cc:366）は"-"をfrontdiagonal/
+    // backdiagonalに限らず全ての画像キーで共通して「画像なし」として扱うため、
+    // check_image_ref（src/rules/common.rs）側で一元的に判定するよう修正した。
+    let diags = check("way_obj_dash_sentinel_valid.dat");
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|(s, _)| *s == Severity::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "\"-\"センチネルのbackdiagonalはerrorを出さないべき: {errors:?}"
+    );
+}
+
+#[test]
 fn missing_waytype_is_detected() {
     assert!(has_error(
         &check("way_obj_missing_waytype.dat"),

@@ -188,6 +188,21 @@ fn resolve_image_filename(value: &str) -> String {
     }
 }
 
+/// `image_writer_t::write_obj`（image_writer.cc:348-453）は全obj種別が画像参照を
+/// 書き込む際に必ず経由する共有関数で、366行目の
+/// `if (imagekey != "-" && imagekey != "")`がファイル解決ロジック全体
+/// （行370-450: row/col解析・パス構築・`block_load`によるファイル読み込み）を
+/// 包んでいる。つまり値が`"-"`（または空文字列）の場合、makeobjはファイル名として
+/// 解決しようとせず、451行目の`else`分岐で空画像ノードを書き込むのみ
+/// （fatal/errorにはならない）。この判定は特定のobj種別に固有のものではなく
+/// `image_writer_t::write_obj`という共有経路そのものの挙動であるため、
+/// `check_image_ref`という共有関数の入口で一箇所だけ判定するのが正しい。
+///
+/// 第6弾（項目2）ではbuilding/factoryのタイル画像ルールに個別で`v != "-"`
+/// ガードを追加していたが、第8弾でway-object（`iss/way-object/road/wall_1.dat`の
+/// `backdiagonal[nw]=-`）で同じ誤検知が再発したことを受け、per-obj-typeの
+/// 場当たり対応ではなくこの関数自体に統一した。呼び出し側の個別ガードは
+/// 冗長になるが害はないため残っていても良いが、新規に追加する必要は無い。
 pub fn check_image_ref(
     value: &str,
     dat_dir: &Path,
@@ -196,6 +211,21 @@ pub fn check_image_ref(
     lang: Language,
 ) {
     let value = strip_zoomable_prefix_and_trim(value);
+    if value == "-" {
+        diags.push(Diagnostic::info(
+            "image-ref-empty-sentinel",
+            t!(lang,
+                ja: "{context}: \"-\"（画像なしセンチネル）が指定されています。\
+                     image_writer_t::write_obj（image_writer.cc:366）はファイル解決を\
+                     試みず空画像として扱います",
+                en: "{context}: \"-\" (empty-image sentinel) is specified. \
+                     image_writer_t::write_obj (image_writer.cc:366) treats this as an \
+                     intentionally empty image without attempting file resolution",
+                context = context,
+            ),
+        ));
+        return;
+    }
     let filename = resolve_image_filename(value);
 
     let path = dat_dir.join(&filename);

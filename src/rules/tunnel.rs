@@ -178,9 +178,13 @@ impl Rule for ImageRefRule {
                             key_with_season
                         };
 
-                        if value.is_empty() || value == "-" {
+                        if value.is_empty() {
                             continue;
                         }
+                        // "-"（画像なしセンチネル）の判定は`check_image_ref`
+                        // （src/rules/common.rs）側に一元化されている。以前はここに
+                        // `value == "-"`ガードを個別追加していたが、第8弾で共通化した
+                        // ため不要（`check_image_ref`冒頭のdocコメント参照）。
                         check_image_ref(value, ctx.dat_dir, &key_used, &mut diags, ctx.language);
                     }
                 }

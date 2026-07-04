@@ -1,0 +1,12 @@
+obj=way-object
+name=way_obj_dash_sentinel_valid
+waytype=road
+own_waytype=road
+cost=100
+maintenance=10
+topspeed=999
+
+frontimage[-]=station_cube.png.0.0
+backdiagonal[nw]=-
+cursor=station_icon.png.0.0
+icon=station_icon.png.0.0
