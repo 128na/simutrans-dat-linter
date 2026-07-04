@@ -37,7 +37,7 @@
 //! 変更されている点に注意。第1弾実装時点ではメッセージが日本語固定だったが、
 //! i18n対応後はこのデフォルトに従う）。
 
-use crate::i18n::Language;
+use crate::i18n::{Language, t};
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -143,11 +143,34 @@ impl LintConfig {
         }
     }
 
+    /// 設定ファイル自体の読み込み・パースに失敗した場合のエラーメッセージ言語について:
+    /// この時点では設定ファイルの中身（`[general] language`）がまだ読めていない
+    /// （読めていれば、そもそもこの関数は成功して`Ok`を返している）ため、
+    /// 「どの言語でエラーを報告すべきか」を設定ファイルから決めることができない
+    /// （ニワトリが先か卵が先かの問題）。`--config`引数で明示的に指定した言語も
+    /// 存在しない（`Language`はCLI引数ではなく設定ファイル経由でのみ選択される設計）。
+    /// そのため、ここでのエラーメッセージは`Language::default()`（English）固定とする。
+    /// 実用上も、設定ファイルが読めない/壊れているという状況を報告するメッセージが
+    /// 意図した言語（`ja`）で出ないケースよりも、常に一貫した言語（English）で
+    /// 出る方が挙動を予測しやすいと判断した。
     fn load_from(path: &Path) -> Result<Self, String> {
-        let text = std::fs::read_to_string(path)
-            .map_err(|e| format!("{} を読み込めません ({e})", path.display()))?;
-        let raw: RawConfig = toml::from_str(&text)
-            .map_err(|e| format!("{} のTOML解析に失敗しました ({e})", path.display()))?;
+        let error_lang = Language::default();
+        let text = std::fs::read_to_string(path).map_err(|e| {
+            t!(error_lang,
+                ja: "{p} を読み込めません ({e})",
+                en: "Cannot read {p} ({e})",
+                p = path.display(),
+                e = e,
+            )
+        })?;
+        let raw: RawConfig = toml::from_str(&text).map_err(|e| {
+            t!(error_lang,
+                ja: "{p} のTOML解析に失敗しました ({e})",
+                en: "Failed to parse TOML in {p} ({e})",
+                p = path.display(),
+                e = e,
+            )
+        })?;
         let language = raw
             .general
             .language
@@ -305,6 +328,42 @@ mod tests {
         let cfg = LintConfig::load_from(&tmp).unwrap();
         let _ = std::fs::remove_file(&tmp);
         assert_eq!(cfg.language(), Language::English);
+    }
+
+    /// 設定ファイル自体が存在しない場合の読み込みエラーメッセージは、
+    /// `load_from`のdocコメントに記載の通り常に`Language::default()`（English）
+    /// 固定である（設定ファイルの中身が読めていない時点でユーザーの言語選択を
+    /// 知りようがないため）。この方針が実際にコード側でも守られていることを固定する。
+    #[test]
+    fn unreadable_file_error_message_is_always_english() {
+        let tmp = std::env::temp_dir().join("dat_linter_test_nonexistent_file_for_error.toml");
+        let _ = std::fs::remove_file(&tmp);
+        let err = LintConfig::load_from(&tmp).unwrap_err();
+        assert!(
+            err.contains("Cannot read"),
+            "存在しないファイルのエラーは常に英語であるべき: {err:?}"
+        );
+        assert!(
+            !err.contains("読み込めません"),
+            "存在しないファイルのエラーに日本語文字列が混入している: {err:?}"
+        );
+    }
+
+    /// 不正なTOML構文のパースエラーメッセージも同様に常にEnglish固定。
+    #[test]
+    fn invalid_toml_error_message_is_always_english() {
+        let tmp = std::env::temp_dir().join("dat_linter_test_invalid_toml.toml");
+        std::fs::write(&tmp, "this is not valid toml [[[").unwrap();
+        let err = LintConfig::load_from(&tmp).unwrap_err();
+        let _ = std::fs::remove_file(&tmp);
+        assert!(
+            err.contains("Failed to parse TOML"),
+            "不正なTOMLのエラーは常に英語であるべき: {err:?}"
+        );
+        assert!(
+            !err.contains("TOML解析に失敗しました"),
+            "不正なTOMLのエラーに日本語文字列が混入している: {err:?}"
+        );
     }
 
     #[test]

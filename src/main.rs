@@ -528,14 +528,14 @@ fn run_fmt(args: &FmtArgs, language: Language) -> ExitCode {
         }
     };
 
-    let parsed = formatter::parse_entries(&text);
+    let parsed = formatter::parse_entries(&text, language);
     for w in &parsed.warnings {
         eprintln!("{}: {w}", path.display());
     }
 
     let formatted = if args.reorder {
         let obj = formatter::obj_of(&parsed.entries).unwrap_or("").to_string();
-        let (out, warnings) = formatter::format_reordered(&parsed.entries, &obj);
+        let (out, warnings) = formatter::format_reordered(&parsed.entries, &obj, language);
         for w in &warnings {
             eprintln!("{}: {w}", path.display());
         }

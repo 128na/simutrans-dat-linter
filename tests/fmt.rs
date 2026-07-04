@@ -2,6 +2,7 @@
 //! デフォルト整形（順序保持）の冪等性を確認する。
 
 use dat_linter::formatter;
+use dat_linter::i18n::Language;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -16,8 +17,9 @@ fn read(file: &str) -> String {
 
 #[test]
 fn reorder_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "building");
+    let parsed = formatter::parse_entries(&read("fmt_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "building", Language::default());
     // 慣習順（obj, name, copyright, type, enables_pax）に並び替わり、
     // キーは小文字化、`Name = Hoge` の値は "Hoge" にトリムされる。
     let expected = "obj=building\nname=Hoge\ncopyright=fuga\ntype=station\nenables_pax=1\n";
@@ -30,8 +32,10 @@ fn reorder_handles_dash_separated_multi_object_file() {
     // 実例（refs/building.JpClassicTerminal/JpClassicTerminal.dat）を模したfixture。
     // 各obj定義は区切りを跨がず**独立して**並び替えられ、区切り行自体は
     // 原文のまま元の位置に復元されるべき。
-    let parsed = formatter::parse_entries(&read("fmt_multi_object_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "building");
+    let parsed =
+        formatter::parse_entries(&read("fmt_multi_object_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "building", Language::default());
     let expected = "\
 obj=building
 name=StageA
@@ -51,7 +55,7 @@ fn preserve_order_does_not_warn_on_separator_line() {
     // `-`始まりの区切り行はreal makeobjでも正常なobj定義の終端マーカーであり、
     // Malformed（`=`が無い不正行）としての警告を出すべきではない。
     let text = read("fmt_multi_object_example.dat");
-    let parsed = formatter::parse_entries(&text);
+    let parsed = formatter::parse_entries(&text, Language::default());
     assert!(
         parsed.warnings.is_empty(),
         "区切り行だけのfixtureで警告が出ないべき: {:?}",
@@ -62,25 +66,35 @@ fn preserve_order_does_not_warn_on_separator_line() {
 #[test]
 fn preserve_order_is_idempotent() {
     let text = read("roundtrip_test.dat");
-    let once = formatter::format_preserve_order(&formatter::parse_entries(&text).entries);
-    let twice = formatter::format_preserve_order(&formatter::parse_entries(&once).entries);
+    let once = formatter::format_preserve_order(
+        &formatter::parse_entries(&text, Language::default()).entries,
+    );
+    let twice = formatter::format_preserve_order(
+        &formatter::parse_entries(&once, Language::default()).entries,
+    );
     assert_eq!(once, twice, "順序保持フォーマットは冪等であるべき");
 }
 
 #[test]
 fn reorder_is_idempotent() {
     let text = read("roundtrip_test.dat");
-    let (once, _) =
-        formatter::format_reordered(&formatter::parse_entries(&text).entries, "building");
-    let (twice, _) =
-        formatter::format_reordered(&formatter::parse_entries(&once).entries, "building");
+    let (once, _) = formatter::format_reordered(
+        &formatter::parse_entries(&text, Language::default()).entries,
+        "building",
+        Language::default(),
+    );
+    let (twice, _) = formatter::format_reordered(
+        &formatter::parse_entries(&once, Language::default()).entries,
+        "building",
+        Language::default(),
+    );
     assert_eq!(once, twice, "並び替えフォーマットは冪等であるべき");
 }
 
 #[test]
 fn reorder_unsupported_obj_falls_back_to_preserve_order() {
     let text = read("roundtrip_test.dat");
-    let parsed = formatter::parse_entries(&text);
+    let parsed = formatter::parse_entries(&text, Language::default());
     // "nonexistent-obj-type" は本ツールが対応していない（そもそも実在しない）
     // obj種別文字列のプレースホルダ。かつては "wayobj" -> "groundobj" -> "tree" ->
     // "citycar" -> "pedestrian" -> "factory" -> "sound" -> "ground" -> "menu" ->
@@ -126,7 +140,8 @@ fn reorder_unsupported_obj_falls_back_to_preserve_order() {
     // `obj=smoke`（smoke_writer_t）とは全くの別概念である。さらに`obj=factory`の
     // `fields=`/`max_fields=`/`min_fields=`/`start_fields=`**フィールド**も、
     // トップレベルの`obj=field`（field_writer_t）とは全くの別概念である。
-    let (out, warnings) = formatter::format_reordered(&parsed.entries, "nonexistent-obj-type");
+    let (out, warnings) =
+        formatter::format_reordered(&parsed.entries, "nonexistent-obj-type", Language::default());
     let preserved = formatter::format_preserve_order(&parsed.entries);
     assert_eq!(out, preserved);
     assert!(
@@ -136,10 +151,105 @@ fn reorder_unsupported_obj_falls_back_to_preserve_order() {
     );
 }
 
+// --- i18n: parse_entries / format_reordered の警告メッセージが
+//     Language に応じて切り替わることを確認する（第3弾で追加）。 -----------------
+
+#[test]
+fn parse_entries_leading_space_warning_switches_language() {
+    // fmt_messy.dat の3行目 " enables_post=1" は行頭スペース行
+    // （SkippedLeadingSpace）。
+    let text = read("fmt_messy.dat");
+
+    let ja = formatter::parse_entries(&text, Language::Japanese);
+    assert!(
+        ja.warnings
+            .iter()
+            .any(|w| w.contains("行頭にスペースがあるため")),
+        "日本語の行頭スペース警告が出るべき: {:?}",
+        ja.warnings
+    );
+
+    let en = formatter::parse_entries(&text, Language::English);
+    assert!(
+        en.warnings
+            .iter()
+            .any(|w| w.contains("starts with whitespace")),
+        "英語の行頭スペース警告が出るべき: {:?}",
+        en.warnings
+    );
+}
+
+#[test]
+fn parse_entries_malformed_line_warning_switches_language() {
+    // fmt_messy.dat の4行目 "this is not a key value line" は
+    // `=` を含まない不正行（Malformed）。
+    let text = read("fmt_messy.dat");
+
+    let ja = formatter::parse_entries(&text, Language::Japanese);
+    assert!(
+        ja.warnings.iter().any(|w| w.contains("'=' が無いため")),
+        "日本語の不正行警告が出るべき: {:?}",
+        ja.warnings
+    );
+
+    let en = formatter::parse_entries(&text, Language::English);
+    assert!(
+        en.warnings.iter().any(|w| w.contains("no '='")),
+        "英語の不正行警告が出るべき: {:?}",
+        en.warnings
+    );
+}
+
+#[test]
+fn format_reordered_unsupported_obj_warning_switches_language() {
+    let text = read("roundtrip_test.dat");
+    let parsed = formatter::parse_entries(&text, Language::default());
+
+    let (_, ja_warnings) =
+        formatter::format_reordered(&parsed.entries, "nonexistent-obj-type", Language::Japanese);
+    assert!(
+        ja_warnings
+            .iter()
+            .any(|w| w.contains("並び替えに未対応です")),
+        "日本語の未対応obj警告が出るべき: {ja_warnings:?}"
+    );
+
+    let (_, en_warnings) =
+        formatter::format_reordered(&parsed.entries, "nonexistent-obj-type", Language::English);
+    assert!(
+        en_warnings
+            .iter()
+            .any(|w| w.contains("not supported for reordering")),
+        "英語の未対応obj警告が出るべき: {en_warnings:?}"
+    );
+}
+
+#[test]
+fn format_reordered_dropped_lines_warning_switches_language() {
+    // fmt_messy.datは行頭スペース行・不正行を含むため、--reorder時に
+    // dropped件数の警告が出る（building は対応済みobj種別）。
+    let text = read("fmt_messy.dat");
+    let parsed = formatter::parse_entries(&text, Language::default());
+
+    let (_, ja_warnings) =
+        formatter::format_reordered(&parsed.entries, "building", Language::Japanese);
+    assert!(
+        ja_warnings.iter().any(|w| w.contains("削除されました")),
+        "日本語の削除件数警告が出るべき: {ja_warnings:?}"
+    );
+
+    let (_, en_warnings) =
+        formatter::format_reordered(&parsed.entries, "building", Language::English);
+    assert!(
+        en_warnings.iter().any(|w| w.contains("were dropped")),
+        "英語の削除件数警告が出るべき: {en_warnings:?}"
+    );
+}
+
 #[test]
 fn reorder_way_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_way_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "way");
+    let parsed = formatter::parse_entries(&read("fmt_way_example.dat"), Language::default());
+    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "way", Language::default());
     let expected = "\
 obj=way
 name=Highway
@@ -157,8 +267,9 @@ image[-]=road.png.0.0
 
 #[test]
 fn reorder_good_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_good_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "good");
+    let parsed = formatter::parse_entries(&read("fmt_good_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "good", Language::default());
     let expected = "\
 obj=good
 name=Passagiere
@@ -172,8 +283,9 @@ mapcolor=255
 
 #[test]
 fn reorder_bridge_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_bridge_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "bridge");
+    let parsed = formatter::parse_entries(&read("fmt_bridge_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "bridge", Language::default());
     let expected = "\
 obj=bridge
 name=Skyway
@@ -191,8 +303,9 @@ frontimage[ns]=bridge.png.0.0
 
 #[test]
 fn reorder_tunnel_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_tunnel_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "tunnel");
+    let parsed = formatter::parse_entries(&read("fmt_tunnel_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "tunnel", Language::default());
     let expected = "\
 obj=tunnel
 name=Underpass
@@ -210,8 +323,9 @@ frontimage[n][0]=tunnel.png.0.0
 
 #[test]
 fn reorder_roadsign_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_roadsign_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "roadsign");
+    let parsed = formatter::parse_entries(&read("fmt_roadsign_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "roadsign", Language::default());
     let expected = "\
 obj=roadsign
 name=Signal
@@ -229,8 +343,9 @@ icon=signal_icon.png.0.0
 
 #[test]
 fn reorder_crossing_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_crossing_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "crossing");
+    let parsed = formatter::parse_entries(&read("fmt_crossing_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "crossing", Language::default());
     let expected = "\
 obj=crossing
 name=Level Crossing
@@ -248,8 +363,9 @@ openimage[ns][0]=crossing.png.0.0
 
 #[test]
 fn reorder_way_obj_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_way_obj_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "way-object");
+    let parsed = formatter::parse_entries(&read("fmt_way_obj_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "way-object", Language::default());
     let expected = "\
 obj=way-object
 name=Catenary
@@ -268,8 +384,9 @@ icon=catenary_icon.png.0.0
 
 #[test]
 fn reorder_groundobj_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_groundobj_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "ground_obj");
+    let parsed = formatter::parse_entries(&read("fmt_groundobj_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "ground_obj", Language::default());
     let expected = "\
 obj=ground_obj
 name=Rock
@@ -283,8 +400,9 @@ image[0][0]=rock.png.0.0
 
 #[test]
 fn reorder_tree_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_tree_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "tree");
+    let parsed = formatter::parse_entries(&read("fmt_tree_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "tree", Language::default());
     let expected = "\
 obj=tree
 name=Oak
@@ -299,8 +417,9 @@ image[0][0]=tree.png.0.0
 
 #[test]
 fn reorder_vehicle_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_vehicle_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "vehicle");
+    let parsed = formatter::parse_entries(&read("fmt_vehicle_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "vehicle", Language::default());
     let expected = "\
 obj=vehicle
 name=Loco
@@ -319,8 +438,9 @@ constraint[prev][0]=none
 
 #[test]
 fn reorder_citycar_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_citycar_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "citycar");
+    let parsed = formatter::parse_entries(&read("fmt_citycar_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "citycar", Language::default());
     let expected = "\
 obj=citycar
 name=Sedan
@@ -335,8 +455,9 @@ image[s]=citycar.png.0.0
 
 #[test]
 fn reorder_pedestrian_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_pedestrian_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "pedestrian");
+    let parsed = formatter::parse_entries(&read("fmt_pedestrian_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "pedestrian", Language::default());
     let expected = "\
 obj=pedestrian
 name=Walker
@@ -350,8 +471,9 @@ image[s]=pedestrian.png.0.0
 
 #[test]
 fn reorder_sound_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_sound_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "sound");
+    let parsed = formatter::parse_entries(&read("fmt_sound_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "sound", Language::default());
     let expected = "\
 obj=sound
 name=Cash
@@ -364,8 +486,9 @@ sound_name=cash.wav
 
 #[test]
 fn reorder_factory_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_factory_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "factory");
+    let parsed = formatter::parse_entries(&read("fmt_factory_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "factory", Language::default());
     let expected = "\
 obj=factory
 name=Glassworks
@@ -386,8 +509,9 @@ outputgood[0]=glass
 
 #[test]
 fn reorder_ground_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_ground_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "ground");
+    let parsed = formatter::parse_entries(&read("fmt_ground_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "ground", Language::default());
     let expected = "\
 obj=ground
 name=Slopes
@@ -400,8 +524,9 @@ image[0][0]=slope.png.0.0
 
 #[test]
 fn reorder_menu_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_menu_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "menu");
+    let parsed = formatter::parse_entries(&read("fmt_menu_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "menu", Language::default());
     let expected = "\
 obj=menu
 name=WindowSkin
@@ -414,8 +539,9 @@ image[0]=skins.0.0
 
 #[test]
 fn reorder_cursor_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_cursor_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "cursor");
+    let parsed = formatter::parse_entries(&read("fmt_cursor_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "cursor", Language::default());
     let expected = "\
 obj=cursor
 name=MouseCursor
@@ -428,8 +554,9 @@ image[0]=mouse.1.0
 
 #[test]
 fn reorder_symbol_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_symbol_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "symbol");
+    let parsed = formatter::parse_entries(&read("fmt_symbol_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "symbol", Language::default());
     let expected = "\
 obj=symbol
 name=Builder
@@ -442,8 +569,9 @@ image[0]=builder_symbol.1.0
 
 #[test]
 fn reorder_smoke_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_smoke_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "smoke");
+    let parsed = formatter::parse_entries(&read("fmt_smoke_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "smoke", Language::default());
     let expected = "\
 obj=smoke
 name=Diesel
@@ -456,8 +584,9 @@ image[0]=misc-smoke-128.0.0
 
 #[test]
 fn reorder_field_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_field_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "field");
+    let parsed = formatter::parse_entries(&read("fmt_field_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "field", Language::default());
     let expected = "\
 obj=field
 name=CornField
@@ -470,8 +599,9 @@ image[0]=corn_farm.4.3
 
 #[test]
 fn reorder_misc_matches_expected_output() {
-    let parsed = formatter::parse_entries(&read("fmt_misc_example.dat"));
-    let (out, _warnings) = formatter::format_reordered(&parsed.entries, "misc");
+    let parsed = formatter::parse_entries(&read("fmt_misc_example.dat"), Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "misc", Language::default());
     let expected = "\
 obj=misc
 name=Construction

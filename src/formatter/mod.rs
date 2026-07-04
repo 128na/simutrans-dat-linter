@@ -1,3 +1,4 @@
+use crate::i18n::{Language, t};
 use crate::parser::format_key;
 
 pub mod order;
@@ -27,7 +28,7 @@ pub struct ParsedDat {
     pub warnings: Vec<String>,
 }
 
-pub fn parse_entries(text: &str) -> ParsedDat {
+pub fn parse_entries(text: &str, lang: Language) -> ParsedDat {
     let mut entries = Vec::new();
     let mut warnings = Vec::new();
 
@@ -39,8 +40,11 @@ pub fn parse_entries(text: &str) -> ParsedDat {
         } else if line.starts_with('#') {
             entries.push(Entry::Comment(line.to_string()));
         } else if line.starts_with(' ') {
-            warnings.push(format!(
-                "line {lineno}: 行頭にスペースがあるため makeobj から無視されます（コメント扱い）: \"{line}\""
+            warnings.push(t!(lang,
+                ja: "line {lineno}: 行頭にスペースがあるため makeobj から無視されます（コメント扱い）: \"{line}\"",
+                en: "line {lineno}: ignored by makeobj because it starts with whitespace (treated as a comment): \"{line}\"",
+                lineno = lineno,
+                line = line,
             ));
             entries.push(Entry::SkippedLeadingSpace(line.to_string()));
         } else if line.starts_with('-') {
@@ -51,8 +55,11 @@ pub fn parse_entries(text: &str) -> ParsedDat {
                 value: value.to_string(),
             });
         } else {
-            warnings.push(format!(
-                "line {lineno}: '=' が無いため makeobj から無視されます: \"{line}\""
+            warnings.push(t!(lang,
+                ja: "line {lineno}: '=' が無いため makeobj から無視されます: \"{line}\"",
+                en: "line {lineno}: ignored by makeobj because it has no '=': \"{line}\"",
+                lineno = lineno,
+                line = line,
             ));
             entries.push(Entry::Malformed(line.to_string()));
         }
@@ -105,12 +112,14 @@ pub fn format_preserve_order(entries: &[Entry]) -> String {
 /// 独立して**並び替える（全セグメントに同じ`obj`の並び順仕様を適用する。
 /// 建物の複数ステージ等、連結された定義は通常すべて同じobj種別のため）。
 /// 区切り行自体は元の位置・原文のまま復元する。
-pub fn format_reordered(entries: &[Entry], obj: &str) -> (String, Vec<String>) {
+pub fn format_reordered(entries: &[Entry], obj: &str, lang: Language) -> (String, Vec<String>) {
     let mut warnings = Vec::new();
 
     let Some(spec) = order_for(obj) else {
-        warnings.push(format!(
-            "--reorder: obj={obj} は並び替えに未対応です。元の順序のまま出力します"
+        warnings.push(t!(lang,
+            ja: "--reorder: obj={obj} は並び替えに未対応です。元の順序のまま出力します",
+            en: "--reorder: obj={obj} is not supported for reordering. Output uses the original order",
+            obj = obj,
         ));
         return (format_preserve_order(entries), warnings);
     };
@@ -132,7 +141,7 @@ pub fn format_reordered(entries: &[Entry], obj: &str) -> (String, Vec<String>) {
             out.push_str(separators[i - 1]);
             out.push('\n');
         }
-        let (segment_out, segment_warnings) = format_reordered_segment(segment, spec);
+        let (segment_out, segment_warnings) = format_reordered_segment(segment, spec, lang);
         out.push_str(&segment_out);
         warnings.extend(segment_warnings);
     }
@@ -140,7 +149,11 @@ pub fn format_reordered(entries: &[Entry], obj: &str) -> (String, Vec<String>) {
     (out, warnings)
 }
 
-fn format_reordered_segment(entries: &[Entry], spec: &OrderSpec) -> (String, Vec<String>) {
+fn format_reordered_segment(
+    entries: &[Entry],
+    spec: &OrderSpec,
+    lang: Language,
+) -> (String, Vec<String>) {
     let mut warnings = Vec::new();
 
     let mut pairs: Vec<(&String, &String)> = Vec::new();
@@ -154,8 +167,11 @@ fn format_reordered_segment(entries: &[Entry], spec: &OrderSpec) -> (String, Vec
         }
     }
     if dropped > 0 {
-        warnings.push(format!(
-            "--reorder: コメント/スキップ行/不正行 {dropped} 件は並び替え後の位置が一意に決まらないため出力から削除されました"
+        warnings.push(t!(lang,
+            ja: "--reorder: コメント/スキップ行/不正行 {dropped} 件は並び替え後の位置が一意に決まらないため出力から削除されました",
+            en: "--reorder: {dropped} comment/skipped/malformed line(s) were dropped from the output \
+                 because their position after reordering would not be well-defined",
+            dropped = dropped,
         ));
     }
 
