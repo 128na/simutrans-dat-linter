@@ -106,14 +106,10 @@ pub fn all() -> Vec<Box<dyn Rule>> {
     vec![Box::new(WaytypeRequiredRule), Box::new(ImageRefRule)]
 }
 
-/// `check_bridge`/`check_way`と対称的な薄いラッパー。
+/// `tests/tunnel_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で
+/// ディスパッチする（`super::common::check_via_dispatch`のdocコメント参照）。
 pub fn check_tunnel(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext {
-        dat,
-        dat_dir,
-        language: crate::i18n::Language::default(),
-    };
-    all().iter().flat_map(|r| r.check(&ctx)).collect()
+    super::common::check_via_dispatch("tunnel", dat, dat_dir)
 }
 
 /// tunnel_writer.cc:25 は get_waytype(obj.get("waytype")) を無条件に呼ぶ

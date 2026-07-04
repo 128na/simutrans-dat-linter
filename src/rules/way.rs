@@ -33,14 +33,10 @@ pub fn all() -> Vec<Box<dyn Rule>> {
     ]
 }
 
-/// `check_building`/`check_vehicle`と対称的な薄いラッパー。
+/// `tests/way_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由でディスパッチする
+/// （`super::common::check_via_dispatch`のdocコメント参照）。
 pub fn check_way(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext {
-        dat,
-        dat_dir,
-        language: crate::i18n::Language::default(),
-    };
-    all().iter().flat_map(|r| r.check(&ctx)).collect()
+    super::common::check_via_dispatch("way", dat, dat_dir)
 }
 
 /// way_writer.cc:51 は get_waytype(obj.get("waytype")) を無条件に呼ぶ

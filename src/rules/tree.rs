@@ -108,14 +108,10 @@ pub fn all() -> Vec<Box<dyn Rule>> {
     vec![Box::new(AgeSeasonImageRule)]
 }
 
-/// `check_good`/`check_groundobj`と対称的な薄いラッパー。
+/// `tests/tree_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で
+/// ディスパッチする（`super::common::check_via_dispatch`のdocコメント参照）。
 pub fn check_tree(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext {
-        dat,
-        dat_dir,
-        language: crate::i18n::Language::default(),
-    };
-    all().iter().flat_map(|r| r.check(&ctx)).collect()
+    super::common::check_via_dispatch("tree", dat, dat_dir)
 }
 
 /// tree_writer.cc:37-55: `age`（0..4固定5段階）×`season`（0..number_of_seasons-1）の

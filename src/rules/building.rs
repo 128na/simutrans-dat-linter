@@ -106,14 +106,10 @@ pub fn all(dat: &DatFile) -> Vec<Box<dyn Rule>> {
     ]
 }
 
-/// 後方互換の薄いラッパー。`tests/building.rs`はこの関数を直接呼ぶ。
+/// `tests/building.rs`専用。本番と同じ`RuleSet::for_obj_type`経由でディスパッチする
+/// （`super::common::check_via_dispatch`のdocコメント参照）。
 pub fn check_building(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext {
-        dat,
-        dat_dir,
-        language: crate::i18n::Language::default(),
-    };
-    all(dat).iter().flat_map(|r| r.check(&ctx)).collect()
+    super::common::check_via_dispatch("building", dat, dat_dir)
 }
 
 struct PreludeDebugRule;

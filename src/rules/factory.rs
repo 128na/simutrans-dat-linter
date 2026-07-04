@@ -246,14 +246,10 @@ pub fn all(dat: &DatFile) -> Vec<Box<dyn Rule>> {
     ]
 }
 
-/// `check_building`等と対称的な薄いラッパー。
+/// `tests/factory_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で
+/// ディスパッチする（`super::common::check_via_dispatch`のdocコメント参照）。
 pub fn check_factory(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext {
-        dat,
-        dat_dir,
-        language: crate::i18n::Language::default(),
-    };
-    all(dat).iter().flat_map(|r| r.check(&ctx)).collect()
+    super::common::check_via_dispatch("factory", dat, dat_dir)
 }
 
 /// building_writer.cc:220相当。factory_writer.cc:220の`obj.put("type", "fac")`は

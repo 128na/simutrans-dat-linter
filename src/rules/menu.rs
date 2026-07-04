@@ -134,7 +134,7 @@
 use super::common;
 use crate::diagnostics::Diagnostic;
 use crate::parser::DatFile;
-use crate::registry::{Rule, RuleContext};
+use crate::registry::Rule;
 use std::path::Path;
 
 /// ルール実装本体は`menu`/`cursor`/`symbol`/`smoke`/`field`/`misc`の6種別で
@@ -144,12 +144,8 @@ pub fn all() -> Vec<Box<dyn Rule>> {
     vec![Box::new(common::AllImagesRule)]
 }
 
-/// `check_ground`/`check_citycar`と対称的な薄いラッパー。
+/// `tests/menu_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で
+/// ディスパッチする（`super::common::check_via_dispatch`のdocコメント参照）。
 pub fn check_menu(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext {
-        dat,
-        dat_dir,
-        language: crate::i18n::Language::default(),
-    };
-    all().iter().flat_map(|r| r.check(&ctx)).collect()
+    super::common::check_via_dispatch("menu", dat, dat_dir)
 }

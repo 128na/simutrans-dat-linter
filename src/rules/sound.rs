@@ -69,7 +69,7 @@
 
 use crate::diagnostics::Diagnostic;
 use crate::parser::DatFile;
-use crate::registry::{Rule, RuleContext};
+use crate::registry::Rule;
 use std::path::Path;
 
 /// `sound_writer.cc`にはmakeobj時点でfatal/warningになる分岐が一つも無いため、
@@ -80,12 +80,8 @@ pub fn all() -> Vec<Box<dyn Rule>> {
     vec![]
 }
 
-/// `check_good`と対称的な薄いラッパー。
+/// `tests/sound_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で
+/// ディスパッチする（`super::common::check_via_dispatch`のdocコメント参照）。
 pub fn check_sound(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext {
-        dat,
-        dat_dir,
-        language: crate::i18n::Language::default(),
-    };
-    all().iter().flat_map(|r| r.check(&ctx)).collect()
+    super::common::check_via_dispatch("sound", dat, dat_dir)
 }

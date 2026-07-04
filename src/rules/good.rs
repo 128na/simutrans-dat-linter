@@ -66,7 +66,7 @@
 
 use crate::diagnostics::Diagnostic;
 use crate::parser::DatFile;
-use crate::registry::{Rule, RuleContext};
+use crate::registry::Rule;
 use std::path::Path;
 
 /// `good_writer.cc`にはmakeobj時点でfatal/warningになる分岐が一つも無いため、
@@ -77,12 +77,8 @@ pub fn all() -> Vec<Box<dyn Rule>> {
     vec![]
 }
 
-/// `check_building`/`check_vehicle`/`check_way`と対称的な薄いラッパー。
+/// `tests/good_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で
+/// ディスパッチする（`super::common::check_via_dispatch`のdocコメント参照）。
 pub fn check_good(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext {
-        dat,
-        dat_dir,
-        language: crate::i18n::Language::default(),
-    };
-    all().iter().flat_map(|r| r.check(&ctx)).collect()
+    super::common::check_via_dispatch("good", dat, dat_dir)
 }

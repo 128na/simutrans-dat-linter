@@ -134,14 +134,10 @@ pub fn all() -> Vec<Box<dyn Rule>> {
     vec![Box::new(DirectionImageRefRule)]
 }
 
-/// `check_tree`/`check_groundobj`と対称的な薄いラッパー。
+/// `tests/citycar_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で
+/// ディスパッチする（`super::common::check_via_dispatch`のdocコメント参照）。
 pub fn check_citycar(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext {
-        dat,
-        dat_dir,
-        language: crate::i18n::Language::default(),
-    };
-    all().iter().flat_map(|r| r.check(&ctx)).collect()
+    super::common::check_via_dispatch("citycar", dat, dat_dir)
 }
 
 /// citycar_writer.cc:38-46: 8方向全てについて`image[<dir>]`を無条件に読む

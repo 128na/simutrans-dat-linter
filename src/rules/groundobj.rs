@@ -165,14 +165,12 @@ pub fn all() -> Vec<Box<dyn Rule>> {
     ]
 }
 
-/// `check_way`/`check_way_obj`と対称的な薄いラッパー。
+/// `tests/groundobj_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で
+/// ディスパッチする（`super::common::check_via_dispatch`のdocコメント参照）。
+/// `obj=`の実際の値は`ground_obj`（アンダースコア区切り。モジュール名`groundobj`とは
+/// 異なる点に注意、モジュール冒頭のdocコメント参照）。
 pub fn check_groundobj(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext {
-        dat,
-        dat_dir,
-        language: crate::i18n::Language::default(),
-    };
-    all().iter().flat_map(|r| r.check(&ctx)).collect()
+    super::common::check_via_dispatch("ground_obj", dat, dat_dir)
 }
 
 /// groundobj_writer.cc:49-50: `waytype_txt && waytype_txt[0] != '\0' ?

@@ -4,7 +4,7 @@
 use crate::diagnostics::Diagnostic;
 use crate::i18n::{Language, t};
 use crate::parser::DatFile;
-use crate::registry::{Rule, RuleContext};
+use crate::registry::{Rule, RuleContext, RuleSet};
 use std::path::Path;
 
 /// obj種別を問わず、パーサレベルで検出した重複キーを警告として出す。
@@ -34,6 +34,30 @@ pub fn check_duplicate_keys(dat: &DatFile, lang: Language) -> Vec<Diagnostic> {
             .at(d.duplicate_line, d.key.clone())
         })
         .collect()
+}
+
+/// 各obj種別モジュールの`check_<objtype>`関数（22個、`tests/*_lint.rs`専用）が
+/// 共有するディスパッチ経路。
+///
+/// 第15弾（code smellレビュー・タスク11）: 以前は各`check_<objtype>`が
+/// 自モジュールの`all(dat)`/`all()`を直接呼んでいたため、本番の実行経路
+/// （`src/commands/lint.rs`が使う`RuleSet::for_obj_type`という「obj=文字列から
+/// RuleSetへのディスパッチ」）を一度も通らず、`for_obj_type`のmatch分岐に
+/// 将来バグ（typo・登録漏れ）が入ってもテストが検出できないという問題があった。
+/// この関数はテストの入口を本番と同じ`RuleSet::for_obj_type`経由に統一する
+/// （`obj_type`はコンパイル時に分かっている既知の文字列リテラルを呼び出し元が
+/// 渡す前提のため、`for_obj_type`が`None`を返すのは呼び出し側のtypo等の
+/// プログラミングミスのみ。テストヘルパーとして`.unwrap()`で即座に落とすのが
+/// 適切と判断した）。
+pub fn check_via_dispatch(obj_type: &str, dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
+    let ctx = RuleContext {
+        dat,
+        dat_dir,
+        language: Language::default(),
+    };
+    RuleSet::for_obj_type(obj_type, dat)
+        .unwrap_or_else(|| panic!("RuleSet::for_obj_type({obj_type:?}) returned None"))
+        .run(&ctx)
 }
 
 /// `get_waytype()`（get_waytype.cc）がSTRICMPで受理する既知waytype一覧。

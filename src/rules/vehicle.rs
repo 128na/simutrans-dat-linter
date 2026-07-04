@@ -66,17 +66,13 @@ pub fn all() -> Vec<Box<dyn Rule>> {
     ]
 }
 
-/// `check_building`と対称的な薄いラッパー。`dat_dir`は現時点のvehicleルールでは
-/// 未使用だが、building同様のAPI形状を保ち、将来vehicle画像のファイル存在確認
-/// （このマイルストーンでは非対象、rules/mod.rsのREADME参照）を追加する際に
-/// シグネチャ変更が不要になるようにしている。
+/// `tests/vehicle_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で
+/// ディスパッチする（`super::common::check_via_dispatch`のdocコメント参照）。
+/// `dat_dir`は現時点のvehicleルールでは未使用だが、building同様のAPI形状を保ち、
+/// 将来vehicle画像のファイル存在確認（このマイルストーンでは非対象、
+/// rules/mod.rsのREADME参照）を追加する際にシグネチャ変更が不要になるようにしている。
 pub fn check_vehicle(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext {
-        dat,
-        dat_dir,
-        language: crate::i18n::Language::default(),
-    };
-    all().iter().flat_map(|r| r.check(&ctx)).collect()
+    super::common::check_via_dispatch("vehicle", dat, dat_dir)
 }
 
 /// vehicle_writer.cc:146-147 は get_waytype(obj.get("waytype")) を無条件に呼ぶ

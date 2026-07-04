@@ -173,14 +173,12 @@ pub fn all() -> Vec<Box<dyn Rule>> {
     ]
 }
 
-/// `check_way`/`check_bridge`/`check_crossing`と対称的な薄いラッパー。
+/// `tests/way_obj_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で
+/// ディスパッチする（`super::common::check_via_dispatch`のdocコメント参照）。
+/// `obj=`の実際の値は`way-object`（ハイフン区切り。モジュール名`way_obj`とは
+/// 異なる点に注意）。
 pub fn check_way_obj(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext {
-        dat,
-        dat_dir,
-        language: crate::i18n::Language::default(),
-    };
-    all().iter().flat_map(|r| r.check(&ctx)).collect()
+    super::common::check_via_dispatch("way-object", dat, dat_dir)
 }
 
 /// way_obj_writer.cc:42 は get_waytype(obj.get("waytype")) を無条件に呼ぶ

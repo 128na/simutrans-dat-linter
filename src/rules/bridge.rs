@@ -87,14 +87,10 @@ pub fn all() -> Vec<Box<dyn Rule>> {
     ]
 }
 
-/// `check_way`/`check_good`と対称的な薄いラッパー。
+/// `tests/bridge_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で
+/// ディスパッチする（`super::common::check_via_dispatch`のdocコメント参照）。
 pub fn check_bridge(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext {
-        dat,
-        dat_dir,
-        language: crate::i18n::Language::default(),
-    };
-    all().iter().flat_map(|r| r.check(&ctx)).collect()
+    super::common::check_via_dispatch("bridge", dat, dat_dir)
 }
 
 /// bridge_writer.cc:101 は get_waytype(obj.get("waytype")) を無条件に呼ぶ

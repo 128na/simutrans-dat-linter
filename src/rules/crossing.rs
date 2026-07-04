@@ -166,14 +166,10 @@ pub fn all() -> Vec<Box<dyn Rule>> {
     ]
 }
 
-/// `check_bridge`/`check_tunnel`/`check_roadsign`と対称的な薄いラッパー。
+/// `tests/crossing_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で
+/// ディスパッチする（`super::common::check_via_dispatch`のdocコメント参照）。
 pub fn check_crossing(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
-    let ctx = RuleContext {
-        dat,
-        dat_dir,
-        language: crate::i18n::Language::default(),
-    };
-    all().iter().flat_map(|r| r.check(&ctx)).collect()
+    super::common::check_via_dispatch("crossing", dat, dat_dir)
 }
 
 /// crossing_writer.cc:78-79 は waytype[0]/waytype[1] それぞれについて
