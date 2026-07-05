@@ -18,7 +18,7 @@ fn check(file: &str) -> Vec<(Severity, &'static str)> {
     let dat = DatFile::parse(&path).unwrap_or_else(|e| panic!("{file} のパースに失敗: {e}"));
     rules::check_building(&dat, &dir)
         .into_iter()
-        .map(|d| (d.severity, d.code))
+        .map(|d| (d.severity, d.code.as_str()))
         .collect()
 }
 
@@ -104,7 +104,7 @@ fn relative_path_with_double_dot_in_directory_prefix_is_not_a_false_positive() {
         .unwrap_or_else(|e| panic!("パースに失敗: {e}"));
     let diags: Vec<_> = rules::check_building(&dat, dat_dir)
         .into_iter()
-        .map(|d| (d.severity, d.code))
+        .map(|d| (d.severity, d.code.as_str()))
         .collect();
 
     assert!(

@@ -148,6 +148,7 @@
 //!   対象フィールドが存在しない）。
 
 use super::common::{DIR_CODES, check_image_ref};
+use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::{Language, t};
 use crate::parser::DatFile;
@@ -211,7 +212,7 @@ fn check_static_images(dat: &DatFile, dat_dir: &Path, diags: &mut Vec<Diagnostic
         let value = dat.get(&key).unwrap_or("");
         if value.is_empty() {
             diags.push(Diagnostic::debug(
-                "image-omitted",
+                DiagnosticCode::ImageOmitted,
                 t!(lang,
                     ja: "{key} が未指定です。makeobjはこれをFATALにしません\
                          （pedestrianの8方向静止画像は個別に省略可能です）",
@@ -242,7 +243,7 @@ fn check_animated_images(
             if value.is_empty() {
                 if frame == 0 {
                     diags.push(Diagnostic::debug(
-                        "image-omitted",
+                        DiagnosticCode::ImageOmitted,
                         t!(lang,
                             ja: "{key} が未指定です。makeobjはこれをFATALにしません\
                                  （このpedestrianはアニメーション画像を使用しており、\

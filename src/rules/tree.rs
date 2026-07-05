@@ -95,6 +95,7 @@
 //!   ルールは成立しない（そもそも検証対象のキーが無い）。
 
 use super::common::check_image_ref;
+use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
 use crate::parser::DatFile;
@@ -139,7 +140,7 @@ impl Rule for AgeSeasonImageRule {
                 let value = dat.get(&key).unwrap_or("");
                 if value.is_empty() {
                     diags.push(Diagnostic::error(
-                        "missing-age-season-image",
+                        DiagnosticCode::MissingAgeSeasonImage,
                         t!(ctx.language,
                             ja: "{key}: age {age} season {season} の画像が未指定です。\
                                  makeobjはFATAL ERRORになります（\"Missing {key}!\"）",

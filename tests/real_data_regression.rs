@@ -22,6 +22,7 @@
 //! フィクスチャがこのマシン上に存在する間は、これまで通り実データに対する
 //! 実際の検証が走る。
 
+use dat_linter::codes::DiagnosticCode;
 use dat_linter::config::LintConfig;
 use dat_linter::diagnostics::Severity;
 use dat_linter::i18n::Language;
@@ -78,7 +79,10 @@ fn check_all_records(file: &str) -> Vec<Vec<(Severity, &'static str)>> {
                 };
                 diags.extend(rule_set.run(&ctx));
             }
-            diags.into_iter().map(|d| (d.severity, d.code)).collect()
+            diags
+                .into_iter()
+                .map(|d| (d.severity, d.code.as_str()))
+                .collect()
         })
         .collect()
 }
@@ -300,7 +304,10 @@ fn config_exclude_suppresses_missing_tile_image_diagnostics() {
     let filtered_error_count: usize = records
         .iter()
         .flatten()
-        .filter(|(s, c)| *s == Severity::Error && config.is_enabled(c))
+        .filter(|(s, c)| {
+            *s == Severity::Error
+                && config.is_enabled(DiagnosticCode::from_str(c).expect("既知のcodeのはず"))
+        })
         .count();
     assert_eq!(
         filtered_error_count, 0,

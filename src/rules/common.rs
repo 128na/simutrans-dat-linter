@@ -1,6 +1,7 @@
 //! building/vehicle 両方のルールから参照される共通の定数・ヘルパー。
 //! 検証根拠は `rules/mod.rs` 冒頭コメント参照。
 
+use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::{Language, t};
 use crate::parser::DatFile;
@@ -18,7 +19,7 @@ pub fn check_duplicate_keys(dat: &DatFile, lang: Language) -> Vec<Diagnostic> {
         .iter()
         .map(|d| {
             Diagnostic::warning(
-                "duplicate-key",
+                DiagnosticCode::DuplicateKey,
                 t!(lang,
                     ja: "キー \"{key}\" が複数回定義されています（{first}行目の値が採用され、\
                          {dup}行目は無視されます）。makeobjのtabfileobj_t::put()は既存キーを\
@@ -139,7 +140,7 @@ pub fn check_waytype_field(dat: &DatFile, key: &str, lang: Language) -> Vec<Diag
     let waytype = dat.get(key).unwrap_or("").to_ascii_lowercase();
     if waytype.is_empty() {
         vec![Diagnostic::error(
-            "missing-waytype",
+            DiagnosticCode::MissingWaytype,
             t!(lang,
                 ja: "{key} が必須です（get_waytype()は空文字列もFATAL ERRORにします）",
                 en: "{key} is required (get_waytype() treats an empty string as a FATAL ERROR too)",
@@ -148,7 +149,7 @@ pub fn check_waytype_field(dat: &DatFile, key: &str, lang: Language) -> Vec<Diag
         )]
     } else if !KNOWN_WAYTYPES.contains(&waytype.as_str()) {
         vec![Diagnostic::error(
-            "unknown-waytype",
+            DiagnosticCode::UnknownWaytype,
             t!(lang,
                 ja: "{key}={waytype} は不正な値です（FATAL ERRORになります）",
                 en: "{key}={waytype} is not a valid value (this becomes a FATAL ERROR)",
@@ -158,7 +159,7 @@ pub fn check_waytype_field(dat: &DatFile, key: &str, lang: Language) -> Vec<Diag
         )]
     } else {
         vec![Diagnostic::info(
-            "waytype-ok",
+            DiagnosticCode::WaytypeOk,
             t!(lang,
                 ja: "{key}={waytype}",
                 en: "{key}={waytype}",
@@ -274,7 +275,7 @@ pub fn check_image_ref(
     let value = strip_zoomable_prefix_and_trim(value);
     if value == "-" {
         diags.push(Diagnostic::info(
-            "image-ref-empty-sentinel",
+            DiagnosticCode::ImageRefEmptySentinel,
             t!(lang,
                 ja: "{context}: \"-\"（画像なしセンチネル）が指定されています。\
                      image_writer_t::write_obj（image_writer.cc:366）はファイル解決を\
@@ -291,7 +292,7 @@ pub fn check_image_ref(
 
     let path = dat_dir.join(&filename);
     diags.push(Diagnostic::debug(
-        "image-ref-resolved",
+        DiagnosticCode::ImageRefResolved,
         format!(
             "{context}: \"{value}\" -> filename=\"{filename}\" path={}",
             path.display()
@@ -300,7 +301,7 @@ pub fn check_image_ref(
 
     if !path.is_file() {
         diags.push(Diagnostic::error(
-            "missing-image-file",
+            DiagnosticCode::MissingImageFile,
             t!(lang,
                 ja: "{context}: 参照画像 {filename} が見つかりません ({p})",
                 en: "{context}: Referenced image {filename} was not found ({p})",
@@ -317,7 +318,7 @@ pub fn check_image_ref(
             let (w, h) = (img.width(), img.height());
             if w % PAK_TILE_SIZE != 0 || h % PAK_TILE_SIZE != 0 {
                 diags.push(Diagnostic::error(
-                    "image-size-not-multiple-of-128",
+                    DiagnosticCode::ImageSizeNotMultipleOf128,
                     t!(lang,
                         ja: "{context}: {filename} のサイズが {w}x{h} です。makeobj pak128 は{tile}の倍数でないとエラーになります",
                         en: "{context}: {filename} has size {w}x{h}. makeobj pak128 requires dimensions to be a multiple of {tile}",
@@ -330,14 +331,14 @@ pub fn check_image_ref(
                 ));
             } else {
                 diags.push(Diagnostic::info(
-                    "image-ok",
+                    DiagnosticCode::ImageOk,
                     format!("{context}: {filename} {w}x{h}"),
                 ));
             }
         }
         Err(e) => {
             diags.push(Diagnostic::error(
-                "unreadable-image",
+                DiagnosticCode::UnreadableImage,
                 t!(lang,
                     ja: "{context}: {filename} を画像として読み込めません ({e})",
                     en: "{context}: Failed to read {filename} as an image ({e})",
@@ -425,13 +426,13 @@ impl Rule for DimsRule {
         let ints = ctx.dat.get_ints("dims");
         let (size_x, size_y, layouts) = resolve_dims(ctx.dat);
         let mut diags = vec![Diagnostic::debug(
-            "dims-resolved",
+            DiagnosticCode::DimsResolved,
             format!("Dims={ints:?} -> size_x={size_x} size_y={size_y} layouts={layouts}"),
         )];
 
         if size_x * size_y == 0 {
             diags.push(Diagnostic::error(
-                "zero-size",
+                DiagnosticCode::ZeroSize,
                 t!(ctx.language,
                     ja: "Dims のサイズが0です (size_x={size_x}, size_y={size_y})",
                     en: "Dims size is 0 (size_x={size_x}, size_y={size_y})",
@@ -441,7 +442,7 @@ impl Rule for DimsRule {
             ));
         } else {
             diags.push(Diagnostic::info(
-                "dims-ok",
+                DiagnosticCode::DimsOk,
                 format!("size={size_x}x{size_y} layouts={layouts}"),
             ));
         }
@@ -478,7 +479,7 @@ impl Rule for CursorIconRule {
         let cursor = ctx.dat.get("cursor").unwrap_or("");
         let icon = ctx.dat.get("icon").unwrap_or("");
         let mut diags = vec![Diagnostic::debug(
-            "raw-cursor-icon",
+            DiagnosticCode::RawCursorIcon,
             format!("cursor=\"{cursor}\" icon=\"{icon}\""),
         )];
 
@@ -496,7 +497,7 @@ impl Rule for CursorIconRule {
                 // cursor/icon未指定はerrorではない。ただし完全に無言にはせず、
                 // 「対象外と判断した」ことが分かるようinfoで残す。
                 diags.push(Diagnostic::info(
-                    "cursor-icon-not-applicable",
+                    DiagnosticCode::CursorIconNotApplicable,
                     t!(ctx.language,
                         ja: "cursor と icon が両方とも未指定ですが、type={type_name} は\
                              プレイヤーが選ぶビルドメニューに現れない種別（都市成長や\
@@ -511,7 +512,7 @@ impl Rule for CursorIconRule {
                 return diags;
             }
             diags.push(Diagnostic::error(
-                "missing-cursor-icon",
+                DiagnosticCode::MissingCursorIcon,
                 t!(ctx.language,
                     ja: "cursor と icon が両方とも未指定です。makeobjはエラーを出さずにビルドしますが、ゲーム内のビルドメニューに表示されません",
                     en: "Both cursor and icon are unspecified. makeobj builds without error, but the \
@@ -559,7 +560,7 @@ impl Rule for TileImageRule {
                     let back6 = format!("backimage[{l}][{y}][{x}][0][0][0]");
 
                     diags.push(Diagnostic::debug(
-                        "tile-key-lookup",
+                        DiagnosticCode::TileKeyLookup,
                         format!("layout {l} tile ({x},{y}): {front5} / {back5} ({front6} / {back6} もfallback確認)"),
                     ));
 
@@ -568,7 +569,7 @@ impl Rule for TileImageRule {
 
                     if front.is_none() && back.is_none() {
                         diags.push(Diagnostic::error(
-                            "missing-tile-image",
+                            DiagnosticCode::MissingTileImage,
                             t!(ctx.language,
                                 ja: "layout {l} tile ({x},{y}) に front/backimage が1枚もありません\
                                      （makeobjはエラーを出さず空画像のタイルを生成します）",
@@ -581,7 +582,7 @@ impl Rule for TileImageRule {
                         ));
                     } else {
                         diags.push(Diagnostic::info(
-                            "tile-image-ok",
+                            DiagnosticCode::TileImageOk,
                             format!("layout {l} tile ({x},{y})"),
                         ));
                         // "-"（画像なしセンチネル）の判定は`check_image_ref`側に
@@ -625,7 +626,7 @@ impl Rule for TileImageRule {
                     && h_str.parse::<i64>().unwrap_or(0) > 0
                 {
                     diags.push(Diagnostic::error(
-                        "frontimage-height",
+                        DiagnosticCode::FrontimageHeight,
                         t!(ctx.language,
                             ja: "{key} : frontimageの高さ(h)は0のみ有効です\
                                  （makeobjはエラーログを出すだけで処理を継続します）",

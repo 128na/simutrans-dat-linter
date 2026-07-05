@@ -124,6 +124,7 @@
 //!   存在しない）。
 
 use super::common::{DIR_CODES, check_image_ref};
+use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
 use crate::parser::DatFile;
@@ -155,7 +156,7 @@ impl Rule for DirectionImageRefRule {
             let value = dat.get(&key).unwrap_or("");
             if value.is_empty() {
                 diags.push(Diagnostic::debug(
-                    "image-omitted",
+                    DiagnosticCode::ImageOmitted,
                     t!(ctx.language,
                         ja: "{key} が未指定です。makeobjはこれをFATALにしません\
                              （citycarの8方向画像は個別に省略可能です）",

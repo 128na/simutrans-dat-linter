@@ -149,6 +149,7 @@
 //!   存在しない）。
 
 use super::common::{KNOWN_WAYTYPES, check_image_ref};
+use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::{Language, t};
 use crate::parser::DatFile;
@@ -186,7 +187,7 @@ impl Rule for WaytypeIfPresentValidRule {
         let waytype = ctx.dat.get("waytype").unwrap_or("").to_ascii_lowercase();
         if waytype.is_empty() {
             vec![Diagnostic::info(
-                "waytype-omitted",
+                DiagnosticCode::WaytypeOmitted,
                 t!(ctx.language,
                     ja: "obj=ground_obj では waytype は省略可能です（省略時は ignore_wt にフォールバックし、\
                          FATAL ERRORにはなりません。他のobj種別と異なりwaytype必須ではありません）",
@@ -197,7 +198,7 @@ impl Rule for WaytypeIfPresentValidRule {
             )]
         } else if !KNOWN_WAYTYPES.contains(&waytype.as_str()) {
             vec![Diagnostic::error(
-                "unknown-waytype",
+                DiagnosticCode::UnknownWaytype,
                 t!(ctx.language,
                     ja: "waytype={waytype} は不正な値です（FATAL ERRORになります）",
                     en: "waytype={waytype} is not a valid value (this becomes a FATAL ERROR)",
@@ -205,7 +206,10 @@ impl Rule for WaytypeIfPresentValidRule {
                 ),
             )]
         } else {
-            vec![Diagnostic::info("waytype-ok", format!("waytype={waytype}"))]
+            vec![Diagnostic::info(
+                DiagnosticCode::WaytypeOk,
+                format!("waytype={waytype}"),
+            )]
         }
     }
 }
@@ -272,7 +276,7 @@ fn check_fixed_images(
             let value = dat.get(&key).unwrap_or("");
             if value.is_empty() {
                 diags.push(Diagnostic::error(
-                    "missing-season-image",
+                    DiagnosticCode::MissingSeasonImage,
                     t!(lang,
                         ja: "{key}: phase {phase} の season 0 画像は定義されていますが、\
                              season {season} の画像が未指定です。makeobjはFATAL ERRORになります\
@@ -301,7 +305,7 @@ fn check_fixed_images(
 
     if phase == 0 {
         diags.push(Diagnostic::info(
-            "no-images",
+            DiagnosticCode::NoImages,
             t!(lang,
                 ja: "image[0][0] が未指定です。makeobjはこれをFATALにしません（画像0枚のground_objも\
                      許容されますが、ゲーム内では何も描画されません）",
@@ -327,7 +331,7 @@ fn check_moving_images(
             let value = dat.get(&key).unwrap_or("");
             if value.is_empty() {
                 diags.push(Diagnostic::error(
-                    "missing-season-image",
+                    DiagnosticCode::MissingSeasonImage,
                     t!(lang,
                         ja: "{key}: speed!=0 (移動物) の ground_obj では8方向 x seasons分の画像が\
                              全て必須です。makeobjはFATAL ERRORになります\

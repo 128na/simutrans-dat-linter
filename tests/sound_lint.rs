@@ -23,7 +23,7 @@ fn check(file: &str) -> Vec<(Severity, &'static str)> {
     let dat = DatFile::parse(&path).unwrap_or_else(|e| panic!("{file} のパースに失敗: {e}"));
     rules::check_sound(&dat, &dir)
         .into_iter()
-        .map(|d| (d.severity, d.code))
+        .map(|d| (d.severity, d.code.as_str()))
         .collect()
 }
 

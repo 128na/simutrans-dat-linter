@@ -211,6 +211,7 @@
 //!   同じ曖昧さを引き継ぐ（区別する根拠が無い）。
 
 use super::common::{CursorIconPolicy, CursorIconRule, DimsRule, TileImageRule, resolve_dims};
+use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::{Language, t};
 use crate::parser::DatFile;
@@ -266,7 +267,7 @@ impl Rule for TypeOverrideRule {
             return Vec::new();
         }
         vec![Diagnostic::error(
-            "factory-type-override",
+            DiagnosticCode::FactoryTypeOverride,
             t!(ctx.language,
                 ja: "type={type_name} が明示されています。factory_writer.cc:220の\
                      obj.put(\"type\",\"fac\")はtabfileobj_t::put()の先勝ち仕様により\
@@ -303,7 +304,7 @@ impl Rule for MapColorRule {
             .unwrap_or(255);
         if resolved == 255 {
             vec![Diagnostic::error(
-                "factory-missing-mapcolor",
+                DiagnosticCode::FactoryMissingMapcolor,
                 t!(ctx.language,
                     ja: "mapcolor が未指定（または255）です。factory_writer.cc は\
                          mapcolorが255のままだとFATAL ERRORにします\
@@ -318,7 +319,7 @@ impl Rule for MapColorRule {
             )]
         } else {
             vec![Diagnostic::info(
-                "factory-mapcolor-ok",
+                DiagnosticCode::FactoryMapcolorOk,
                 format!("mapcolor={resolved}"),
             )]
         }
@@ -355,7 +356,7 @@ impl Rule for OutputCapacityRule {
                 .unwrap_or(0);
             if cap < 11 {
                 diags.push(Diagnostic::warning(
-                    "factory-output-capacity-too-small",
+                    DiagnosticCode::FactoryOutputCapacityTooSmall,
                     t!(ctx.language,
                         ja: "{cap_key}={cap} は11未満です。factory_writerは\
                              outputcapacityが10以下だとエラーログを出しますが\
@@ -403,7 +404,7 @@ impl Rule for SmokeOffsetRule {
             let offset = dat.get(&offset_key).unwrap_or("");
             if offset.is_empty() {
                 diags.push(Diagnostic::warning(
-                    "factory-smoketile-without-offset",
+                    DiagnosticCode::FactorySmoketileWithoutOffset,
                     t!(ctx.language,
                         ja: "{tile_key} が定義されていますが {offset_key} がありません。\
                              factory_writerはエラーログを出しますが処理は継続します\
@@ -468,7 +469,7 @@ fn check_probability_field(
         .unwrap_or(default);
     if value >= 10000 {
         diags.push(Diagnostic::warning(
-            "factory-probability-clamped",
+            DiagnosticCode::FactoryProbabilityClamped,
             t!(lang,
                 ja: "{key}={value} は10000以上です。factory_writerはこの値を\
                      サイレントに10000へクランプします（\"{message}\"）",
@@ -514,7 +515,7 @@ impl Rule for ProductivityZeroRule {
             .unwrap_or(10);
         if productivity == 0 {
             vec![Diagnostic::error(
-                "factory-productivity-zero",
+                DiagnosticCode::FactoryProductivityZero,
                 t!(ctx.language,
                     ja: "productivity=0 です。ゲームランタイム（simfab.cc）はfactory配置時に\
                          無条件でupdate_scaled_pax_demand()/update_scaled_mail_demand()を呼び、\

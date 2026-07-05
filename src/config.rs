@@ -41,10 +41,11 @@
 //! `fmt`は慣習的な並び順に並び替えるのがデフォルト挙動（第5弾以降）。
 //! 第11弾で専用の`[fmt] reorder`設定セクションを廃止し、既存の
 //! `[rules] include/exclude`（`Diagnostic.code`単位）の仕組みに統合した:
-//! reorder自体は`fmt-reorder-applied`というcode（`Diagnostic::info`、
-//! `src/main.rs::fmt_one_file`が発行）で表現され、`[rules] exclude`に
-//! このcodeを追加すると恒久的にreorderを無効化できる
-//! （`config.is_enabled("fmt-reorder-applied")`が`false`を返すようになる）。
+//! reorder自体は`DiagnosticCode::FmtReorderApplied`（TOML上の文字列表現は
+//! `"fmt-reorder-applied"`）というcode（機能トグル専用。実際にDiagnosticとして
+//! 発行されることは無い）で表現され、`[rules] exclude`にこのcodeを追加すると
+//! 恒久的にreorderを無効化できる
+//! （`config.is_enabled(DiagnosticCode::FmtReorderApplied)`が`false`を返すようになる）。
 //! CLIの`--no-reorder`フラグは、その1回の実行に限りconfig設定に関わらず
 //! 強制的に無効化する（優先順位: `--no-reorder`指定 >
 //! config（`[rules] exclude`にfmt-reorder-appliedがあれば無効、無ければ有効
@@ -116,7 +117,7 @@ struct RawRulesConfig {
 /// 読み込み・正規化済みの設定。`is_enabled`で`Diagnostic.code`ごとに
 /// 有効/無効を判定し、`language()`で出力言語を取得する。
 ///
-/// `fmt`のreorder挙動も`is_enabled("fmt-reorder-applied")`で判定する
+/// `fmt`のreorder挙動も`is_enabled(DiagnosticCode::FmtReorderApplied)`で判定する
 /// （第11弾で専用の`fmt_reorder`フィールド・`[fmt] reorder`設定を廃止し、
 /// 既存の`[rules] include/exclude`の仕組みに統合した。モジュール冒頭の
 /// docコメント「`fmt`のreorder挙動」参照）。
@@ -136,7 +137,7 @@ impl Default for LintConfig {
 impl LintConfig {
     /// 全ルールが有効・言語はデフォルト(English)の設定
     /// （設定ファイル無しの状態と同義。fmtのreorderも
-    /// `is_enabled("fmt-reorder-applied")`が`true`を返すため既定で有効）。
+    /// `is_enabled(DiagnosticCode::FmtReorderApplied)`が`true`を返すため既定で有効）。
     pub fn all_enabled() -> Self {
         LintConfig {
             include: HashSet::new(),
@@ -215,7 +216,13 @@ impl LintConfig {
     /// この`code`の診断を出力すべきか。
     /// `include`が空なら常に候補入り、非空なら`include`に含まれる場合のみ候補入り。
     /// その後`exclude`に含まれていればどちらの場合も無効化する。
-    pub fn is_enabled(&self, code: &str) -> bool {
+    ///
+    /// 第17弾: 引数を`&str`から`codes::DiagnosticCode`（enum）に変更した。
+    /// TOMLの`[rules] include/exclude`自体は引き続きユーザーが手で書く文字列の
+    /// リストのため、内部の`include`/`exclude`（`HashSet<String>`）は変更せず、
+    /// `code.as_str()`で文字列化してから既存の判定ロジックにそのまま渡す。
+    pub fn is_enabled(&self, code: crate::codes::DiagnosticCode) -> bool {
+        let code = code.as_str();
         let included = self.include.is_empty() || self.include.contains(code);
         included && !self.exclude.contains(code)
     }
@@ -243,12 +250,13 @@ fn generate_default_config_file(path: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::codes::DiagnosticCode;
 
     #[test]
     fn all_enabled_allows_everything() {
         let cfg = LintConfig::all_enabled();
-        assert!(cfg.is_enabled("obsolete-type"));
-        assert!(cfg.is_enabled("anything"));
+        assert!(cfg.is_enabled(DiagnosticCode::ObsoleteType));
+        assert!(cfg.is_enabled(DiagnosticCode::DuplicateKey));
     }
 
     #[test]
@@ -264,7 +272,7 @@ mod tests {
             exclude: raw.rules.exclude.into_iter().collect(),
             language: Language::default(),
         };
-        assert!(cfg.is_enabled("obsolete-type"));
+        assert!(cfg.is_enabled(DiagnosticCode::ObsoleteType));
     }
 
     #[test]
@@ -274,8 +282,8 @@ mod tests {
             exclude: HashSet::new(),
             language: Language::default(),
         };
-        assert!(cfg.is_enabled("obsolete-type"));
-        assert!(!cfg.is_enabled("missing-waytype"));
+        assert!(cfg.is_enabled(DiagnosticCode::ObsoleteType));
+        assert!(!cfg.is_enabled(DiagnosticCode::MissingWaytype));
     }
 
     #[test]
@@ -285,7 +293,7 @@ mod tests {
             exclude: ["obsolete-type".to_string()].into_iter().collect(),
             language: Language::default(),
         };
-        assert!(!cfg.is_enabled("obsolete-type"));
+        assert!(!cfg.is_enabled(DiagnosticCode::ObsoleteType));
     }
 
     #[test]
@@ -295,8 +303,8 @@ mod tests {
             exclude: ["duplicate-key".to_string()].into_iter().collect(),
             language: Language::default(),
         };
-        assert!(!cfg.is_enabled("duplicate-key"));
-        assert!(cfg.is_enabled("obsolete-type"));
+        assert!(!cfg.is_enabled(DiagnosticCode::DuplicateKey));
+        assert!(cfg.is_enabled(DiagnosticCode::ObsoleteType));
     }
 
     #[test]
@@ -314,9 +322,9 @@ mod tests {
             exclude: raw.rules.exclude.into_iter().collect(),
             language: Language::default(),
         };
-        assert!(cfg.is_enabled("obsolete-type"));
-        assert!(!cfg.is_enabled("missing-waytype"));
-        assert!(!cfg.is_enabled("unrelated-code"));
+        assert!(cfg.is_enabled(DiagnosticCode::ObsoleteType));
+        assert!(!cfg.is_enabled(DiagnosticCode::MissingWaytype));
+        assert!(!cfg.is_enabled(DiagnosticCode::DuplicateKey));
     }
 
     #[test]
@@ -367,7 +375,7 @@ mod tests {
     /// 適用されることを固定する。
     #[test]
     fn all_enabled_treats_fmt_reorder_applied_as_enabled_by_default() {
-        assert!(LintConfig::all_enabled().is_enabled("fmt-reorder-applied"));
+        assert!(LintConfig::all_enabled().is_enabled(DiagnosticCode::FmtReorderApplied));
     }
 
     #[test]
@@ -376,7 +384,7 @@ mod tests {
         std::fs::write(&tmp, "[rules]\nexclude = [\"fmt-reorder-applied\"]\n").unwrap();
         let cfg = LintConfig::load_from(&tmp).unwrap();
         let _ = std::fs::remove_file(&tmp);
-        assert!(!cfg.is_enabled("fmt-reorder-applied"));
+        assert!(!cfg.is_enabled(DiagnosticCode::FmtReorderApplied));
     }
 
     #[test]

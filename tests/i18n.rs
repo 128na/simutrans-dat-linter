@@ -6,6 +6,7 @@
 //! メッセージ文言まで届いているかは別の懸念事項のため、ここで
 //! `RuleContext`を直接組み立てて日本語・英語両方の出力を確認する。
 
+use dat_linter::codes::DiagnosticCode;
 use dat_linter::diagnostics::Severity;
 use dat_linter::i18n::Language;
 use dat_linter::parser::DatFile;
@@ -31,7 +32,7 @@ fn missing_cursor_icon_message(language: Language) -> String {
     let diags = rule_set.run(&ctx);
     let diag = diags
         .iter()
-        .find(|d| d.severity == Severity::Error && d.code == "missing-cursor-icon")
+        .find(|d| d.severity == Severity::Error && d.code == DiagnosticCode::MissingCursorIcon)
         .expect("missing-cursor-icon エラーが出るはず");
     diag.message.clone()
 }

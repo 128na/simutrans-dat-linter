@@ -21,7 +21,10 @@ fn analyze(sub: &str) -> Vec<(Severity, &'static str)> {
         &vehicles,
         Language::default(),
     ));
-    diags.into_iter().map(|d| (d.severity, d.code)).collect()
+    diags
+        .into_iter()
+        .map(|d| (d.severity, d.code.as_str()))
+        .collect()
 }
 
 fn has_error(diags: &[(Severity, &str)], code: &str) -> bool {

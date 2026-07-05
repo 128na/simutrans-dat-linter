@@ -102,6 +102,7 @@
 //!   makeobj側に存在しない（ゲーム側の`crossing_logic_t`が実行時に使い方を決める）。
 
 use super::common::{KNOWN_WAYTYPES, check_image_ref};
+use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
 use crate::parser::DatFile;
@@ -214,7 +215,7 @@ impl Rule for IdenticalWaytypesRule {
             && r0 == r1
         {
             return vec![Diagnostic::error(
-                "crossing-identical-waytypes",
+                DiagnosticCode::CrossingIdenticalWaytypes,
                 t!(ctx.language,
                     ja: "waytype[0]={w0} と waytype[1]={w1} は同じ種別のwayに解決されます。\
                          makeobjは同一waytype同士の交差をFATAL ERRORにします\
@@ -249,7 +250,7 @@ impl Rule for SpeedRequiredRule {
             .unwrap_or(0);
         if speed0 == 0 || speed1 == 0 {
             vec![Diagnostic::error(
-                "crossing-missing-speed",
+                DiagnosticCode::CrossingMissingSpeed,
                 t!(ctx.language,
                     ja: "speed[0] と speed[1] の両方に0以外の値が必要です。makeobjは\
                          どちらか一方でも0（未指定含む）だとFATAL ERRORにします\
@@ -291,7 +292,7 @@ impl Rule for OpenImageRequiredRule {
         let ew_count = make_list(ctx.dat, "openimage[ew]").len();
         if ns_count == 0 || ew_count == 0 {
             vec![Diagnostic::error(
-                "crossing-missing-openimage",
+                DiagnosticCode::CrossingMissingOpenimage,
                 t!(ctx.language,
                     ja: "openimage[ns][0] と openimage[ew][0] は両方とも最低1枚必要です\
                          （現在 openimage[ns]={ns_count}枚 / openimage[ew]={ew_count}枚）。\

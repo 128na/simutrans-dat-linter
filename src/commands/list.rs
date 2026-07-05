@@ -8,10 +8,10 @@ use dat_linter::i18n::{Language, t};
 use std::process::ExitCode;
 
 /// 第9弾（項目2）: `dat_linter.toml`の`[rules] include/exclude`に書けるcode
-/// （`Diagnostic.code`）の一覧を表示する。一覧自体は`codes::ALL_CODES`
-/// （実ソースとの整合性は`tests/codes_completeness.rs`が保証）から取得する。
-/// `--config`が指定された場合、各codeが現在の設定で有効か無効かも併記する
-/// （設定ファイルを編集する前に効果を確認できるようにするため）。
+/// （`Diagnostic.code`）の一覧を表示する。一覧自体は`codes::all_codes()`
+/// （`codes::ALL`から導出。実ソースとの整合性は`tests/codes_completeness.rs`が保証）
+/// から取得する。`--config`が指定された場合、各codeが現在の設定で有効か無効かも
+/// 併記する（設定ファイルを編集する前に効果を確認できるようにするため）。
 pub fn run_list(args: &ListArgs, language: Language) -> ExitCode {
     let config = match LintConfig::load_or_default(args.config.as_deref()) {
         Ok(c) => c,
@@ -30,7 +30,7 @@ pub fn run_list(args: &ListArgs, language: Language) -> ExitCode {
 
     let wanted_source = args.source.map(ListSourceArg::to_code_source);
     let mut shown = 0usize;
-    for info in dat_linter::codes::ALL_CODES {
+    for info in dat_linter::codes::all_codes() {
         if let Some(w) = wanted_source
             && w != info.source
         {
@@ -44,7 +44,11 @@ pub fn run_list(args: &ListArgs, language: Language) -> ExitCode {
             (false, Language::Japanese) => "無効",
             (false, Language::English) => "disabled",
         };
-        println!("{:<12} {:<45} {status}", info.source.as_str(), info.code);
+        println!(
+            "{:<12} {:<45} {status}",
+            info.source.as_str(),
+            info.code.as_str()
+        );
     }
 
     println!(

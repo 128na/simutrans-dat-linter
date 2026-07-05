@@ -1,3 +1,4 @@
+use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::{Language, t};
 use crate::parser::DatFile;
@@ -37,7 +38,7 @@ pub fn load_vehicles(dir: &Path, lang: Language) -> (Vec<VehicleInfo>, Vec<Diagn
         Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
         Err(e) => {
             diags.push(Diagnostic::error(
-                "read-dir-failed",
+                DiagnosticCode::ReadDirFailed,
                 t!(lang,
                     ja: "{d}: ディレクトリを読めません ({e})",
                     en: "{d}: Failed to read the directory ({e})",
@@ -59,7 +60,7 @@ pub fn load_vehicles(dir: &Path, lang: Language) -> (Vec<VehicleInfo>, Vec<Diagn
             Ok(r) => r,
             Err(e) => {
                 diags.push(Diagnostic::error(
-                    "read-failed",
+                    DiagnosticCode::ReadFailed,
                     t!(lang,
                         ja: "{p}: 読み込みに失敗しました ({e})",
                         en: "{p}: Failed to read the file ({e})",
@@ -81,7 +82,7 @@ pub fn load_vehicles(dir: &Path, lang: Language) -> (Vec<VehicleInfo>, Vec<Diagn
             let name = dat.get("name").unwrap_or("").to_string();
             if name.is_empty() {
                 diags.push(Diagnostic::error(
-                    "missing-name",
+                    DiagnosticCode::MissingName,
                     t!(lang,
                         ja: "{p}: obj=vehicle に name がありません",
                         en: "{p}: obj=vehicle has no name",
@@ -144,7 +145,7 @@ pub fn check_dangling_refs(vehicles: &[VehicleInfo], lang: Language) -> Vec<Diag
                     && !known.contains(n.as_str())
                 {
                     diags.push(Diagnostic::error(
-                        "dangling-vehicle-constraint",
+                        DiagnosticCode::DanglingVehicleConstraint,
                         t!(lang,
                             ja: "{name} ({source}): constraint[{side_label}]が参照する車両 \"{n}\" \
                                  がこのディレクトリ内に存在しません（makeobjは参照の実在性を検証\
@@ -238,7 +239,7 @@ pub fn check_satisfiability(vehicles: &[VehicleInfo], lang: Language) -> Vec<Dia
     for (i, v) in vehicles.iter().enumerate() {
         if !(reachable_from_start[i] && can_reach_end[i]) {
             diags.push(Diagnostic::error(
-                "unsatisfiable-constraint",
+                DiagnosticCode::UnsatisfiableConstraint,
                 t!(lang,
                     ja: "{name} ({source}): constraint[prev]/constraint[next]を満たす有限な編成が\
                          1つも組み立てられません（自身および参照車両の制約だけでは先頭〜末尾まで\

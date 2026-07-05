@@ -1,3 +1,4 @@
+use crate::codes::DiagnosticCode;
 use std::fmt;
 
 /// 宣言順 = 重大度の高い順。Ord導出により `severity <= level` で
@@ -50,16 +51,26 @@ pub struct Location {
 /// `LintConfig::is_enabled(code)`フィルタを適用でき、`code`一覧表示
 /// （`dat_linter list`）にも同じデータ型で対応できる。`#[derive(Debug)]`は
 /// テストの`assert!(..., "{warnings:?}")`のようなデバッグ出力のために必要。
+///
+/// 第17弾（code smellレビュー・タスク13）: `code`フィールドの型を
+/// `&'static str`から`codes::DiagnosticCode`（enum）へ変更した。以前は
+/// `Diagnostic::error("missing-waytype", ...)`のように任意の文字列を渡せて
+/// しまい、`src/codes.rs::ALL_CODES`との整合性は実行時テスト
+/// （`tests/codes_completeness.rs`の正規表現スキャン）でしか保証できなかった。
+/// enum化により、存在しないcode文字列を指定してしまうミス自体が
+/// コンパイルエラーになる。文字列表現が必要な箇所（`dat_linter.toml`の
+/// include/exclude・`describe`引数・診断メッセージの表示）は
+/// `DiagnosticCode::as_str()`で取得する。
 #[derive(Debug)]
 pub struct Diagnostic {
     pub severity: Severity,
-    pub code: &'static str,
+    pub code: DiagnosticCode,
     pub message: String,
     pub location: Option<Location>,
 }
 
 impl Diagnostic {
-    pub fn error(code: &'static str, message: impl Into<String>) -> Self {
+    pub fn error(code: DiagnosticCode, message: impl Into<String>) -> Self {
         Diagnostic {
             severity: Severity::Error,
             code,
@@ -68,7 +79,7 @@ impl Diagnostic {
         }
     }
 
-    pub fn warning(code: &'static str, message: impl Into<String>) -> Self {
+    pub fn warning(code: DiagnosticCode, message: impl Into<String>) -> Self {
         Diagnostic {
             severity: Severity::Warning,
             code,
@@ -77,7 +88,7 @@ impl Diagnostic {
         }
     }
 
-    pub fn info(code: &'static str, message: impl Into<String>) -> Self {
+    pub fn info(code: DiagnosticCode, message: impl Into<String>) -> Self {
         Diagnostic {
             severity: Severity::Info,
             code,
@@ -86,7 +97,7 @@ impl Diagnostic {
         }
     }
 
-    pub fn debug(code: &'static str, message: impl Into<String>) -> Self {
+    pub fn debug(code: DiagnosticCode, message: impl Into<String>) -> Self {
         Diagnostic {
             severity: Severity::Debug,
             code,
@@ -107,13 +118,14 @@ impl Diagnostic {
 
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let code = self.code.as_str();
         match &self.location {
             Some(loc) => write!(
                 f,
                 "[{}] {} (line {}): {}",
-                self.severity, self.code, loc.line, self.message
+                self.severity, code, loc.line, self.message
             ),
-            None => write!(f, "[{}] {}: {}", self.severity, self.code, self.message),
+            None => write!(f, "[{}] {}: {}", self.severity, code, self.message),
         }
     }
 }

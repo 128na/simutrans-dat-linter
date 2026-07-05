@@ -143,7 +143,7 @@ fn check_duplicate_keys_reports_warning_with_location() {
     assert_eq!(diags.len(), 1);
     let d = &diags[0];
     assert_eq!(d.severity, Severity::Warning);
-    assert_eq!(d.code, "duplicate-key");
+    assert_eq!(d.code, dat_linter::codes::DiagnosticCode::DuplicateKey);
     let loc = d.location.as_ref().expect("locationが付与されているべき");
     assert_eq!(loc.line, 3);
     assert_eq!(loc.key, "name");

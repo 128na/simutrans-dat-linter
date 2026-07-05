@@ -19,6 +19,7 @@
 //!   （「意図的な省略」と「入力ミス」を区別する根拠がmakeobjソース上に無い）。
 
 use super::common::check_image_ref;
+use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
 use crate::parser::DatFile;
@@ -67,7 +68,7 @@ impl Rule for BaseImageRequiredRule {
         let season0 = ctx.dat.get("image[-][0]").unwrap_or("");
         if no_season.is_empty() && season0.is_empty() {
             return vec![Diagnostic::error(
-                "missing-base-image",
+                DiagnosticCode::MissingBaseImage,
                 t!(ctx.language,
                     ja: "image[-] （直進画像）が未指定です。image[-][0]（冬季season 0版）も未指定のため、\
                          makeobjはFATAL ERRORになります（\"image with label image[-] missing\"）",
@@ -79,7 +80,7 @@ impl Rule for BaseImageRequiredRule {
         }
 
         let mut diags = vec![Diagnostic::info(
-            "base-image-ok",
+            DiagnosticCode::BaseImageOk,
             if !season0.is_empty() {
                 t!(ctx.language,
                     ja: "image[-][0] が定義されています（冬季画像あり分岐）",
@@ -134,7 +135,7 @@ impl Rule for ClipBelowRangeRule {
         };
         if !(0..=1).contains(&value) {
             vec![Diagnostic::warning(
-                "clip-below-out-of-range",
+                DiagnosticCode::ClipBelowOutOfRange,
                 t!(ctx.language,
                     ja: "clip_below={value} は範囲0..1外です。makeobjはFATALにはしませんが警告を出し、\
                          値を0か1にクランプします（tabfileobj_t::get_int_clamped()）",

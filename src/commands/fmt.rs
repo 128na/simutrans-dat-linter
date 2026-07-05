@@ -4,6 +4,7 @@
 
 use crate::cli::FmtArgs;
 use crate::fs_walk::collect_dat_paths;
+use dat_linter::codes::DiagnosticCode;
 use dat_linter::config::LintConfig;
 use dat_linter::formatter;
 use dat_linter::i18n::{Language, t};
@@ -27,10 +28,10 @@ pub fn run_fmt(args: &FmtArgs, language: Language) -> ExitCode {
         }
     };
     // 第11弾: 専用の[fmt] reorder設定を廃止し、[rules] include/excludeの
-    // 仕組みに統合した（reorder自体を"fmt-reorder-applied"というcodeで表現する。
-    // config.rs冒頭のdocコメント「`fmt`のreorder挙動」参照）。
+    // 仕組みに統合した（reorder自体をDiagnosticCode::FmtReorderAppliedという
+    // codeで表現する。config.rs冒頭のdocコメント「`fmt`のreorder挙動」参照）。
     // 優先順位: --no-reorder指定 > config設定（excludeに無ければ有効＝デフォルトtrue相当）。
-    let should_reorder = !args.no_reorder && config.is_enabled("fmt-reorder-applied");
+    let should_reorder = !args.no_reorder && config.is_enabled(DiagnosticCode::FmtReorderApplied);
 
     let paths = match collect_dat_paths(&args.path, language) {
         Ok(p) => p,
@@ -150,12 +151,12 @@ fn fmt_one_file(
 
     let formatted = if should_reorder {
         // 第12弾: 第11弾では、reorderが実際に適用されたことを示すInfo診断
-        // （code "fmt-reorder-applied"）をここで生成・eprintln!していたが、
-        // これにより問題の無い通常のfmt実行が毎回1行stderrへ出力するようになり、
-        // 「指摘が無ければ完全silent」というlint/analyzeと同じ方針に反する副作用が
-        // あった（Main側で発見）。"fmt-reorder-applied"はreorder機能の有効/無効を
-        // `[rules] include/exclude`で切り替えるためだけの機能トグルcodeであり、
-        // 実際に診断として発行する必要は無い（有効/無効の判定自体は
+        // （code DiagnosticCode::FmtReorderApplied）をここで生成・eprintln!して
+        // いたが、これにより問題の無い通常のfmt実行が毎回1行stderrへ出力する
+        // ようになり、「指摘が無ければ完全silent」というlint/analyzeと同じ方針に
+        // 反する副作用があった（Main側で発見）。FmtReorderAppliedはreorder機能の
+        // 有効/無効を`[rules] include/exclude`で切り替えるためだけの機能トグル
+        // codeであり、実際に診断として発行する必要は無い（有効/無効の判定自体は
         // `should_reorder`の算出（上部の`config.is_enabled`呼び出し）に残っている）。
         // `tests/codes_completeness.rs::FEATURE_TOGGLE_ONLY_CODES`にこの種のcode向けの
         // 明示的allowlistを設けたため、ここで診断オブジェクト自体を生成・出力する

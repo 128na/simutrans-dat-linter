@@ -60,6 +60,7 @@
 //!   のと同じ理由）。
 
 use super::common::check_image_ref;
+use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
 use crate::parser::DatFile;
@@ -197,7 +198,7 @@ impl Rule for ClampedRangeRule {
             };
             if value < field.min || value > field.max {
                 diags.push(Diagnostic::warning(
-                    "clamped-value-out-of-range",
+                    DiagnosticCode::ClampedValueOutOfRange,
                     t!(ctx.language,
                         ja: "{key}={value} は範囲{min}..{max}外です。makeobjはFATALにはしませんが警告を出し、\
                              値を範囲内にクランプします（tabfileobj_t::get_int_clamped()）",
@@ -259,7 +260,7 @@ impl Rule for FrontImageWarningRule {
                     let value = dat.get(&key).unwrap_or("");
                     if value.len() <= 2 {
                         diags.push(Diagnostic::warning(
-                            "no-bridge-image-specified",
+                            DiagnosticCode::NoBridgeImageSpecified,
                             t!(ctx.language,
                                 ja: "{key} が未指定です（\"No {key} specified (might still work)\"）。\
                                      makeobjはFATALにはしませんが警告を出します",

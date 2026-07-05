@@ -3,6 +3,7 @@
 use super::common::{
     CursorIconPolicy, CursorIconRule, DimsRule, KNOWN_WAYTYPES, TileImageRule, resolve_dims,
 };
+use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::{Language, t};
 use crate::parser::DatFile;
@@ -119,7 +120,7 @@ impl Rule for PreludeDebugRule {
         let waytype = ctx.dat.get("waytype").unwrap_or("").to_ascii_lowercase();
         vec![
             Diagnostic::debug(
-                "parsed-pairs",
+                DiagnosticCode::ParsedPairs,
                 t!(ctx.language,
                     ja: "{n} 個のkey=valueを読み込み",
                     en: "Loaded {n} key=value pair(s)",
@@ -127,7 +128,7 @@ impl Rule for PreludeDebugRule {
                 ),
             ),
             Diagnostic::debug(
-                "raw-type-waytype",
+                DiagnosticCode::RawTypeWaytype,
                 format!("type=\"{type_name}\" waytype=\"{waytype}\""),
             ),
         ]
@@ -153,7 +154,7 @@ fn check_type_and_waytype(
 ) {
     if OBSOLETE_TYPES.contains(&type_name) {
         diags.push(Diagnostic::error(
-            "obsolete-type",
+            DiagnosticCode::ObsoleteType,
             t!(lang,
                 ja: "type={type_name} は obsolete です。stop/extension と waytype を使ってください",
                 en: "type={type_name} is obsolete. Use stop/extension with waytype instead",
@@ -164,7 +165,7 @@ fn check_type_and_waytype(
     }
     if !KNOWN_TYPES.contains(&type_name) {
         diags.push(Diagnostic::error(
-            "unknown-type",
+            DiagnosticCode::UnknownType,
             t!(lang,
                 ja: "type={type_name} は makeobj が認識できない値です（FATAL ERRORになります）",
                 en: "type={type_name} is not a value makeobj recognizes (this becomes a FATAL ERROR)",
@@ -177,7 +178,7 @@ fn check_type_and_waytype(
     if TYPES_REQUIRING_WAYTYPE.contains(&type_name) {
         if waytype.is_empty() {
             diags.push(Diagnostic::error(
-                "missing-waytype",
+                DiagnosticCode::MissingWaytype,
                 t!(lang,
                     ja: "type={type_name} では waytype が必須です（未指定だとmakeobjがFATAL ERRORになります）",
                     en: "waytype is required when type={type_name} (omitting it makes makeobj FATAL ERROR)",
@@ -186,7 +187,7 @@ fn check_type_and_waytype(
             ));
         } else if !KNOWN_WAYTYPES.contains(&waytype) {
             diags.push(Diagnostic::error(
-                "unknown-waytype",
+                DiagnosticCode::UnknownWaytype,
                 t!(lang,
                     ja: "waytype={waytype} は不正な値です（FATAL ERRORになります）",
                     en: "waytype={waytype} is not a valid value (this becomes a FATAL ERROR)",
@@ -195,14 +196,14 @@ fn check_type_and_waytype(
             ));
         } else {
             diags.push(Diagnostic::info(
-                "type-waytype-ok",
+                DiagnosticCode::TypeWaytypeOk,
                 format!("type={type_name} waytype={waytype}"),
             ));
         }
     } else if type_name == "extension" {
         if waytype.is_empty() {
             diags.push(Diagnostic::warning(
-                "generic-extension",
+                DiagnosticCode::GenericExtension,
                 t!(lang,
                     ja: "type=extension で waytype 未指定は「全waytypeに適合する汎用拡張」として解釈されます。意図的でなければ waytype を指定してください",
                     en: "type=extension without waytype is interpreted as a \"generic extension \
@@ -211,7 +212,7 @@ fn check_type_and_waytype(
             ));
         } else if !KNOWN_WAYTYPES.contains(&waytype) {
             diags.push(Diagnostic::error(
-                "unknown-waytype",
+                DiagnosticCode::UnknownWaytype,
                 t!(lang,
                     ja: "waytype={waytype} は不正な値です（FATAL ERRORになります）",
                     en: "waytype={waytype} is not a valid value (this becomes a FATAL ERROR)",
@@ -220,13 +221,13 @@ fn check_type_and_waytype(
             ));
         } else {
             diags.push(Diagnostic::info(
-                "type-waytype-ok",
+                DiagnosticCode::TypeWaytypeOk,
                 format!("type={type_name} waytype={waytype}"),
             ));
         }
     } else {
         diags.push(Diagnostic::info(
-            "type-waytype-ok",
+            DiagnosticCode::TypeWaytypeOk,
             format!("type={type_name}"),
         ));
     }
@@ -237,7 +238,7 @@ impl Rule for ObsoleteKeywordRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
         if ctx.dat.get("extension_building").is_some() {
             vec![Diagnostic::error(
-                "obsolete-keyword",
+                DiagnosticCode::ObsoleteKeyword,
                 t!(ctx.language,
                     ja: "extension_building は obsolete です。type=stop/extension と waytype を使ってください",
                     en: "extension_building is obsolete. Use type=stop/extension with waytype instead",

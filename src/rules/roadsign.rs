@@ -110,6 +110,7 @@
 //!   同じ理由。
 
 use super::common::check_image_ref;
+use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
 use crate::parser::DatFile;
@@ -203,7 +204,7 @@ fn check_numbered(ctx: &RuleContext) -> Vec<Diagnostic> {
         if value.is_empty() {
             if i % 4 != 0 {
                 diags.push(Diagnostic::error(
-                    "roadsign-image-count-not-multiple-of-4",
+                    DiagnosticCode::RoadsignImageCountNotMultipleOf4,
                     t!(ctx.language,
                         ja: "image[{i}] が未指定です。numbered構文（image[0]あり）では \
                              画像枚数は4の倍数である必要があります（\"image count is {i} but \
@@ -247,7 +248,7 @@ fn check_2d(ctx: &RuleContext) -> Vec<Diagnostic> {
                     break 'state_loop;
                 }
                 diags.push(Diagnostic::error(
-                    "roadsign-image-missing",
+                    DiagnosticCode::RoadsignImageMissing,
                     t!(ctx.language,
                         ja: "{key} が未指定です。roadsign_writerは2D構文（image[0]なし）でこのキーを\
                              必須として扱います（\"{key} is missing!\"、FATAL ERRORになります）",

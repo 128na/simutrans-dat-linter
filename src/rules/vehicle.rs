@@ -13,6 +13,7 @@
 //! makeobj自身はこのフィールドの組み合わせを一切検証しない。
 
 use super::common::DIR_CODES;
+use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
 use crate::parser::DatFile;
@@ -105,7 +106,7 @@ impl Rule for EngineTypeRule {
         let waytype = ctx.dat.get("waytype").unwrap_or("").to_ascii_lowercase();
         if waytype == "electrified_track" {
             return vec![Diagnostic::debug(
-                "engine-type-skipped",
+                DiagnosticCode::EngineTypeSkipped,
                 t!(ctx.language,
                     ja: "waytype=electrified_track のため engine_type は読まれません（無条件 electric）",
                     en: "engine_type is not read because waytype=electrified_track \
@@ -121,7 +122,7 @@ impl Rule for EngineTypeRule {
             .to_ascii_lowercase();
         if !engine_type.is_empty() && !KNOWN_ENGINE_TYPES.contains(&engine_type.as_str()) {
             vec![Diagnostic::warning(
-                "unknown-engine-type",
+                DiagnosticCode::UnknownEngineType,
                 t!(ctx.language,
                     ja: "engine_type={engine_type} は不明な値です。makeobjはfatal/errorを出さず、\
                          黙って diesel にフォールバックします",
@@ -186,7 +187,7 @@ impl Rule for DirectionImageRule {
 
         if has_8_images && empty_count < 8 {
             diags.push(Diagnostic::error(
-                "incomplete-8-direction-images",
+                DiagnosticCode::Incomplete8DirectionImages,
                 t!(ctx.language,
                     ja: "n/e/ne/nwのいずれかの方向画像(emptyimage)が定義されているのに、\
                          連続して定義された方向が{empty_count}個しかありません。\
@@ -212,7 +213,7 @@ impl Rule for DirectionImageRule {
             }
             if old_style_count > 0 && old_style_count != empty_count {
                 diags.push(Diagnostic::error(
-                    "freightimage-count-mismatch",
+                    DiagnosticCode::FreightimageCountMismatch,
                     t!(ctx.language,
                         ja: "非indexedのfreightimage[<dir>]が{old_style_count}個定義されていますが、\
                              emptyimageは{empty_count}個です。両者は完全一致している必要があります \
@@ -231,7 +232,7 @@ impl Rule for DirectionImageRule {
                     let key = format!("freightimage[{n}][{dir}]");
                     if dat.get(&key).map(str::is_empty).unwrap_or(true) {
                         diags.push(Diagnostic::error(
-                            "missing-indexed-freightimage",
+                            DiagnosticCode::MissingIndexedFreightimage,
                             t!(ctx.language,
                                 ja: "{key} が未指定です。freightimage[0][s]が定義されている\
                                      （indexed形式）ため、emptyimageが定義された全方向×全freight\
@@ -270,7 +271,7 @@ impl Rule for FreightImageTypeRule {
             let key = format!("freightimagetype[{i}]");
             if dat.get(&key).map(str::is_empty).unwrap_or(true) {
                 diags.push(Diagnostic::error(
-                    "missing-freightimagetype",
+                    DiagnosticCode::MissingFreightimagetype,
                     t!(ctx.language,
                         ja: "{key} が未指定です。freight_image_type={ft}個のindexed freightimageが\
                              使われているため、各indexに対応するfreightimagetype[i]（goodへのxref）\
@@ -288,7 +289,7 @@ impl Rule for FreightImageTypeRule {
         let extra_key = format!("freightimagetype[{ft}]");
         if dat.get(&extra_key).map(|v| !v.is_empty()).unwrap_or(false) {
             diags.push(Diagnostic::warning(
-                "extra-freightimagetype",
+                DiagnosticCode::ExtraFreightimagetype,
                 t!(ctx.language,
                     ja: "{extra_key} は使用範囲(0..{ft})より1つ多いindexです。\
                          makeobjはFATALにはしませんが警告を出します（超過定義）",
@@ -336,7 +337,7 @@ impl Rule for PowerGearMismatchRule {
         let gear_transformed = (gear_raw * 64) / 100;
         if gear_transformed == 0 {
             vec![Diagnostic::warning(
-                "power-gear-mismatch",
+                DiagnosticCode::PowerGearMismatch,
                 t!(ctx.language,
                     ja: "power={power} を宣言していますが gear={gear_raw} は変換後 \
                          (gear*64/100={gear_transformed}) になり、編成内でのこの車両の\
