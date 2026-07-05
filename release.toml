@@ -1,0 +1,6 @@
+# crates.io には公開しない（GitHub Releaseのバイナリ配布のみ運用）
+publish = false
+# release.ymlのトリガー(on.push.tags: ["v*"])と一致させる
+tag-name = "v{{version}}"
+tag-message = "{{crate_name}} {{version}}"
+pre-release-commit-message = "release: {{crate_name}} {{version}}"
