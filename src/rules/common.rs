@@ -170,6 +170,63 @@ pub fn check_waytype_field(dat: &DatFile, key: &str, lang: Language) -> Vec<Diag
     }
 }
 
+/// `tabfileobj_t::get_int_clamped(key, def, min, max)`（tabfile.cc:201-212）を
+/// 模倣する共有チェック。値が`min..max`範囲外だと`dbg->warning(...)`を出して
+/// 黙って範囲内にクランプする（FATALにはしない）という、makeobj側の実際の挙動を
+/// 再現する。
+///
+/// 第19弾（code smellレビュー・タスク15）: `bridge.rs`の`ClampedRangeRule`
+/// （複数フィールドをループで回す、`ClampedField`一覧を持つ実装）と`way.rs`の
+/// `ClipBelowRangeRule`（`clip_below`単一フィールド専用の個別実装）が、
+/// 「`dat.get(key)`→trim→空なら早期return→`i64`にparse→パース失敗なら早期
+/// return→範囲外なら`Diagnostic::warning`」という同一のロジックをそれぞれ
+/// 独立に実装していたため、ここに1本化した。診断code（`bridge.rs`は
+/// `DiagnosticCode::ClampedValueOutOfRange`、`way.rs`は
+/// `DiagnosticCode::ClipBelowOutOfRange`）はフィールドごとに異なるため、
+/// 呼び出し元がパラメータとして渡す。
+///
+/// `tabfileobj_t::get_int()`は`strtol(value, NULL, 0)`を使う（tabfile.cc:
+/// 183-198）。Rustの`str::parse`ほど厳密ではないが、10進の妥当な数値かどうかの
+/// 判定には`str::parse`で十分近似できる（パース不能な値は`strtol`が0を返すため、
+/// その場合も範囲外にならずクランプは発生しない扱いになる。`bridge.rs`/`way.rs`
+/// 双方の元実装が採用していた近似をそのまま踏襲する）。
+pub fn check_clamped_int_field(
+    dat: &DatFile,
+    key: &str,
+    min: i64,
+    max: i64,
+    code: DiagnosticCode,
+    lang: Language,
+) -> Vec<Diagnostic> {
+    let Some(raw) = dat.get(key) else {
+        return Vec::new();
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    let Ok(value) = trimmed.parse::<i64>() else {
+        return Vec::new();
+    };
+    if value < min || value > max {
+        vec![Diagnostic::warning(
+            code,
+            t!(lang,
+                ja: "{key}={value} は範囲{min}..{max}外です。makeobjはFATALにはしませんが警告を出し、\
+                     値を範囲内にクランプします（tabfileobj_t::get_int_clamped()）",
+                en: "{key}={value} is out of range {min}..{max}. makeobj does not treat this \
+                     as FATAL, but warns and clamps the value into range (tabfileobj_t::get_int_clamped())",
+                key = key,
+                value = value,
+                min = min,
+                max = max,
+            ),
+        )]
+    } else {
+        Vec::new()
+    }
+}
+
 /// `image_writer_t::write_obj`（image_writer.cc:348-364）の構文仕様コメント
 /// （`"[> ]imagefilename_without_extension[...]"`）どおり、先頭の`'>'`1文字は
 /// 「ズーム不可」フラグとして`an_imagekey[0]=='>'`判定で剥がされ

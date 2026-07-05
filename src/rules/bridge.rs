@@ -113,6 +113,11 @@ impl Rule for WaytypeRequiredRule {
 /// range %d..%d, resetting to %d", ...)` を出して値をクランプする（FATALにはしない）。
 /// bridge_writer.cc:105-115 はこの関数を7つのキーに対して呼ぶ（`max_lenght`/
 /// `max_length`は同じ範囲0..255を共有するペアとして扱う）。
+///
+/// 第19弾: 実際のクランプ判定ロジックは`way.rs`の`ClipBelowRangeRule`と共通化し、
+/// `super::common::check_clamped_int_field`へ1本化した（common.rs内のdocコメント
+/// 参照）。このRuleはbridge固有の複数フィールド一覧（`CLAMPED_FIELDS`）を
+/// ループで回すだけの薄いラッパーになった。
 struct ClampedRangeRule;
 
 struct ClampedField {
@@ -183,34 +188,14 @@ impl Rule for ClampedRangeRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
         let mut diags = Vec::new();
         for field in CLAMPED_FIELDS {
-            let Some(raw) = ctx.dat.get(field.key) else {
-                continue;
-            };
-            let trimmed = raw.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            // tabfileobj_t::get_int() は strtol(value, NULL, 0) を使う（tabfile.cc:183-198）。
-            // way.rsのClipBelowRangeRuleと同じ近似（パース不能な値はstrtolが0を
-            // 返すため、範囲外にならずクランプは発生しない扱いになる）。
-            let Ok(value) = trimmed.parse::<i64>() else {
-                continue;
-            };
-            if value < field.min || value > field.max {
-                diags.push(Diagnostic::warning(
-                    DiagnosticCode::ClampedValueOutOfRange,
-                    t!(ctx.language,
-                        ja: "{key}={value} は範囲{min}..{max}外です。makeobjはFATALにはしませんが警告を出し、\
-                             値を範囲内にクランプします（tabfileobj_t::get_int_clamped()）",
-                        en: "{key}={value} is out of range {min}..{max}. makeobj does not treat this \
-                             as FATAL, but warns and clamps the value into range (tabfileobj_t::get_int_clamped())",
-                        key = field.key,
-                        value = value,
-                        min = field.min,
-                        max = field.max,
-                    ),
-                ));
-            }
+            diags.extend(super::common::check_clamped_int_field(
+                ctx.dat,
+                field.key,
+                field.min,
+                field.max,
+                DiagnosticCode::ClampedValueOutOfRange,
+                ctx.language,
+            ));
         }
         diags
     }

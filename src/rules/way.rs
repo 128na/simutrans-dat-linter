@@ -116,37 +116,21 @@ impl Rule for BaseImageRequiredRule {
 /// range %d..%d, resetting to %d", ...)` を出して値をクランプする（FATALにはしない）。
 /// way_writer.cc:42 は `obj.get_int_clamped("clip_below", 1, 0, 1)` と呼ぶため、
 /// clip_below は 0 か 1 以外を指定すると警告付きで黙って 0 か 1 にクランプされる。
+///
+/// 第19弾: 実際のクランプ判定ロジックは`bridge.rs`の`ClampedRangeRule`と共通化し、
+/// `super::common::check_clamped_int_field`へ1本化した（common.rs内のdocコメント
+/// 参照）。このRuleは`clip_below`という単一フィールドを渡すだけの薄いラッパーに
+/// なった。
 struct ClipBelowRangeRule;
 impl Rule for ClipBelowRangeRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        let Some(raw) = ctx.dat.get("clip_below") else {
-            return Vec::new();
-        };
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            return Vec::new();
-        }
-        // tabfileobj_t::get_int() は strtol(value, NULL, 0) を使う（tabfile.cc:183-198）。
-        // Rustのi64::from_str_radixほど厳密ではないが、10進の妥当な数値かどうかの
-        // 判定にはstr::parseで十分近似できる。パース不能な値はstrtolが0を返すため、
-        // その場合も範囲外(0..1に収まる)として扱われクランプは発生しない。
-        let Ok(value) = trimmed.parse::<i64>() else {
-            return Vec::new();
-        };
-        if !(0..=1).contains(&value) {
-            vec![Diagnostic::warning(
-                DiagnosticCode::ClipBelowOutOfRange,
-                t!(ctx.language,
-                    ja: "clip_below={value} は範囲0..1外です。makeobjはFATALにはしませんが警告を出し、\
-                         値を0か1にクランプします（tabfileobj_t::get_int_clamped()）",
-                    en: "clip_below={value} is out of range 0..1. makeobj does not treat this as \
-                         FATAL, but warns and clamps the value to 0 or 1 \
-                         (tabfileobj_t::get_int_clamped())",
-                    value = value,
-                ),
-            )]
-        } else {
-            Vec::new()
-        }
+        super::common::check_clamped_int_field(
+            ctx.dat,
+            "clip_below",
+            0,
+            1,
+            DiagnosticCode::ClipBelowOutOfRange,
+            ctx.language,
+        )
     }
 }
