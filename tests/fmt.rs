@@ -618,6 +618,42 @@ constraint[prev][0]=none
     assert_eq!(out, expected);
 }
 
+/// `emptyimage[<方位>]`・`freightimage[<N>][<方位>]`の方位部分が、実データ
+/// （`refs/pak128`のvehicle dat集計）で支配的だった時計回り・西起点の順序
+/// （`w,nw,n,ne,e,se,s,sw`）で並び替えられることを確認する。あわせて、
+/// `freightimagetype[N]`が対応する`freightimage[N][...]`群の直前に来る
+/// （インデックスごとのグルーピング）という既存の挙動も壊れていないことを確認する。
+#[test]
+fn reorder_vehicle_sorts_directions_clockwise_from_west() {
+    let parsed = formatter::parse_entries(
+        &read("fmt_vehicle_directions_example.dat"),
+        Language::default(),
+    );
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "vehicle", Language::default());
+    let expected = "\
+obj=vehicle
+name=Loco
+copyright=fuga
+
+emptyimage[w]=e.0.3
+emptyimage[nw]=e.0.2
+emptyimage[n]=e.0.4
+emptyimage[ne]=e.0.6
+emptyimage[e]=e.0.1
+emptyimage[se]=e.0.7
+emptyimage[s]=e.0.0
+emptyimage[sw]=e.0.5
+freightimagetype[0]=Passagiere
+freightimage[0][n]=f.0.0
+freightimage[0][s]=f.0.1
+freightimagetype[1]=Kohle
+freightimage[1][n]=f.1.1
+freightimage[1][s]=f.1.0
+";
+    assert_eq!(out, expected);
+}
+
 #[test]
 fn reorder_citycar_matches_expected_output() {
     let parsed = formatter::parse_entries(&read("fmt_citycar_example.dat"), Language::default());

@@ -1,0 +1,17 @@
+obj=vehicle
+name=Loco
+copyright=fuga
+emptyimage[s]=e.0.0
+emptyimage[e]=e.0.1
+emptyimage[nw]=e.0.2
+emptyimage[w]=e.0.3
+emptyimage[n]=e.0.4
+emptyimage[sw]=e.0.5
+emptyimage[ne]=e.0.6
+emptyimage[se]=e.0.7
+freightimagetype[1]=Kohle
+freightimage[1][s]=f.1.0
+freightimage[0][n]=f.0.0
+freightimagetype[0]=Passagiere
+freightimage[1][n]=f.1.1
+freightimage[0][s]=f.0.1

@@ -328,6 +328,32 @@ fn format_reordered_segment(
     (out, warnings)
 }
 
+/// 8方位の慣習的な並び順（時計回り・西起点）。`refs/pak128`のvehicle datを
+/// 機械的に集計した結果、8方向フルセットを持つ507ファイル中502ファイル（99%）が
+/// この順序（`W,NW,N,NE,E,SE,S,SW`）で`emptyimage[...]`を記述していた
+/// （road-cargo/rail-psg+mail/road-psg+mail/rail-engines/rail-cargo/trams/
+/// monorail/ships-cargo/ships-ferries等、作者・カテゴリを横断して一貫）。
+/// makeobj自身の内部走査順（`vehicle_writer.cc`の`"s","w","sw","se","n","e","ne","nw"`）
+/// ともアルファベット順（旧実装が事実上採用していた順）とも異なる、
+/// 純粋に人間の可読性のための慣習である。
+const COMPASS_ORDER: &[&str] = &["w", "nw", "n", "ne", "e", "se", "s", "sw"];
+
+/// 方位トークンの並び順を、実際のブラケット内数値インデックス（`freightimage[0][...]`の
+/// `0`等、常に0以上）より必ず手前に来る**負の値**として返す。方位トークン同士の
+/// 相対順は`COMPASS_ORDER`の並び（時計回り）をそのまま保つ。
+///
+/// こうしておくことで、例えば`emptyimage[<方位>]`と`freightimagetype[<N>]`が
+/// 同じ`Section::Bracket`グループに同居していても、「`emptyimage`は常に先頭に
+/// まとまる」「`freightimagetype[N]`は対応する`freightimage[N][...]`群の直前に
+/// 来る（数値インデックスの一致とVecの長さ比較による自然な副次効果）」という
+/// 既存の並びを壊さずに、方位部分だけを時計回りへ矯正できる。
+fn compass_rank(segment: &str) -> Option<i64> {
+    COMPASS_ORDER
+        .iter()
+        .position(|d| *d == segment)
+        .map(|p| p as i64 - COMPASS_ORDER.len() as i64)
+}
+
 fn bracket_indices(key: &str) -> Vec<i64> {
     let Some(start) = key.find('[') else {
         return Vec::new();
@@ -336,7 +362,12 @@ fn bracket_indices(key: &str) -> Vec<i64> {
         .trim_start_matches('[')
         .trim_end_matches(']')
         .split("][")
-        .map(|s| s.parse::<i64>().unwrap_or(0))
+        .map(|s| {
+            s.parse::<i64>()
+                .ok()
+                .or_else(|| compass_rank(s))
+                .unwrap_or(0)
+        })
         .collect()
 }
 
