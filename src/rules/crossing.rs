@@ -202,8 +202,8 @@ impl Rule for WaytypesRequiredRule {
 struct IdenticalWaytypesRule;
 impl Rule for IdenticalWaytypesRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        let w0 = ctx.dat.get("waytype[0]").unwrap_or("").to_ascii_lowercase();
-        let w1 = ctx.dat.get("waytype[1]").unwrap_or("").to_ascii_lowercase();
+        let w0 = ctx.dat.get_lower("waytype[0]");
+        let w1 = ctx.dat.get_lower("waytype[1]");
         if w0.is_empty()
             || w1.is_empty()
             || !KNOWN_WAYTYPES.contains(&w0.as_str())

@@ -65,110 +65,40 @@
 //! `get_type()`/`get_type_name()`の2つのオーバーライドのみを持つ（`write_obj`は
 //! 一切オーバーライドしない）。よって`field`の実際の書き込みロジックは全て
 //! 基底`skin_writer_t::write_obj`（skin_writer.cc:18-51）そのものであり、
-//! `menu`/`cursor`/`symbol`/`smoke`と**完全に同一**である。「field」という
-//! 名前が作物の生育段階の日数・タイミング処理（`.dat`側での段階数指定や
-//! 生育速度パラメータ等）を連想させる可能性を考慮し、本モジュールでも
-//! smokeマイルストーンと同様に他4種の結論を鵜呑みにせずskin_writer.h/
-//! skin_writer.ccを実際に読み直して独立に確認したが、そのような特別な処理は
-//! `write_obj`側に一切無く、`menu`/`cursor`/`symbol`/`smoke`と**挙動上完全に
-//! 同一**であることを確認した（詳細は下記コード引用）。実例
-//! （`fields_agriculture.dat`のコメント「5 images, of which one is snow」）
-//! からも、生育段階数は`.dat`記述側で単に`image[0..4]`を書く枚数として
-//! 表現されるだけで、段階数・タイミングを指定する専用フィールドは存在しない
-//! ことがわかる（生育の進行速度自体は`obj=factory`側の`production_per_field`
-//! やゲーム実行時ロジックの領分であり、`obj=field`自体は単なる画像リスト）:
+//! `menu`/`cursor`/`symbol`/`smoke`と**完全に同一**である。共有アーキテクチャの
+//! 詳細（`write_obj`のコード引用、`obj.get`のNULL/空文字列挙動、`"-"`センチネル、
+//! name/copyright、waytype/cursor/icon不在、`"> "`ズーム不可プレフィックス、
+//! count不一致警告の到達不能性など）は`menu.rs`冒頭のdoc comment参照。
 //!
-//! ```text
-//! // skin_writer_t::write_obj(fp, parent, obj)  [オーバーロード1、実際にobj_writer.cc経由で呼ばれる方]
-//! for (int i = 0; ; i++) {
-//!     sprintf(buf, "image[%d]", i);
-//!     std::string str = obj.get(buf);
-//!     if (str.empty()) break;                 // 画像走査を終了
-//!     keys.append(str);
-//! }
-//! write_obj(fp, parent, obj, keys);            // オーバーロード2へ委譲
-//!
-//! // skin_writer_t::write_obj(fp, parent, obj, imagekeys)  [オーバーロード2]
-//! write_name_and_copyright(fp, node, obj);     // name, copyright
-//! imagelist_writer_t::instance()->write_obj(fp, node, imagekeys);
-//! node.check_and_write_header(fp);
-//! ```
-//!
-//! - `obj.get(...)`（`tabfileobj_t::get`, tabfile.cc:48-56）はキー欠落時に
-//!   **NULLではなく空文字列**を返す。`str.empty()`は「キーが実際に存在しないか、
-//!   値として空文字列が書かれている」場合のみtrueになる。`i`は`0`始まりで
-//!   無制限（`for (int i = 0; ; i++)`）に走査され、最初に欠落した`image[i]`で
-//!   走査全体が終了する（menu/cursor/symbol/smokeと全く同じ、単一の1次元配列の
-//!   走査）。
-//! - `"-"`（画像なしセンチネル、image_writer.cc:343の仕様コメント参照）は
-//!   空文字列ではないため、`image[N]=-`と書けばそのNでの走査は継続する
-//!   （menu/cursor/symbol/smokeと同じ扱い）。
-//! - `name`/`copyright`は`write_name_and_copyright`（obj_writer.cc:62-70）経由で
-//!   `text_writer_t::write_obj`（text_writer.cc:12-23）に渡るが、どちらも空文字列を
-//!   無条件に許容しfatal/warningを出さない（menu/cursor/symbol/smokeと同じ）。
-//! - `field_writer_t`は`waytype`/`cursor`/`icon`のいずれも読まない
-//!   （`skin_writer_t::write_obj`/`skin_writer.h`全文にこれらへの言及なし）。
-//!   作物の生育段階を構成するスキン画像（収穫フェーズフレーム列）であり、
-//!   ビルドメニューに「載る」対象（building等）ではないため、cursor/iconという
-//!   （フィールドとしての）概念自体が無い（crossing/ground_obj/tree/citycar/
-//!   pedestrian/menu/cursor/symbol/smokeと同じパターン）。
-//! - 個々の`image[i]`キーが実際に画像を指す場合（空文字列でない場合）は、
-//!   `image_writer_t::write_obj`（image_writer.cc:348-514、`imagelist_writer_t`
-//!   経由）がファイルの存在・サイズ（128の倍数か）を検証する。これは他の全obj種別と
-//!   共有の`common::check_image_ref`でカバーする。
-//!   **`"> "`（ズーム不可フラグ）構文について**: この処理はobj種別中立の共通ロジック
-//!   （image_writer.cc:356-364）であり、menuマイルストーンで`common::check_image_ref`
-//!   側に`strip_zoomable_prefix_and_trim`として既に実装済みのため、field固有の
-//!   追加対応は不要（cursor/symbol/smokeと同様）。実際の公開`.dat`のfield系
-//!   ファイル（`corn_farm.dat`/`fields_agriculture.dat`）に`>`プレフィックス構文を
-//!   使う実例は見つからなかったが、`image_writer_t::write_obj`側の処理はobj種別を
-//!   一切区別しないため、書けば同じ挙動になる前提でそのまま再利用する。
-//! - `imagelist_writer_t::write_obj`（imagelist_writer.cc:24-26）の
-//!   `count < keys.get_count()`という不一致警告について検討したが、menu/cursor/
-//!   symbol/smokeと全く同じ理由（`keys`は空文字列でない値のみでappendされ、
-//!   `image_writer_t::write_obj`は空文字列/`"-"`に対して早期returnせず最後まで
-//!   実行してcountをインクリメントする）で到達する実行経路が無い。
-//!
-//! ## menu/cursor/symbol/smokeとの比較結論
+//! field固有の追加確認事項: 「field」という名前が作物の生育段階の日数・タイミング
+//! 処理（`.dat`側での段階数指定や生育速度パラメータ等）を連想させる可能性を
+//! 考慮し、本モジュールでもsmokeマイルストーンと同様に他4種の結論を鵜呑みにせず
+//! skin_writer.h/skin_writer.ccを実際に読み直して独立に確認したが、そのような
+//! 特別な処理は`write_obj`側に一切無い。実例（`fields_agriculture.dat`のコメント
+//! 「5 images, of which one is snow」）からも、生育段階数は`.dat`記述側で単に
+//! `image[0..4]`を書く枚数として表現されるだけで、段階数・タイミングを指定する
+//! 専用フィールドは存在しないことがわかる（生育の進行速度自体は`obj=factory`側の
+//! `production_per_field`やゲーム実行時ロジックの領分であり、`obj=field`自体は
+//! 単なる画像リスト）。`>`プレフィックス構文を使う実例は`corn_farm.dat`/
+//! `fields_agriculture.dat`には見つからなかったが、`image_writer_t::write_obj`側の
+//! 処理はobj種別を一切区別しないため、書けば同じ挙動になる前提で
+//! `strip_zoomable_prefix_and_trim`をそのまま再利用する。
 //!
 //! `field_writer_t`はskin_writer.h/skin_writer.ccを実際に読み直した結果、
 //! `menuskin_writer_t`/`cursorskin_writer_t`/`symbolskin_writer_t`/
 //! `smoke_writer_t`と**挙動上完全に同一**であることを確認した（`get_type()`/
-//! `get_type_name()`の返り値が異なるだけ）。「field」という名前から作物の
-//! 生育段階の日数・タイミング処理を連想したが、そのような処理は`obj=factory`側の
-//! フィールド（`production_per_field`等）とゲーム実行時ロジックに存在し、
-//! makeobjの`obj=field`書き込み処理自体には一切含まれないことを確認した。
-//! よって本モジュールのルールは`menu.rs`/`cursor.rs`/`symbol.rs`/`smoke.rs`の
-//! `AllImagesRule`と同一のロジックを、obj_type文字列とコメントの言い回しのみ
-//! 差し替えて採用する。
-//!
-//! REJECTED（候補として検討したが根拠不十分、またはmakeobj側にfatal/warning分岐が
-//! 無いため実装しなかった。menu/cursor/symbol/smokeと同一の理由）:
-//! - `name`/`copyright`未指定チェック: good/sound/ground/menu/cursor/symbol/smokeと
-//!   全く同じ理由（`obj_writer_t::write_name_and_copyright`とtext_writer_t::write_objは
-//!   空文字列を無条件許容し、fatal/warningを出さない）。
-//! - 画像0枚（`image[0]`未指定）の警告: `keys`が空のままループが1回で終了するだけで、
-//!   fatal/warningの分岐は無い（menu/cursor/symbol/smokeと同種の判断）。
-//! - `imagelist_writer_t::write_obj`のcount不一致警告
-//!   （"Expected %i but found %i images"）: 上記の通り、fieldの`keys`は空文字列を
-//!   含まない状態で構築され、`image_writer_t::write_obj`が空文字列に対して
-//!   countをスキップすることも無いため、`count < keys.get_count()`に到達する
-//!   実行経路が無い（menu/cursor/symbol/smokeと同じ理由）。
-//! - `image[i]`の途中欠落（"歯抜け"）自体の検出: これはmakeobjの実際の仕様どおりの
-//!   動作であり（`str.empty()`で即座に走査打ち切り）、fatal/warningのソース側分岐も
-//!   無い（menu/cursor/symbol/smokeと同じ理由）。
-//! - `waytype`/`cursor`/`icon`（フィールドとしての）関連の検証: good/tree/menu/cursor/
-//!   symbol/smokeと同じ理由（skin_writer.h/skin_writer.cc全文にこれらのフィールドへの
-//!   言及が一つも無い）。
-//! - 生育段階数・生育速度等の妥当性検証（画像枚数と`obj=factory`側の
-//!   `production_per_field`等との整合性）: これらは`obj=factory`側のフィールドで
-//!   あり、`skin_writer.cc`/`skin_writer.h`には一切登場しない（`obj=factory`側の
-//!   `fields`/`max_fields`/`min_fields`/`start_fields`フィールドのfatal/warning
-//!   分岐の有無は`src/rules/factory.rs`のREJECTEDコメント参照。本モジュールの
-//!   スコープ外）。`obj=field`側から見て、参照元の`obj=factory`が何個・どの名前で
-//!   この`obj=field`を参照しているかを検証するには複数`.dat`ファイルを横断する
-//!   解析が必要であり、これは1ファイル単位の`lint`ではなく`couplings`サブコマンドの
-//!   ようなスコープになる（現時点では対象外）。
+//! `get_type_name()`の返り値が異なるだけ）。よって本モジュールのルールは
+//! `menu.rs`/`cursor.rs`/`symbol.rs`/`smoke.rs`の`AllImagesRule`と同一のロジックを、
+//! obj_type文字列とコメントの言い回しのみ差し替えて採用する。REJECTEDの理由も
+//! 全てmenu.rs/cursor.rs/symbol.rs/smoke.rsと同一（詳細はmenu.rs参照）。追加で、
+//! 生育段階数・生育速度等の妥当性検証（画像枚数と`obj=factory`側の
+//! `production_per_field`等との整合性）は`obj=factory`側のフィールドであり
+//! `skin_writer.cc`/`skin_writer.h`には一切登場しないため対象外
+//! （fatal/warning分岐の有無は`src/rules/factory.rs`のREJECTEDコメント参照）。
+//! `obj=field`側から見て参照元の`obj=factory`が何個・どの名前でこの`obj=field`を
+//! 参照しているかを検証するには複数`.dat`ファイルを横断する解析が必要であり、
+//! これは1ファイル単位の`lint`ではなく`couplings`サブコマンドのようなスコープに
+//! なる（現時点では対象外）。
 
 use super::common;
 use crate::diagnostics::Diagnostic;

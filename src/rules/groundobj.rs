@@ -184,7 +184,7 @@ pub fn check_groundobj(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
 struct WaytypeIfPresentValidRule;
 impl Rule for WaytypeIfPresentValidRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        let waytype = ctx.dat.get("waytype").unwrap_or("").to_ascii_lowercase();
+        let waytype = ctx.dat.get_lower("waytype");
         if waytype.is_empty() {
             vec![Diagnostic::info(
                 DiagnosticCode::WaytypeOmitted,

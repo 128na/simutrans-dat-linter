@@ -137,7 +137,7 @@ pub const DIR_CODES: [&str; 8] = ["s", "w", "sw", "se", "n", "e", "ne", "nw"];
 /// \"%s\"\n", ...)`で落とす。`tabfileobj_t::get()`はNULLを返さず欠落キーには
 /// 空文字列を返す（tabfile.cc:48-56）ため、キー未指定も同じfatalパスに入る。
 pub fn check_waytype_field(dat: &DatFile, key: &str, lang: Language) -> Vec<Diagnostic> {
-    let waytype = dat.get(key).unwrap_or("").to_ascii_lowercase();
+    let waytype = dat.get_lower(key);
     if waytype.is_empty() {
         vec![Diagnostic::error(
             DiagnosticCode::MissingWaytype,
@@ -541,7 +541,7 @@ impl Rule for CursorIconRule {
         )];
 
         if cursor.is_empty() && icon.is_empty() {
-            let type_name = ctx.dat.get("type").unwrap_or("").to_ascii_lowercase();
+            let type_name = ctx.dat.get_lower("type");
             let not_applicable = match &self.policy {
                 CursorIconPolicy::Building {
                     types_without_build_menu,

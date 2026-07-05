@@ -31,87 +31,27 @@
 //! サブクラスであり、`get_type()`/`get_type_name()`の2つのオーバーライドのみを持つ
 //! （`write_obj`は一切オーバーライドしない）。よって`symbol`の実際の書き込みロジックは
 //! 全て基底`skin_writer_t::write_obj`（skin_writer.cc:18-51）そのものであり、
-//! `menu`/`cursor`と**完全に同一**である。本モジュールでは`menu.rs`/`cursor.rs`の
-//! 調査結果を鵜呑みにせず、上記の通りskin_writer.h/skin_writer.ccを実際に読み直して
-//! 独立に確認した:
+//! `menu`/`cursor`と**完全に同一**である。共有アーキテクチャの詳細（`write_obj`の
+//! コード引用、`obj.get`のNULL/空文字列挙動、`"-"`センチネル、name/copyright、
+//! waytype/cursor/icon不在、`"> "`ズーム不可プレフィックス、count不一致警告の
+//! 到達不能性など）は`menu.rs`冒頭のdoc comment参照（本モジュールでも`menu.rs`/
+//! `cursor.rs`の調査結果を鵜呑みにせず独立にskin_writer.h/skin_writer.ccを
+//! 読み直して確認済み）。
 //!
-//! ```text
-//! // skin_writer_t::write_obj(fp, parent, obj)  [オーバーロード1、実際にobj_writer.cc経由で呼ばれる方]
-//! for (int i = 0; ; i++) {
-//!     sprintf(buf, "image[%d]", i);
-//!     std::string str = obj.get(buf);
-//!     if (str.empty()) break;                 // 画像走査を終了
-//!     keys.append(str);
-//! }
-//! write_obj(fp, parent, obj, keys);            // オーバーロード2へ委譲
-//!
-//! // skin_writer_t::write_obj(fp, parent, obj, imagekeys)  [オーバーロード2]
-//! write_name_and_copyright(fp, node, obj);     // name, copyright
-//! imagelist_writer_t::instance()->write_obj(fp, node, imagekeys);
-//! node.check_and_write_header(fp);
-//! ```
-//!
-//! - `obj.get(...)`（`tabfileobj_t::get`, tabfile.cc:48-56）はキー欠落時に
-//!   **NULLではなく空文字列**を返す。`str.empty()`は「キーが実際に存在しないか、
-//!   値として空文字列が書かれている」場合のみtrueになる。`i`は`0`始まりで
-//!   無制限（`for (int i = 0; ; i++)`）に走査され、最初に欠落した`image[i]`で
-//!   走査全体が終了する（menu/cursorと全く同じ、単一の1次元配列の走査）。
-//! - `"-"`（画像なしセンチネル、image_writer.cc:343の仕様コメント参照）は
-//!   空文字列ではないため、`image[N]=-`と書けばそのNでの走査は継続する
-//!   （menu/cursorと同じ扱い）。
-//! - `name`/`copyright`は`write_name_and_copyright`（obj_writer.cc:62-70）経由で
-//!   `text_writer_t::write_obj`（text_writer.cc:12-23）に渡るが、どちらも空文字列を
-//!   無条件に許容しfatal/warningを出さない（menu/cursorと同じ）。
-//! - `symbolskin_writer_t`は`waytype`/`cursor`/`icon`のいずれも読まない
-//!   （`skin_writer_t::write_obj`/`skin_writer.h`全文にこれらへの言及なし）。
-//!   ビルドメニューのシンボルアイコン・ロゴ等を構成するスキン画像であり、
-//!   ビルドメニューに「載る」対象（building等）ではないため、cursor/iconという
-//!   （フィールドとしての）概念自体が無い（crossing/ground_obj/tree/citycar/
-//!   pedestrian/menu/cursorと同じパターン）。
-//! - 個々の`image[i]`キーが実際に画像を指す場合（空文字列でない場合）は、
-//!   `image_writer_t::write_obj`（image_writer.cc:348-514、`imagelist_writer_t`
-//!   経由）がファイルの存在・サイズ（128の倍数か）を検証する。これは他の全obj種別と
-//!   共有の`common::check_image_ref`でカバーする。
-//!   **`"> "`（ズーム不可フラグ）構文について**: この処理はobj種別中立の共通ロジック
-//!   （image_writer.cc:356-364）であり、menuマイルストーンで`common::check_image_ref`
-//!   側に`strip_zoomable_prefix_and_trim`として既に実装済みのため、symbol固有の
-//!   追加対応は不要（cursorと同様）。実際の公開`.dat`
+//! symbol固有の追加確認事項:
+//! - **`"> "`（ズーム不可フラグ）構文について**: 実際の公開`.dat`
 //!   （`VictorErik/Pak128.Sweden-Ex:Base/misc_GUI_64/symbols-64.dat`等、symbol系
 //!   スキンでも`>`プレフィックス構文が使われる実例が確認できるgui系ディレクトリに
-//!   配置されている）ことから、symbolスキンでもこの構文が使われうる前提でそのまま
-//!   再利用する。
-//! - `imagelist_writer_t::write_obj`（imagelist_writer.cc:24-26）の
-//!   `count < keys.get_count()`という不一致警告について検討したが、menu/cursorと
-//!   全く同じ理由（`keys`は空文字列でない値のみでappendされ、`image_writer_t::write_obj`
-//!   は空文字列/`"-"`に対して早期returnせず最後まで実行してcountをインクリメントする）
-//!   で到達する実行経路が無い。
-//!
-//! ## menu/cursorとの比較結論
+//!   配置されている）ことから、symbolスキンでもこの構文が使われうる前提で
+//!   `common::check_image_ref`側の`strip_zoomable_prefix_and_trim`をそのまま
+//!   再利用する（symbol固有の追加対応は不要、cursorと同様）。
 //!
 //! `symbolskin_writer_t`はskin_writer.h/skin_writer.ccを実際に読み直した結果、
 //! `menuskin_writer_t`/`cursorskin_writer_t`と**挙動上完全に同一**であることを
 //! 確認した（`get_type()`/`get_type_name()`の返り値が異なるだけ）。よって
 //! 本モジュールのルールは`menu.rs`/`cursor.rs`の`AllImagesRule`と同一のロジックを、
-//! obj_type文字列とコメントの言い回しのみ差し替えて採用する。
-//!
-//! REJECTED（候補として検討したが根拠不十分、またはmakeobj側にfatal/warning分岐が
-//! 無いため実装しなかった。menu/cursorと同一の理由）:
-//! - `name`/`copyright`未指定チェック: good/sound/ground/menu/cursorと全く同じ理由
-//!   （`obj_writer_t::write_name_and_copyright`とtext_writer_t::write_objは
-//!   空文字列を無条件許容し、fatal/warningを出さない）。
-//! - 画像0枚（`image[0]`未指定）の警告: `keys`が空のままループが1回で終了するだけで、
-//!   fatal/warningの分岐は無い（menu/cursorと同種の判断）。
-//! - `imagelist_writer_t::write_obj`のcount不一致警告
-//!   （"Expected %i but found %i images"）: 上記の通り、symbolの`keys`は空文字列を
-//!   含まない状態で構築され、`image_writer_t::write_obj`が空文字列に対して
-//!   countをスキップすることも無いため、`count < keys.get_count()`に到達する
-//!   実行経路が無い（menu/cursorと同じ理由）。
-//! - `image[i]`の途中欠落（"歯抜け"）自体の検出: これはmakeobjの実際の仕様どおりの
-//!   動作であり（`str.empty()`で即座に走査打ち切り）、fatal/warningのソース側分岐も
-//!   無い（menu/cursorと同じ理由）。
-//! - `waytype`/`cursor`/`icon`（フィールドとしての）関連の検証: good/tree/menu/cursorと
-//!   同じ理由（skin_writer.h/skin_writer.cc全文にこれらのフィールドへの言及が
-//!   一つも無い）。
+//! obj_type文字列とコメントの言い回しのみ差し替えて採用する。REJECTEDの理由も
+//! 全てmenu.rs/cursor.rsと同一（詳細はmenu.rs参照）。
 
 use super::common;
 use crate::diagnostics::Diagnostic;

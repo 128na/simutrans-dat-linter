@@ -262,7 +262,7 @@ pub fn check_factory(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
 struct TypeOverrideRule;
 impl Rule for TypeOverrideRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        let type_name = ctx.dat.get("type").unwrap_or("").to_ascii_lowercase();
+        let type_name = ctx.dat.get_lower("type");
         if type_name.is_empty() || type_name == "fac" {
             return Vec::new();
         }

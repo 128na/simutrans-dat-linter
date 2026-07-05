@@ -103,7 +103,7 @@ impl Rule for WaytypeRequiredRule {
 struct EngineTypeRule;
 impl Rule for EngineTypeRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        let waytype = ctx.dat.get("waytype").unwrap_or("").to_ascii_lowercase();
+        let waytype = ctx.dat.get_lower("waytype");
         if waytype == "electrified_track" {
             return vec![Diagnostic::debug(
                 DiagnosticCode::EngineTypeSkipped,

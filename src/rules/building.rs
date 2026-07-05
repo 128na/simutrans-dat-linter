@@ -116,8 +116,8 @@ pub fn check_building(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
 struct PreludeDebugRule;
 impl Rule for PreludeDebugRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        let type_name = ctx.dat.get("type").unwrap_or("").to_ascii_lowercase();
-        let waytype = ctx.dat.get("waytype").unwrap_or("").to_ascii_lowercase();
+        let type_name = ctx.dat.get_lower("type");
+        let waytype = ctx.dat.get_lower("waytype");
         vec![
             Diagnostic::debug(
                 DiagnosticCode::ParsedPairs,
@@ -138,8 +138,8 @@ impl Rule for PreludeDebugRule {
 struct TypeWaytypeRule;
 impl Rule for TypeWaytypeRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        let type_name = ctx.dat.get("type").unwrap_or("").to_ascii_lowercase();
-        let waytype = ctx.dat.get("waytype").unwrap_or("").to_ascii_lowercase();
+        let type_name = ctx.dat.get_lower("type");
+        let waytype = ctx.dat.get_lower("waytype");
         let mut diags = Vec::new();
         check_type_and_waytype(&type_name, &waytype, &mut diags, ctx.language);
         diags

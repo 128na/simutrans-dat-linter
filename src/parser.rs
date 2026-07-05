@@ -77,6 +77,13 @@ impl DatFile {
         self.pairs.get(key).map(|e| e.value.as_str())
     }
 
+    /// `get(key).unwrap_or("").to_ascii_lowercase()`のショートハンド。
+    /// `type`/`waytype`等、大文字小文字を無視して比較するフィールドの読み出しで
+    /// `rules/*.rs`に散在していたパターンを共通化する（値が無ければ空文字列）。
+    pub fn get_lower(&self, key: &str) -> String {
+        self.get(key).unwrap_or("").to_ascii_lowercase()
+    }
+
     /// キーが最初に出現した行番号。値が存在しないキーには使えない。
     pub fn line_of(&self, key: &str) -> Option<usize> {
         self.pairs.get(key).map(|e| e.line)
