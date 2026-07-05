@@ -1370,6 +1370,24 @@ git管理には含めていません**（ローカル検証専用）。このデ
 `cargo test`全体はfailしません。
 CI は Linux / Windows の両方でビルド・テストします。
 
+### リリース手順
+
+バージョン管理・タグ打ちには [cargo-release](https://github.com/crate-ci/cargo-release) を使います
+（`cargo install cargo-release`で導入）。`release.toml`で`publish = false`固定にしており、
+crates.io へは公開しません（GitHub Release でのバイナリ配布のみ）。
+
+```
+# まずdry-runで変更内容を確認（デフォルトでdry-run、何も実行されない）
+cargo release patch   # あるいは minor / major
+
+# 問題なければ--executeで実行
+# Cargo.toml の version 更新 → コミット → v{version} 形式のタグ作成 → push まで一括で行う
+cargo release patch --execute
+```
+
+`v*`形式のタグが push されると `.github/workflows/release.yml` が Linux/Windows 向けの
+release ビルドを行い、バイナリを添付した GitHub Release を自動作成します。
+
 ### アーキテクチャ
 
 ```
