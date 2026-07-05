@@ -6,6 +6,7 @@
 //! 薄いエントリポイントになる。
 
 pub mod analyze;
+pub mod common;
 pub mod describe;
 pub mod fmt;
 pub mod lint;

@@ -3,7 +3,7 @@
 //! 第13弾: `src/main.rs`のSRP分割で切り出した。振る舞いは分割前と完全に同一。
 
 use crate::cli::FmtArgs;
-use crate::fs_walk::collect_dat_paths;
+use crate::commands::common::{aggregate_multi_file, exit_code_for, resolve_paths_or_exit};
 use dat_linter::codes::DiagnosticCode;
 use dat_linter::config::LintConfig;
 use dat_linter::formatter;
@@ -33,25 +33,10 @@ pub fn run_fmt(args: &FmtArgs, language: Language) -> ExitCode {
     // 優先順位: --no-reorder指定 > config設定（excludeに無ければ有効＝デフォルトtrue相当）。
     let should_reorder = !args.no_reorder && config.is_enabled(DiagnosticCode::FmtReorderApplied);
 
-    let paths = match collect_dat_paths(&args.path, language) {
+    let paths = match resolve_paths_or_exit(&args.path, language) {
         Ok(p) => p,
-        Err(e) => {
-            eprintln!("{}: {e}", args.path);
-            return ExitCode::FAILURE;
-        }
+        Err(code) => return code,
     };
-
-    if paths.is_empty() {
-        eprintln!(
-            "{}",
-            t!(language,
-                ja: "{path}: 該当する .dat ファイルが見つかりません",
-                en: "{path}: No matching .dat files were found",
-                path = args.path,
-            )
-        );
-        return ExitCode::FAILURE;
-    }
 
     // 単一ファイル指定時は従来通りの出力・終了コードのみ（サマリ行を追加しない）。
     if paths.len() == 1 {
@@ -60,7 +45,8 @@ pub fn run_fmt(args: &FmtArgs, language: Language) -> ExitCode {
 
     // 複数ファイルに解決された場合、`--write`が無いと整形結果をどのstdoutへ
     // 出すべきか一意に決まらない（複数ファイル分の内容が混在してしまう）ため、
-    // ユーザー確認済みの仕様としてエラー終了する。
+    // ユーザー確認済みの仕様としてエラー終了する（fmt固有の分岐のため、
+    // 共通ヘルパー(`commands::common`)には含めていない）。
     if !args.write {
         eprintln!(
             "{}",
@@ -76,36 +62,32 @@ pub fn run_fmt(args: &FmtArgs, language: Language) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let mut total_warnings = 0usize;
-    let mut any_failure = false;
-    for path in &paths {
+    // `fmt_one_file`は`error_count`という概念を持たない（warningのみで失敗判定する）
+    // ため、`aggregate_multi_file`の`(error_count, warning_count, is_failure)`の
+    // 形に合わせて`error_count`は常に0を渡す。
+    let counts = aggregate_multi_file(&paths, |path| {
         let (result, warning_count) =
             fmt_one_file(path, should_reorder, args.write, &config, language);
-        total_warnings += warning_count;
-        any_failure |= result == ExitCode::FAILURE;
-    }
+        (0, warning_count, result == ExitCode::FAILURE)
+    });
 
     // 第10弾（項目1）: warningが無ければ合計行も出力しない（サイレント成功）。
-    // ただしwrite失敗（any_failureがtrueだがtotal_warnings==0）のケースは
+    // ただしwrite失敗（any_failureがtrueだがwarning_count==0）のケースは
     // 個々のファイルのエラーメッセージが既にstderrに出ているため、ここでの
     // 合計行は「warningの集計」目的のみと割り切り、warning自体が無ければ省略する。
-    if total_warnings > 0 {
+    if counts.warning_count > 0 {
         println!(
             "{}",
             t!(language,
                 ja: "合計: 対象ファイル {n} 件 / warning {total_warnings} 件",
                 en: "Total: {n} file(s) / {total_warnings} warning(s)",
                 n = paths.len(),
-                total_warnings = total_warnings,
+                total_warnings = counts.warning_count,
             )
         );
     }
 
-    if any_failure {
-        ExitCode::FAILURE
-    } else {
-        ExitCode::SUCCESS
-    }
+    exit_code_for(counts.any_failure)
 }
 
 /// 1ファイルを整形する。`(ExitCode, warning_count)`を返す

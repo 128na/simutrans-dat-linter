@@ -3,7 +3,8 @@
 //! 第13弾: `src/main.rs`のSRP分割で切り出した。振る舞いは分割前と完全に同一。
 
 use crate::cli::LintArgs;
-use crate::fs_walk::{collect_dat_paths, supported_obj_list};
+use crate::commands::common::{aggregate_multi_file, exit_code_for, resolve_paths_or_exit};
+use crate::fs_walk::supported_obj_list;
 use dat_linter::config::LintConfig;
 use dat_linter::diagnostics::Severity;
 use dat_linter::i18n::{Language, t};
@@ -31,63 +32,36 @@ pub fn run_lint(args: &LintArgs, language: Language) -> ExitCode {
         }
     };
 
-    let paths = match collect_dat_paths(&args.path, language) {
+    let paths = match resolve_paths_or_exit(&args.path, language) {
         Ok(p) => p,
-        Err(e) => {
-            eprintln!("{}: {e}", args.path);
-            return ExitCode::FAILURE;
-        }
+        Err(code) => return code,
     };
-
-    if paths.is_empty() {
-        eprintln!(
-            "{}",
-            t!(language,
-                ja: "{path}: 該当する .dat ファイルが見つかりません",
-                en: "{path}: No matching .dat files were found",
-                path = args.path,
-            )
-        );
-        return ExitCode::FAILURE;
-    }
 
     // 単一ファイル指定時は従来通りの出力・終了コードのみ（サマリ行を追加しない）。
     if paths.len() == 1 {
         return lint_one_file(&paths[0], level, &config, language);
     }
 
-    let mut total_error = 0usize;
-    let mut total_warning = 0usize;
-    let mut any_failure = false;
-
-    for path in &paths {
-        let (error_count, warning_count, failed) =
-            lint_one_file_counts(path, level, &config, language);
-        total_error += error_count;
-        total_warning += warning_count;
-        any_failure |= failed;
-    }
+    let counts = aggregate_multi_file(&paths, |path| {
+        lint_one_file_counts(path, level, &config, language)
+    });
 
     // 第10弾（項目1）: 指摘が一切無い（合計error/warningが共に0、かつ個々のファイルで
     // unsupported等の失敗も無い）場合は合計行も出力しない（サイレント成功）。
-    if total_error > 0 || total_warning > 0 || any_failure {
+    if counts.error_count > 0 || counts.warning_count > 0 || counts.any_failure {
         println!(
             "{}",
             t!(language,
                 ja: "合計: 対象ファイル {n} 件 / error {total_error} 件 / warning {total_warning} 件",
                 en: "Total: {n} file(s) / {total_error} error(s) / {total_warning} warning(s)",
                 n = paths.len(),
-                total_error = total_error,
-                total_warning = total_warning,
+                total_error = counts.error_count,
+                total_warning = counts.warning_count,
             )
         );
     }
 
-    if any_failure {
-        ExitCode::FAILURE
-    } else {
-        ExitCode::SUCCESS
-    }
+    exit_code_for(counts.any_failure)
 }
 
 /// 1ファイルを検証し、`ExitCode`を返す（単一ファイル指定時の従来どおりの
