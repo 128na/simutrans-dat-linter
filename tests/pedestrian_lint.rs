@@ -28,6 +28,12 @@ fn has_error(diags: &[(Severity, &str)], code: &str) -> bool {
         .any(|(s, c)| *s == Severity::Error && *c == code)
 }
 
+fn has_warning(diags: &[(Severity, &str)], code: &str) -> bool {
+    diags
+        .iter()
+        .any(|(s, c)| *s == Severity::Warning && *c == code)
+}
+
 fn assert_no_errors_or_warnings(diags: &[(Severity, &str)]) {
     let errors: Vec<_> = diags
         .iter()
@@ -84,5 +90,16 @@ fn animated_missing_image_file_is_detected() {
     assert!(has_error(
         &check("pedestrian_animated_missing_image_file.dat"),
         "missing-image-file"
+    ));
+}
+
+#[test]
+fn date_index_overflow_is_detected() {
+    // intro_year=-1900 -> -1900*12+1-1=-22800（範囲外）。
+    // retire_year=12999 -> 12999*12+1-1=155988（範囲外）。両方とも
+    // pedestrian_writer.cc:73-79のuint16へ静かにラップアラウンドする不具合。
+    assert!(has_warning(
+        &check("pedestrian_date_index_overflow.dat"),
+        "date-index-overflow"
     ));
 }

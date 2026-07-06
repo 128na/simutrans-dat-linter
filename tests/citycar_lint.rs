@@ -28,6 +28,12 @@ fn has_error(diags: &[(Severity, &str)], code: &str) -> bool {
         .any(|(s, c)| *s == Severity::Error && *c == code)
 }
 
+fn has_warning(diags: &[(Severity, &str)], code: &str) -> bool {
+    diags
+        .iter()
+        .any(|(s, c)| *s == Severity::Warning && *c == code)
+}
+
 #[test]
 fn valid_citycar_has_no_errors_or_warnings() {
     let diags = check("citycar_valid.dat");
@@ -74,5 +80,16 @@ fn bad_image_size_is_detected() {
     assert!(has_error(
         &check("citycar_bad_image_size.dat"),
         "image-size-not-multiple-of-128"
+    ));
+}
+
+#[test]
+fn date_index_overflow_is_detected() {
+    // intro_year=-1900 -> -1900*12+1-1=-22800（範囲外）。
+    // retire_year=12999 -> 12999*12+1-1=155988（範囲外）。両方とも
+    // citycar_writer.cc:21-27のuint16へ静かにラップアラウンドする不具合。
+    assert!(has_warning(
+        &check("citycar_date_index_overflow.dat"),
+        "date-index-overflow"
     ));
 }

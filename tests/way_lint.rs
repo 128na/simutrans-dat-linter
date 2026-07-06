@@ -94,3 +94,26 @@ fn missing_image_file_is_detected() {
         "missing-image-file"
     ));
 }
+
+#[test]
+fn image_coordinate_out_of_bounds_is_detected() {
+    // image[-]=station_cube.334.0: station_cube.png は128x128（1x1タイル）なので、
+    // row=334はタイル数(1)を大きく超える。building.rsと同じ`common::check_image_ref`
+    // 経由の共有ロジックが、way（別obj種別）でも同じcodeを出すことを確認する。
+    assert!(has_error(
+        &check("way_image_coordinate_out_of_bounds.dat"),
+        "image-coordinate-out-of-bounds"
+    ));
+}
+
+#[test]
+fn date_index_overflow_is_detected() {
+    // intro_year=-1900 -> -1900*12+1-1=-22800（範囲外）。
+    // retire_year=12999 -> 12999*12+1-1=155988（範囲外）。両方とも
+    // way_writer.cc:45-49のuint16へ静かにラップアラウンドする不具合。
+    assert!(has(
+        &check("way_date_index_overflow.dat"),
+        Severity::Warning,
+        "date-index-overflow"
+    ));
+}

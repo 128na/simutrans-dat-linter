@@ -103,6 +103,18 @@ fn bad_image_size_is_detected() {
     ));
 }
 
+#[test]
+fn date_index_overflow_is_detected() {
+    // intro_year=-1900 -> -1900*12+1-1=-22800（範囲外）。
+    // retire_year=12999 -> 12999*12+1-1=155988（範囲外）。両方とも
+    // crossing_writer.cc:110-114のuint16へ静かにラップアラウンドする不具合。
+    assert!(has(
+        &check("crossing_date_index_overflow.dat"),
+        Severity::Warning,
+        "date-index-overflow"
+    ));
+}
+
 /// 第6弾: pak128実データ
 /// （`infrastructure/road_rail_crossings/p128_crossing_road040_rail080.dat`の
 /// `OpenImage[NS,EW][0-1]=...<0+$1>.<2*$0+1>`）で確認された、方向名（ribi）

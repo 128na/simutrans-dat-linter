@@ -1,7 +1,8 @@
 //! `obj=building` の検証ルール。検証根拠は `rules/mod.rs` 冒頭コメント参照。
 
 use super::common::{
-    CursorIconPolicy, CursorIconRule, DimsRule, KNOWN_WAYTYPES, TileImageRule, resolve_dims,
+    CursorIconPolicy, CursorIconRule, DimsRule, KNOWN_WAYTYPES, TileImageRule,
+    check_date_index_overflow_field, resolve_dims,
 };
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
@@ -104,6 +105,8 @@ pub fn all(dat: &DatFile) -> Vec<Box<dyn Rule>> {
             size_y,
             layouts,
         }),
+        Box::new(DateIndexOverflowRule),
+        Box::new(BooleanStyleFieldRule),
     ]
 }
 
@@ -253,3 +256,92 @@ impl Rule for ObsoleteKeywordRule {
 // 第14弾: `resolve_dims`/`DimsRule`/`CursorIconRule`/`TileImageRule`はfactory.rsと
 // ほぼ同一実装だったため、`super::common`へ1本化した（common.rs内のコメント参照）。
 // このモジュールからは`use`（冒頭）経由でそのまま利用する。
+
+/// `building_writer.cc:227-236`: intro_date/retire_date/preservation_dateの3つの
+/// 日付インデックスがそれぞれ`year*12+month-1`で計算されuint16に無条件代入される。
+/// 根拠・設計は`common::check_date_index_overflow_field`のdocコメント参照
+/// （`PowerGearMismatchRule`と同種の静的解析ルール）。buildingはこの計算を3回
+/// （intro/retire/preservation）行う唯一のobj種別である。
+struct DateIndexOverflowRule;
+impl Rule for DateIndexOverflowRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let mut diags = Vec::new();
+        diags.extend(check_date_index_overflow_field(
+            dat,
+            "intro_year",
+            1900,
+            Some("intro_month"),
+            ctx.language,
+        ));
+        diags.extend(check_date_index_overflow_field(
+            dat,
+            "retire_year",
+            2999,
+            Some("retire_month"),
+            ctx.language,
+        ));
+        diags.extend(check_date_index_overflow_field(
+            dat,
+            "preservation_year",
+            2999,
+            Some("preservation_month"),
+            ctx.language,
+        ));
+        diags
+    }
+}
+
+/// `building_writer.cc:112-114,203,207,210,213`: `noinfo`/`noconstruction`/
+/// `needs_ground`/`extension_building`/`enables_pax`/`enables_post`/`enables_ware`は
+/// いずれも`obj.get_int(key, 0) > 0`という比較でフラグ化されるだけで、1以外の正の値
+/// （例: `NoInfo=999`）も1と全く同じ扱いになる。makeobjにとってはバグではない
+/// （">0"の意図通りに動作する）が、`.dat`記述者が「0/1のフラグ」のつもりで
+/// 999のような値を書いてしまった入力ミスの可能性が高い。機能的なバグではないため
+/// warning（style note）に留め、"既に正しく動いている"ことを明記する。
+const BOOLEAN_STYLE_FIELDS: &[&str] = &[
+    "noinfo",
+    "noconstruction",
+    "needs_ground",
+    "extension_building",
+    "enables_pax",
+    "enables_post",
+    "enables_ware",
+];
+struct BooleanStyleFieldRule;
+impl Rule for BooleanStyleFieldRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let mut diags = Vec::new();
+        for key in BOOLEAN_STYLE_FIELDS {
+            let Some(raw) = dat.get(key) else { continue };
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let Ok(value) = trimmed.parse::<i64>() else {
+                continue;
+            };
+            if value != 0 && value != 1 {
+                diags.push(Diagnostic::warning(
+                    DiagnosticCode::BooleanStyleFieldNotZeroOrOne,
+                    t!(ctx.language,
+                        ja: "{key}={value} は0/1以外の値です。building_writer.ccは\
+                             `obj.get_int(\"{key}\", 0) > 0`という比較でフラグ化するため、\
+                             1以外の正の値も1と全く同じに動作します（機能的な不具合ではありません）。\
+                             0か1のつもりで書いた値であれば、意図を明確にするため0か1に修正することを\
+                             推奨します",
+                        en: "{key}={value} is a value other than 0 or 1. building_writer.cc converts \
+                             this to a flag via `obj.get_int(\"{key}\", 0) > 0`, so any positive value \
+                             other than 1 behaves identically to 1 (this is not a functional bug). If \
+                             0 or 1 was intended, consider changing it to 0 or 1 to make the intent \
+                             clear",
+                        key = key,
+                        value = value,
+                    ),
+                ));
+            }
+        }
+        diags
+    }
+}

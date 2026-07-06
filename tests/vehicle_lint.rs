@@ -129,3 +129,15 @@ fn extra_freightimagetype_is_detected() {
         "extra-freightimagetype"
     ));
 }
+
+#[test]
+fn date_index_overflow_is_detected() {
+    // intro_year=-1900 -> -1900*12+1-1=-22800（範囲外）。
+    // retire_year=12999 -> 12999*12+1-1=155988（範囲外）。両方とも
+    // vehicle_writer.cc:134,138のuint16へ静かにラップアラウンドする不具合。
+    assert!(has(
+        &check("vehicle_date_index_overflow.dat"),
+        Severity::Warning,
+        "date-index-overflow"
+    ));
+}

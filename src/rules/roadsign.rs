@@ -109,7 +109,7 @@
 //!   skin_writer.cc:40-51）。way/bridge/tunnelのcursor/icon省略が見送られたのと
 //!   同じ理由。
 
-use super::common::check_image_ref;
+use super::common::{check_date_index_overflow_field, check_image_ref};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
@@ -125,7 +125,11 @@ const TRAFFIC_LIGHT_DIRECTIONS: &[&str] = &["n", "s", "w", "e", "nw", "se", "sw"
 const GENERAL_DIRECTIONS: &[&str] = &["n", "s", "w", "e"];
 
 pub fn all() -> Vec<Box<dyn Rule>> {
-    vec![Box::new(WaytypeRequiredRule), Box::new(ImageRule)]
+    vec![
+        Box::new(WaytypeRequiredRule),
+        Box::new(ImageRule),
+        Box::new(DateIndexOverflowRule),
+    ]
 }
 
 /// `tests/roadsign_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で
@@ -265,4 +269,31 @@ fn check_2d(ctx: &RuleContext) -> Vec<Diagnostic> {
     }
 
     diags
+}
+
+/// `roadsign_writer.cc:126-131`: intro_date/retire_dateがそれぞれ`year*12+month-1`で
+/// 計算されuint16に無条件代入される。根拠・設計は
+/// `common::check_date_index_overflow_field`のdocコメント参照
+/// （`PowerGearMismatchRule`と同種の静的解析ルール）。
+struct DateIndexOverflowRule;
+impl Rule for DateIndexOverflowRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let mut diags = Vec::new();
+        diags.extend(check_date_index_overflow_field(
+            dat,
+            "intro_year",
+            1900,
+            Some("intro_month"),
+            ctx.language,
+        ));
+        diags.extend(check_date_index_overflow_field(
+            dat,
+            "retire_year",
+            2999,
+            Some("retire_month"),
+            ctx.language,
+        ));
+        diags
+    }
 }

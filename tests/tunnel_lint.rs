@@ -88,3 +88,27 @@ fn bad_image_size_is_detected() {
         "image-size-not-multiple-of-128"
     ));
 }
+
+#[test]
+fn image_coordinate_out_of_bounds_is_detected() {
+    // frontimage[n][0]=station_cube.334.0: station_cube.png は128x128
+    // （1x1タイル）なので、row=334はタイル数(1)を大きく超える。building/wayと
+    // 同じ`common::check_image_ref`経由の共有ロジックが、tunnel（3種類目のobj種別）
+    // でも同じcodeを出すことを確認する。
+    assert!(has_error(
+        &check("tunnel_image_coordinate_out_of_bounds.dat"),
+        "image-coordinate-out-of-bounds"
+    ));
+}
+
+#[test]
+fn date_index_overflow_is_detected() {
+    // intro_year=-1900 -> -1900*12+1-1=-22800（範囲外）。
+    // retire_year=12999 -> 12999*12+1-1=155988（範囲外）。両方とも
+    // tunnel_writer.cc:29-33のuint16へ静かにラップアラウンドする不具合。
+    assert!(has(
+        &check("tunnel_date_index_overflow.dat"),
+        Severity::Warning,
+        "date-index-overflow"
+    ));
+}

@@ -147,7 +147,7 @@
 //!   `cursorskin_writer_t`も呼ばれない。他obj種別と異なり、そもそも
 //!   対象フィールドが存在しない）。
 
-use super::common::{DIR_CODES, check_image_ref};
+use super::common::{DIR_CODES, check_date_index_overflow_field, check_image_ref};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::{Language, t};
@@ -160,7 +160,10 @@ use std::path::Path;
 const MAX_ANIMATION_FRAMES: u32 = 500;
 
 pub fn all() -> Vec<Box<dyn Rule>> {
-    vec![Box::new(DirectionImageRefRule)]
+    vec![
+        Box::new(DirectionImageRefRule),
+        Box::new(DateIndexOverflowRule),
+    ]
 }
 
 /// `tests/pedestrian_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で
@@ -264,5 +267,34 @@ fn check_animated_images(
             check_image_ref(value, dat_dir, &key, diags, lang);
             frame += 1;
         }
+    }
+}
+
+/// `pedestrian_writer.cc:73-79`: intro_date/retire_dateがそれぞれ計算されuint16に
+/// 無条件代入される。intro_yearのみ他のobj種別と異なり`DEFAULT_INTRO_YEAR`
+/// （1900）ではなく`1`がデフォルト値である点に注意（`obj.get_int("intro_year", 1)`、
+/// コメント「no DEFAULT_INTRO_DATE here」の通り）。根拠・設計は
+/// `common::check_date_index_overflow_field`のdocコメント参照
+/// （`PowerGearMismatchRule`と同種の静的解析ルール）。
+struct DateIndexOverflowRule;
+impl Rule for DateIndexOverflowRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let mut diags = Vec::new();
+        diags.extend(check_date_index_overflow_field(
+            dat,
+            "intro_year",
+            1,
+            Some("intro_month"),
+            ctx.language,
+        ));
+        diags.extend(check_date_index_overflow_field(
+            dat,
+            "retire_year",
+            2999,
+            Some("retire_month"),
+            ctx.language,
+        ));
+        diags
     }
 }

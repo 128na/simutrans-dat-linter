@@ -146,7 +146,7 @@
 //!   拒否する分岐は無い（get_waytype()は既知13種のいずれでも受理する）。
 //!   crossingの「意味のある交差の組み合わせ」検証が見送られたのと同じ理由。
 
-use super::common::check_image_ref;
+use super::common::{check_date_index_overflow_field, check_image_ref};
 use crate::diagnostics::Diagnostic;
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
@@ -170,6 +170,7 @@ pub fn all() -> Vec<Box<dyn Rule>> {
         Box::new(WaytypeRequiredRule),
         Box::new(OwnWaytypeRequiredRule),
         Box::new(ImageRefRule),
+        Box::new(DateIndexOverflowRule),
     ]
 }
 
@@ -280,6 +281,33 @@ impl Rule for ImageRefRule {
             }
         }
 
+        diags
+    }
+}
+
+/// `way_obj_writer.cc:36-40`: intro_date/retire_dateがそれぞれ`year*12+month-1`で
+/// 計算されuint16に無条件代入される。根拠・設計は
+/// `common::check_date_index_overflow_field`のdocコメント参照
+/// （`PowerGearMismatchRule`と同種の静的解析ルール）。
+struct DateIndexOverflowRule;
+impl Rule for DateIndexOverflowRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let mut diags = Vec::new();
+        diags.extend(check_date_index_overflow_field(
+            dat,
+            "intro_year",
+            1900,
+            Some("intro_month"),
+            ctx.language,
+        ));
+        diags.extend(check_date_index_overflow_field(
+            dat,
+            "retire_year",
+            2999,
+            Some("retire_month"),
+            ctx.language,
+        ));
         diags
     }
 }

@@ -133,6 +133,7 @@ pub enum DiagnosticCode {
     MissingTileImage,
     TileImageOk,
     FrontimageHeight,
+    BooleanStyleFieldNotZeroOrOne,
     // --- lint: src/rules/citycar.rs, pedestrian.rs (共有code) ---
     ImageOmitted,
     // --- lint: src/rules/common.rs ---
@@ -144,8 +145,10 @@ pub enum DiagnosticCode {
     ImageRefResolved,
     MissingImageFile,
     ImageSizeNotMultipleOf128,
+    ImageCoordinateOutOfBounds,
     ImageOk,
     UnreadableImage,
+    DateIndexOverflow,
     // --- lint: src/rules/crossing.rs ---
     CrossingIdenticalWaytypes,
     CrossingMissingSpeed,
@@ -221,6 +224,7 @@ impl DiagnosticCode {
             DiagnosticCode::MissingTileImage => "missing-tile-image",
             DiagnosticCode::TileImageOk => "tile-image-ok",
             DiagnosticCode::FrontimageHeight => "frontimage-height",
+            DiagnosticCode::BooleanStyleFieldNotZeroOrOne => "boolean-style-field-not-zero-or-one",
             DiagnosticCode::ImageOmitted => "image-omitted",
             DiagnosticCode::DuplicateKey => "duplicate-key",
             DiagnosticCode::MissingWaytype => "missing-waytype",
@@ -230,8 +234,10 @@ impl DiagnosticCode {
             DiagnosticCode::ImageRefResolved => "image-ref-resolved",
             DiagnosticCode::MissingImageFile => "missing-image-file",
             DiagnosticCode::ImageSizeNotMultipleOf128 => "image-size-not-multiple-of-128",
+            DiagnosticCode::ImageCoordinateOutOfBounds => "image-coordinate-out-of-bounds",
             DiagnosticCode::ImageOk => "image-ok",
             DiagnosticCode::UnreadableImage => "unreadable-image",
+            DiagnosticCode::DateIndexOverflow => "date-index-overflow",
             DiagnosticCode::CrossingIdenticalWaytypes => "crossing-identical-waytypes",
             DiagnosticCode::CrossingMissingSpeed => "crossing-missing-speed",
             DiagnosticCode::CrossingMissingOpenimage => "crossing-missing-openimage",
@@ -533,6 +539,24 @@ impl DiagnosticCode {
                 fix_ja: "frontimageのh添字は常に0にしてください（frontimage[l][y][x][0][phase]の形式）",
                 fix_en: "Always use 0 for the h index of frontimage (i.e. frontimage[l][y][x][0][phase])",
             },
+            DiagnosticCode::BooleanStyleFieldNotZeroOrOne => CodeInfo {
+                code: *self,
+                source: CodeSource::Lint,
+                why_ja: "スタイルノート（機能的な不具合ではありません）。noinfo/noconstruction/\
+                    needs_ground/extension_building/enables_pax/enables_post/enables_wareは\
+                    いずれも`obj.get_int(key, 0) > 0`という比較でフラグ化されるだけなので、\
+                    0/1以外の正の値（例: NoInfo=999）も1と全く同じに動作します。既に正しく\
+                    動作していますが、0/1のつもりで書いた値であれば入力ミスの可能性があります",
+                why_en: "A style note (not a functional bug). noinfo/noconstruction/needs_ground/\
+                    extension_building/enables_pax/enables_post/enables_ware are converted to flags via \
+                    `obj.get_int(key, 0) > 0`, so any positive value other than 0/1 (e.g. NoInfo=999) \
+                    behaves identically to 1. This already works correctly, but if 0 or 1 was intended, \
+                    it may indicate an authoring mistake",
+                fix_ja: "意図を明確にするため、値を0または1に修正することを推奨します\
+                    （修正しなくても動作は変わりません）",
+                fix_en: "Consider changing the value to 0 or 1 to make the intent clear (behavior is \
+                    unchanged either way)",
+            },
             DiagnosticCode::ImageOmitted => CodeInfo {
                 code: *self,
                 source: CodeSource::Lint,
@@ -654,6 +678,29 @@ impl DiagnosticCode {
                 fix_ja: "画像を128x128単位（128, 256, 384...）のサイズにリサイズ・パディングしてください",
                 fix_en: "Resize or pad the image to a multiple of 128x128 (128, 256, 384, ...)",
             },
+            DiagnosticCode::ImageCoordinateOutOfBounds => CodeInfo {
+                code: *self,
+                source: CodeSource::Lint,
+                why_ja: "画像参照で指定された行/列（例: \"foo.334.0\"のrow=334, col=0）が、実際の\
+                    画像ファイルのタイル数（幅/128, 高さ/128）を超えています。image_writer.ccの\
+                    write_objは`col >= width/img_size || row >= height/img_size`のとき\
+                    \"invalid image number in ...\"としてobj_pak_exception_tをthrowし、\
+                    pak生成全体を中断させます。1引数省略形（\"foo.334\"のようにcolを省略した形式）でも、\
+                    実際のタイル数を使ってrow/colへ展開し直した後の値で同じ判定が行われます",
+                why_en: "The row/column specified in an image reference (e.g. row=334, col=0 in \
+                    \"foo.334.0\") exceeds the image file's actual tile grid (width/128, height/128). \
+                    image_writer.cc's write_obj throws obj_pak_exception_t (\"invalid image number in \
+                    ...\") when `col >= width/img_size || row >= height/img_size`, aborting pak \
+                    generation entirely. The same check applies to the 1-argument shorthand form \
+                    (e.g. \"foo.334\", omitting col), after it is expanded into row/col using the \
+                    image's actual tile count",
+                fix_ja: "参照している行/列番号を確認し、画像の実際のタイルグリッド範囲内\
+                    （0..幅/128, 0..高さ/128）に収まるよう修正するか、画像をより大きなタイル数を\
+                    持つファイルに差し替えてください",
+                fix_en: "Check the referenced row/column number and correct it to fit within the \
+                    image's actual tile grid (0..width/128, 0..height/128), or replace the image with \
+                    one that has enough tiles",
+            },
             DiagnosticCode::ImageOk => CodeInfo {
                 code: *self,
                 source: CodeSource::Lint,
@@ -675,6 +722,35 @@ impl DiagnosticCode {
                     aborting pak generation entirely",
                 fix_ja: "ファイルが正しいPNG形式であること・破損していないことを確認してください",
                 fix_en: "Verify the file is a valid, uncorrupted PNG",
+            },
+            DiagnosticCode::DateIndexOverflow => CodeInfo {
+                code: *self,
+                source: CodeSource::Lint,
+                why_ja: "静的解析ルール（makeobjの`dbg->fatal`/`dbg->warning`を直接ミラーするものでは\
+                    ない。PowerGearMismatch/FactoryProductivityZeroと同種）。intro_year/intro_month\
+                    （またはretire_year/retire_month、buildingのみpreservation_year/\
+                    preservation_monthも対象）から`year*12+month-1`で計算される日付インデックスが\
+                    格納先のuint16の範囲(0..65535)外です。makeobj（building/citycar/crossing/\
+                    pedestrian/roadsign/tunnel/vehicle/way/way-objectの各writer）はこの計算結果を\
+                    無条件にuint16へ代入するため、範囲外の値は2の補数による切り詰めで\
+                    無関係な日付へ静かにラップアラウンドします。makeobj自体はこれを検証せず、\
+                    警告も出しません（bridgeは`get_int_clamped`で既に緩和されているため対象外）",
+                why_en: "A static-analysis rule (not a direct mirror of makeobj's dbg->fatal/dbg->warning; \
+                    same category as PowerGearMismatch/FactoryProductivityZero). The date index computed \
+                    as `year*12+month-1` from intro_year/intro_month (or retire_year/retire_month; \
+                    building also has preservation_year/preservation_month) is outside the uint16 range \
+                    (0..65535) it is stored in. makeobj (the building/citycar/crossing/pedestrian/\
+                    roadsign/tunnel/vehicle/way/way-object writers) unconditionally assigns this result \
+                    to a uint16, so an out-of-range value silently wraps around (two's-complement \
+                    truncation) into an unrelated bogus date. makeobj itself does not validate this and \
+                    emits no warning (bridge is excluded because it already mitigates this via \
+                    get_int_clamped)",
+                fix_ja: "year/monthの値を確認し、year*12+month-1が0..65535の範囲に収まるよう\
+                    修正してください（monthは通常1..12、負のyearや極端に大きいyearを指定していないか\
+                    確認してください）",
+                fix_en: "Check the year/month values and adjust them so that year*12+month-1 falls \
+                    within 0..65535 (month is normally 1..12; check for a negative year or an \
+                    excessively large year)",
             },
             DiagnosticCode::CrossingIdenticalWaytypes => CodeInfo {
                 code: *self,
@@ -1210,6 +1286,7 @@ pub const ALL: &[DiagnosticCode] = &[
     DiagnosticCode::MissingTileImage,
     DiagnosticCode::TileImageOk,
     DiagnosticCode::FrontimageHeight,
+    DiagnosticCode::BooleanStyleFieldNotZeroOrOne,
     DiagnosticCode::ImageOmitted,
     DiagnosticCode::DuplicateKey,
     DiagnosticCode::MissingWaytype,
@@ -1219,8 +1296,10 @@ pub const ALL: &[DiagnosticCode] = &[
     DiagnosticCode::ImageRefResolved,
     DiagnosticCode::MissingImageFile,
     DiagnosticCode::ImageSizeNotMultipleOf128,
+    DiagnosticCode::ImageCoordinateOutOfBounds,
     DiagnosticCode::ImageOk,
     DiagnosticCode::UnreadableImage,
+    DiagnosticCode::DateIndexOverflow,
     DiagnosticCode::CrossingIdenticalWaytypes,
     DiagnosticCode::CrossingMissingSpeed,
     DiagnosticCode::CrossingMissingOpenimage,

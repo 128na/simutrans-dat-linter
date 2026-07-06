@@ -1,0 +1,10 @@
+obj=crossing
+name=DateOverflowCrossing
+waytype[0]=road
+waytype[1]=track
+speed[0]=80
+speed[1]=120
+intro_year=-1900
+retire_year=12999
+openimage[ns][0]=station_cube.png.0.0
+openimage[ew][0]=station_cube.png.0.0

@@ -1,0 +1,10 @@
+obj=roadsign
+name=DateOverflowRoadsignNumbered
+waytype=road
+cost=1000
+intro_year=-1900
+retire_year=12999
+image[0]=station_cube.png.0.0
+image[1]=station_cube.png.0.0
+image[2]=station_cube.png.0.0
+image[3]=station_cube.png.0.0

@@ -101,7 +101,7 @@
 //!   どの2つの異なるwaytypeの組み合わせが「意味のある交差」かを判定するロジックは
 //!   makeobj側に存在しない（ゲーム側の`crossing_logic_t`が実行時に使い方を決める）。
 
-use super::common::{KNOWN_WAYTYPES, check_image_ref};
+use super::common::{KNOWN_WAYTYPES, check_date_index_overflow_field, check_image_ref};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
@@ -164,6 +164,7 @@ pub fn all() -> Vec<Box<dyn Rule>> {
         Box::new(SpeedRequiredRule),
         Box::new(OpenImageRequiredRule),
         Box::new(ImageRefRule),
+        Box::new(DateIndexOverflowRule),
     ]
 }
 
@@ -339,6 +340,33 @@ impl Rule for ImageRefRule {
                 check_image_ref(value, ctx.dat_dir, &full_key, &mut diags, ctx.language);
             }
         }
+        diags
+    }
+}
+
+/// `crossing_writer.cc:110-114`: intro_date/retire_dateがそれぞれ`year*12+month-1`で
+/// 計算されuint16に無条件代入される。根拠・設計は
+/// `common::check_date_index_overflow_field`のdocコメント参照
+/// （`PowerGearMismatchRule`と同種の静的解析ルール）。
+struct DateIndexOverflowRule;
+impl Rule for DateIndexOverflowRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let mut diags = Vec::new();
+        diags.extend(check_date_index_overflow_field(
+            dat,
+            "intro_year",
+            1900,
+            Some("intro_month"),
+            ctx.language,
+        ));
+        diags.extend(check_date_index_overflow_field(
+            dat,
+            "retire_year",
+            2999,
+            Some("retire_month"),
+            ctx.language,
+        ));
         diags
     }
 }

@@ -123,7 +123,7 @@
 //!   `cursorskin_writer_t`も呼ばれない。他obj種別と異なり、そもそも対象フィールドが
 //!   存在しない）。
 
-use super::common::{DIR_CODES, check_image_ref};
+use super::common::{DIR_CODES, check_date_index_overflow_field, check_image_ref};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
@@ -132,7 +132,10 @@ use crate::registry::{Rule, RuleContext};
 use std::path::Path;
 
 pub fn all() -> Vec<Box<dyn Rule>> {
-    vec![Box::new(DirectionImageRefRule)]
+    vec![
+        Box::new(DirectionImageRefRule),
+        Box::new(DateIndexOverflowRule),
+    ]
 }
 
 /// `tests/citycar_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で
@@ -170,6 +173,33 @@ impl Rule for DirectionImageRefRule {
             }
         }
 
+        diags
+    }
+}
+
+/// `citycar_writer.cc:21-27`: intro_date/retire_dateがそれぞれ`year*12+month-1`で
+/// 計算されuint16に無条件代入される。根拠・設計は
+/// `common::check_date_index_overflow_field`のdocコメント参照
+/// （`PowerGearMismatchRule`と同種の静的解析ルール）。
+struct DateIndexOverflowRule;
+impl Rule for DateIndexOverflowRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let mut diags = Vec::new();
+        diags.extend(check_date_index_overflow_field(
+            dat,
+            "intro_year",
+            1900,
+            Some("intro_month"),
+            ctx.language,
+        ));
+        diags.extend(check_date_index_overflow_field(
+            dat,
+            "retire_year",
+            2999,
+            Some("retire_month"),
+            ctx.language,
+        ));
         diags
     }
 }

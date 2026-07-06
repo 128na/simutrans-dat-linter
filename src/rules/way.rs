@@ -18,7 +18,7 @@
 //!   vehicleのweight/speedチェックが見送られたのと同じ理由
 //!   （「意図的な省略」と「入力ミス」を区別する根拠がmakeobjソース上に無い）。
 
-use super::common::check_image_ref;
+use super::common::{check_date_index_overflow_field, check_image_ref};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
@@ -31,6 +31,7 @@ pub fn all() -> Vec<Box<dyn Rule>> {
         Box::new(WaytypeRequiredRule),
         Box::new(BaseImageRequiredRule),
         Box::new(ClipBelowRangeRule),
+        Box::new(DateIndexOverflowRule),
     ]
 }
 
@@ -132,5 +133,32 @@ impl Rule for ClipBelowRangeRule {
             DiagnosticCode::ClipBelowOutOfRange,
             ctx.language,
         )
+    }
+}
+
+/// `way_writer.cc:45-49`: intro_date/retire_dateがそれぞれ`year*12+month-1`で
+/// 計算されuint16に無条件代入される。根拠・設計は
+/// `common::check_date_index_overflow_field`のdocコメント参照
+/// （`PowerGearMismatchRule`と同種の静的解析ルール）。
+struct DateIndexOverflowRule;
+impl Rule for DateIndexOverflowRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let mut diags = Vec::new();
+        diags.extend(check_date_index_overflow_field(
+            dat,
+            "intro_year",
+            1900,
+            Some("intro_month"),
+            ctx.language,
+        ));
+        diags.extend(check_date_index_overflow_field(
+            dat,
+            "retire_year",
+            2999,
+            Some("retire_month"),
+            ctx.language,
+        ));
+        diags
     }
 }

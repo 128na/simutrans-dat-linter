@@ -227,6 +227,79 @@ pub fn check_clamped_int_field(
     }
 }
 
+/// `date-index-overflow`ルールが根拠とする、makeobjの日付インデックス合成式
+/// `year_key * 12 + month_key - 1`（`building_writer.cc:227-228`等、9つのobj種別が
+/// ほぼ同一の式をそれぞれ独立に実装している）を`i64`でそのまま計算する。
+///
+/// このルールは`PowerGearMismatchRule`（vehicle.rs）・`FactoryProductivityZero`
+/// （factory.rs）と同種の「静的解析」層のルールであり、makeobj自身の
+/// `dbg->fatal`/`dbg->warning`を直接ミラーするものではない。実際のmakeobj C++コードは
+/// この合成結果を無条件に`uint16`（0..65535）へ代入するだけで、範囲チェックも
+/// 警告も一切無い。しかし`year`に負の値を与えたり、`year*12+month-1`が65535を
+/// 超えたりすると、C++の暗黙変換（2の補数での切り詰め）によって全く無関係な
+/// 日付へ静かにラップアラウンドする。この「呼び出し元は気づけない不具合」を
+/// 検出するのがこのルールの目的であり、`bridge_writer.cc`が`get_int_clamped`で
+/// 明示的に範囲外を警告する設計（`ClampedRangeRule`が対象）とは異なる
+/// （bridgeはこの問題そのものが既に緩和されているため対象外。冒頭のタスク
+/// 指示・各obj種別ファイルのdocコメント参照）。
+///
+/// `month_key`が`None`の場合（該当obj種別のC++コードがその日付フィールドの
+/// 月を全く読まない場合）は`month`項を評価せず`year_key * 12`のみで判定する
+/// （存在しないキーへの言及を作らないため。呼び出し元が該当有無を判断する）。
+///
+/// Rustの`i64`は`year*12+month-1`が`i32`/`u16`の範囲を大きく超えても
+/// オーバーフローでpanicしない（`i64`の範囲は`year`が`i32::MAX`程度でも
+/// 全く余裕がある）ため、`year_raw`/`month_raw`は`tabfileobj_t::get_int()`と同様
+/// `i64`としてそのまま読み、`checked_mul`等を使わず素朴に`*`/`+`で計算してよい。
+pub fn check_date_index_overflow_field(
+    dat: &DatFile,
+    year_key: &str,
+    year_default: i64,
+    month_key: Option<&str>,
+    lang: Language,
+) -> Vec<Diagnostic> {
+    let year = dat
+        .get(year_key)
+        .and_then(|v| v.trim().parse::<i64>().ok())
+        .unwrap_or(year_default);
+    let month = month_key.map(|key| {
+        dat.get(key)
+            .and_then(|v| v.trim().parse::<i64>().ok())
+            .unwrap_or(1)
+    });
+
+    let date_index = match month {
+        Some(m) => year * 12 + m - 1,
+        None => year * 12,
+    };
+
+    if !(0..=65535).contains(&date_index) {
+        let month_display = month.map(|m| m.to_string()).unwrap_or_else(|| "-".into());
+        vec![Diagnostic::warning(
+            DiagnosticCode::DateIndexOverflow,
+            t!(lang,
+                ja: "{year_key}={year}（月={month_display}）から計算される日付インデックスが\
+                     {date_index}になり、格納先のuint16の範囲(0..65535)外です。makeobjはこの合成式\
+                     （year*12+month-1）の結果を無条件にuint16へ代入するため、範囲外の値は\
+                     2の補数による切り詰めで無関係な日付へ静かにラップアラウンドします\
+                     （makeobj自体はこれを検証しません）",
+                en: "The date index computed from {year_key}={year} (month={month_display}) is \
+                     {date_index}, which is outside the uint16 range (0..65535) it is stored in. \
+                     makeobj unconditionally assigns this composite formula's result \
+                     (year*12+month-1) to a uint16, so an out-of-range value silently wraps around \
+                     (two's-complement truncation) into an unrelated bogus date (makeobj itself does \
+                     not validate this)",
+                year_key = year_key,
+                year = year,
+                month_display = month_display,
+                date_index = date_index,
+            ),
+        )]
+    } else {
+        Vec::new()
+    }
+}
+
 /// `image_writer_t::write_obj`（image_writer.cc:348-364）の構文仕様コメント
 /// （`"[> ]imagefilename_without_extension[...]"`）どおり、先頭の`'>'`1文字は
 /// 「ズーム不可」フラグとして`an_imagekey[0]=='>'`判定で剥がされ
@@ -305,6 +378,62 @@ fn resolve_image_filename(value: &str) -> String {
     let strip_len = numkey.len() - dot_idx_in_numkey;
     let stem = &value[..value.len() - strip_len];
     format!("{stem}.png")
+}
+
+/// `resolve_image_filename`の手順2（`numkey`内で最初の`.`を探す）と全く同じ
+/// 位置から、その後ろの部分（row/col表現。`resolve_image_filename`は捨てている
+/// 部分）を切り出す。`image_writer_t::write_obj`（image_writer.cc:372-388）が
+/// `numkey = numkey.substr(i+1, ...)`として保持する値そのもの
+/// （例: `"../../icon.334.0"` → ディレクトリ接頭辞を除いた`"icon.334.0"`の中で
+/// 最初の`.`より後ろ、つまり`"334.0"`）。`resolve_image_filename`と同じ規則
+/// （ディレクトリ接頭辞は`rfind('/')`基準、拡張子区切りは接頭辞除去後の文字列内で
+/// 最初の`.`基準）を踏襲するため、ロジックを共有するのではなくここで独立に
+/// 再現する（`resolve_image_filename`はファイル名だけを返す設計のため、
+/// row/col部分は呼び出し元に残らない）。
+fn extract_numkey(value: &str) -> Option<String> {
+    let numkey = match value.rfind('/') {
+        Some(slash_idx) => &value[slash_idx + 1..],
+        None => value,
+    };
+    let dot_idx = numkey.find('.')?;
+    Some(numkey[dot_idx + 1..].to_string())
+}
+
+/// `image_writer_t::write_obj`（image_writer.cc:390-418）が実際に`row`/`col`を
+/// 解決するロジックをそのまま再現する。`numkey`は`extract_numkey`が返す、
+/// 拡張子区切りの`.`より後ろの部分（例: `"foo.334.0"`なら`numkey="334.0"`）。
+///
+/// 1. `row = atoi(numkey.c_str())`（先頭の数値。数値でなければ`atoi`同様0）
+/// 2. `numkey`内に次の`.`があれば`col = atoi(その後ろ)`（2引数形式、
+///    image_writer.cc:392-394）
+/// 3. 無ければ`col`は未確定のまま`None`を返す（1引数省略形。呼び出し元
+///    `check_image_ref`が実際の画像タイル数を使い
+///    `col = row % (width/img_size); row = row / (height/img_size)`
+///    （image_writer.cc:415-418）へ展開する）
+///
+/// `image_writer.cc`の`atoi`はC標準ライブラリの実装で、非数値の先頭文字列に対して
+/// 単に`0`を返す（エラーを出さない）。Rustの`str::parse`は非数値だと`Err`を返すため、
+/// 先頭から連続する数字（と符号）だけを切り出してからパースすることで、
+/// `atoi`と同じ「後続の非数値は無視、全く数値が無ければ0」という挙動を再現する。
+fn atoi_like(s: &str) -> i64 {
+    let s = s.trim_start();
+    let mut end = 0usize;
+    let bytes = s.as_bytes();
+    if end < bytes.len() && (bytes[end] == b'+' || bytes[end] == b'-') {
+        end += 1;
+    }
+    while end < bytes.len() && bytes[end].is_ascii_digit() {
+        end += 1;
+    }
+    s[..end].parse::<i64>().unwrap_or(0)
+}
+
+fn resolve_row_col(numkey: &str) -> (i64, Option<i64>) {
+    let row = atoi_like(numkey);
+    let col = numkey
+        .find('.')
+        .map(|dot_idx| atoi_like(&numkey[dot_idx + 1..]));
+    (row, col)
 }
 
 /// `image_writer_t::write_obj`（image_writer.cc:348-453）は全obj種別が画像参照を
@@ -386,6 +515,51 @@ pub fn check_image_ref(
                         tile = PAK_TILE_SIZE,
                     ),
                 ));
+            } else if let Some(numkey) = extract_numkey(value) {
+                // image_writer.cc:390-418: row/colを解決し、実際の画像タイル数
+                // （width/img_size, height/img_size）と比較する。128の倍数チェック
+                // （上のif節）を通った後なので、ここでのタイル数は整数になる。
+                let (raw_row, raw_col) = resolve_row_col(&numkey);
+                let cols = (w / PAK_TILE_SIZE) as i64;
+                let rows = (h / PAK_TILE_SIZE) as i64;
+                let (row, col) = match raw_col {
+                    Some(c) => (raw_row, c),
+                    // image_writer.cc:415-418: 1引数省略形（2つ目の"."が無い場合）は
+                    // col == -1 のまま次の判定に入り、colをwidth基準・rowをheight基準の
+                    // タイルインデックスへ展開し直す（`row`という1つの連番を
+                    // タイルグリッド上の(col,row)へ変換する）。
+                    None => (
+                        if rows != 0 { raw_row / rows } else { raw_row },
+                        if cols != 0 { raw_row % cols } else { raw_row },
+                    ),
+                };
+                if col >= cols || row >= rows {
+                    diags.push(Diagnostic::error(
+                        DiagnosticCode::ImageCoordinateOutOfBounds,
+                        t!(lang,
+                            ja: "{context}: {filename} の指定座標(col={col}, row={row})が\
+                                 画像の実際のタイル数(cols={cols}, rows={rows})を超えています。\
+                                 image_writer_t::write_objはこれを\
+                                 \"invalid image number in {filename}.{numkey}\"としてFATAL ERRORにします",
+                            en: "{context}: The specified coordinate (col={col}, row={row}) for \
+                                 {filename} exceeds the image's actual tile grid (cols={cols}, \
+                                 rows={rows}). image_writer_t::write_obj treats this as a FATAL \
+                                 ERROR (\"invalid image number in {filename}.{numkey}\")",
+                            context = context,
+                            filename = filename,
+                            col = col,
+                            row = row,
+                            cols = cols,
+                            rows = rows,
+                            numkey = numkey,
+                        ),
+                    ));
+                } else {
+                    diags.push(Diagnostic::info(
+                        DiagnosticCode::ImageOk,
+                        format!("{context}: {filename} {w}x{h}"),
+                    ));
+                }
             } else {
                 diags.push(Diagnostic::info(
                     DiagnosticCode::ImageOk,
@@ -751,5 +925,50 @@ mod tests {
         // 値全体の中で最初の'.'を探す従来の（ディレクトリ接頭辞が無い場合の）
         // 挙動と同じになる）。
         assert_eq!(resolve_image_filename("dir\\icon.1.0"), "dir\\icon.png");
+    }
+
+    // extract_numkey/resolve_row_col/atoi_like: image-coordinate-out-of-bounds
+    // ルールが根拠とするimage_writer.cc:390-418のrow/col解決ロジックの単体テスト。
+
+    #[test]
+    fn extract_numkey_returns_part_after_first_dot() {
+        assert_eq!(extract_numkey("foo.334.0").as_deref(), Some("334.0"));
+        assert_eq!(extract_numkey("foo.0").as_deref(), Some("0"));
+    }
+
+    #[test]
+    fn extract_numkey_respects_directory_prefix_like_resolve_image_filename() {
+        // resolve_image_filenameと同じ規則（ディレクトリ接頭辞は'/'基準）を踏襲する。
+        assert_eq!(
+            extract_numkey("../../icon_way3.1.0").as_deref(),
+            Some("1.0")
+        );
+    }
+
+    #[test]
+    fn extract_numkey_none_when_no_dot() {
+        assert_eq!(extract_numkey("foo"), None);
+    }
+
+    #[test]
+    fn atoi_like_parses_leading_digits_only() {
+        assert_eq!(atoi_like("334"), 334);
+        assert_eq!(atoi_like("0"), 0);
+        assert_eq!(atoi_like("png"), 0);
+        assert_eq!(atoi_like("4x"), 4);
+        assert_eq!(atoi_like("-1900"), -1900);
+    }
+
+    #[test]
+    fn resolve_row_col_two_argument_form() {
+        // "foo.334.0" -> numkey="334.0" -> row=334, col=Some(0)。
+        assert_eq!(resolve_row_col("334.0"), (334, Some(0)));
+    }
+
+    #[test]
+    fn resolve_row_col_one_argument_shorthand_has_no_col() {
+        // "foo.5"（2つ目の'.'が無い）-> col確定せずNone。
+        // 呼び出し元（check_image_ref）が実タイル数を使って展開し直す。
+        assert_eq!(resolve_row_col("5"), (5, None));
     }
 }

@@ -112,3 +112,15 @@ fn bad_image_size_is_detected() {
         "image-size-not-multiple-of-128"
     ));
 }
+
+#[test]
+fn date_index_overflow_is_detected() {
+    // intro_year=-1900 -> -1900*12+1-1=-22800（範囲外）。
+    // retire_year=12999 -> 12999*12+1-1=155988（範囲外）。両方とも
+    // way_obj_writer.cc:36-40のuint16へ静かにラップアラウンドする不具合。
+    assert!(has(
+        &check("way_obj_date_index_overflow.dat"),
+        Severity::Warning,
+        "date-index-overflow"
+    ));
+}

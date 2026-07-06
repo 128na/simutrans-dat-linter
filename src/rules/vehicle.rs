@@ -12,7 +12,7 @@
 //! を根拠とする「静的解析」層のルールである（`couplings`サブコマンドと同種の位置づけ）。
 //! makeobj自身はこのフィールドの組み合わせを一切検証しない。
 
-use super::common::DIR_CODES;
+use super::common::{DIR_CODES, check_date_index_overflow_field};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
@@ -64,6 +64,7 @@ pub fn all() -> Vec<Box<dyn Rule>> {
         Box::new(DirectionImageRule),
         Box::new(FreightImageTypeRule),
         Box::new(PowerGearMismatchRule),
+        Box::new(DateIndexOverflowRule),
     ]
 }
 
@@ -356,5 +357,32 @@ impl Rule for PowerGearMismatchRule {
         } else {
             Vec::new()
         }
+    }
+}
+
+/// `vehicle_writer.cc:134,138`: intro_date/retire_dateがそれぞれ`year*12+month-1`で
+/// 計算されuint16に無条件代入される。根拠・設計は
+/// `common::check_date_index_overflow_field`のdocコメント参照
+/// （`PowerGearMismatchRule`と同種の静的解析ルール）。
+struct DateIndexOverflowRule;
+impl Rule for DateIndexOverflowRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let mut diags = Vec::new();
+        diags.extend(check_date_index_overflow_field(
+            dat,
+            "intro_year",
+            1900,
+            Some("intro_month"),
+            ctx.language,
+        ));
+        diags.extend(check_date_index_overflow_field(
+            dat,
+            "retire_year",
+            2999,
+            Some("retire_month"),
+            ctx.language,
+        ));
+        diags
     }
 }

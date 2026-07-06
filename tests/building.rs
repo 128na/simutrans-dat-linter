@@ -175,6 +175,42 @@ fn image_not_multiple_of_128_is_detected() {
 }
 
 #[test]
+fn image_coordinate_out_of_bounds_is_detected() {
+    // cursor=station_icon.334.0: station_icon.png は128x128（1x1タイル）なので、
+    // row=334はタイル数(1)を大きく超える。image_writer.cc:419-422の
+    // "invalid image number in ..." FATAL ERRORに対応する。
+    assert!(has_error(
+        &check("broken_image_coordinate_out_of_bounds.dat"),
+        "image-coordinate-out-of-bounds"
+    ));
+}
+
+#[test]
+fn date_index_overflow_is_detected() {
+    // intro_year=-1900/intro_month=13 -> -1900*12+13-1=-22788（範囲外）。
+    // retire_year=12999/retire_month=0 -> 12999*12+0-1=155987（範囲外）。
+    // どちらもbuilding_writer.cc:227-232のuint16へ静かにラップアラウンドする不具合
+    // （refs/demo/station_cube.datの意図的な不正値と同じシナリオ）。
+    assert!(has(
+        &check("broken_date_index_overflow.dat"),
+        Severity::Warning,
+        "date-index-overflow"
+    ));
+}
+
+#[test]
+fn boolean_style_field_not_zero_or_one_is_detected() {
+    // NoInfo=999/enables_pax=999は0/1以外の値だが、building_writer.ccは
+    // `obj.get_int(key, 0) > 0`で判定するため機能的には1と同じ動作をする
+    // （スタイルノート、warning）。
+    assert!(has(
+        &check("broken_boolean_style_field.dat"),
+        Severity::Warning,
+        "boolean-style-field-not-zero-or-one"
+    ));
+}
+
+#[test]
 fn leading_space_in_value_is_trimmed_and_not_an_error() {
     // `cursor= station_icon.png.0.0` の先頭スペースは、`DatFile`のパース時点では
     // トリムされない（parser.rsのdocコメントどおり値は一切トリムしない）が、
