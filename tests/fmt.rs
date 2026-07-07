@@ -815,6 +815,76 @@ image[0]=corn_farm.4.3
     assert_eq!(out, expected);
 }
 
+// --- enum的な値の大文字小文字統一（"safe normalization"の一部として無条件適用） ---
+
+#[test]
+fn preserve_order_lowercases_waytype_climates_type_engine_type_placing() {
+    // waytype/climates/type/engine_type/placingは、makeobjがSTRICMP（大文字小文字を
+    // 区別しない比較）で全小文字の既知リテラルと照合するため、値全体を一括で
+    // 小文字化しても意味が変わらない（--no-reorder相当のformat_preserve_orderでも
+    // 無条件で適用される）。
+    let text =
+        "waytype=Track\nclimates=Temperate,TUNDRA\ntype=STOP\nengine_type=Diesel\nplacing=Water\n";
+    let parsed = formatter::parse_entries(text, Language::default());
+    let out = formatter::format_preserve_order(&parsed.entries);
+    let expected =
+        "waytype=track\nclimates=temperate,tundra\ntype=stop\nengine_type=diesel\nplacing=water\n";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn reorder_lowercases_waytype_climates_type_engine_type_placing() {
+    // 同じ正規化が--reorder（format_reordered）経由でも同様に適用されることを、
+    // building（waytype/type/climates）とvehicle（waytype/engine_type）で確認する。
+    let text = "obj=building\nname=Hoge\ncopyright=fuga\ntype=STOP\nwaytype=Track\nclimates=Temperate,TUNDRA\n";
+    let parsed = formatter::parse_entries(text, Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "building", Language::default());
+    let expected = "obj=building\nname=Hoge\ncopyright=fuga\ntype=stop\nwaytype=track\nclimates=temperate,tundra\n";
+    assert_eq!(out, expected);
+
+    let text = "obj=vehicle\nname=Loco\ncopyright=fuga\nwaytype=Track\nengine_type=Diesel\n";
+    let parsed = formatter::parse_entries(text, Language::default());
+    let (out, _warnings) =
+        formatter::format_reordered(&parsed.entries, "vehicle", Language::default());
+    let expected = "obj=vehicle\nname=Loco\ncopyright=fuga\nwaytype=track\nengine_type=diesel\n";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn constraint_none_is_lowercased_but_vehicle_name_reference_is_untouched() {
+    // constraint[prev][N]/constraint[next][N]は特殊ケース: makeobjがSTRICMPで
+    // 比較するのは"none"のみ（連結制約なしを表す特別な値）。それ以外の値は
+    // 他のvehicleのname=を指す自由記述の参照であり、大文字小文字を区別するため
+    // 一切変更してはいけない（誤って小文字化すると連結制約の参照が壊れる）。
+    let text = "obj=vehicle\nname=Loco\ncopyright=fuga\nconstraint[prev][0]=NONE\nconstraint[next][0]=SomeMixedCaseVehicleName\n";
+
+    // format_preserve_order経由
+    let parsed = formatter::parse_entries(text, Language::default());
+    let preserved = formatter::format_preserve_order(&parsed.entries);
+    assert!(
+        preserved.contains("constraint[prev][0]=none\n"),
+        "constraint[prev]のNONEはnoneへ正規化されるべき: {preserved:?}"
+    );
+    assert!(
+        preserved.contains("constraint[next][0]=SomeMixedCaseVehicleName\n"),
+        "vehicle名を参照するconstraint[next]は大文字小文字含め一切変更されないべき: {preserved:?}"
+    );
+
+    // format_reordered経由（同じ正規化が--reorder時にも同様に適用される）
+    let parsed = formatter::parse_entries(text, Language::default());
+    let (reordered, _warnings) =
+        formatter::format_reordered(&parsed.entries, "vehicle", Language::default());
+    assert!(
+        reordered.contains("constraint[prev][0]=none\n"),
+        "--reorder経由でもconstraint[prev]のNONEはnoneへ正規化されるべき: {reordered:?}"
+    );
+    assert!(
+        reordered.contains("constraint[next][0]=SomeMixedCaseVehicleName\n"),
+        "--reorder経由でもvehicle名を参照するconstraint[next]は変更されないべき: {reordered:?}"
+    );
+}
+
 #[test]
 fn reorder_misc_matches_expected_output() {
     let parsed = formatter::parse_entries(&read("fmt_misc_example.dat"), Language::default());

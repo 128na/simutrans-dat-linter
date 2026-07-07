@@ -85,8 +85,54 @@ pub fn obj_of(entries: &[Entry]) -> Option<&str> {
     })
 }
 
-/// 既存の行順を保ったまま、Pair行だけ `key=value`（=前後の空白なし、値は前後トリムのみ）
-/// に正規化する。コメント・スキップ行・不正行は原文のまま通す（意味を変えない）。
+/// makeobjが`STRICMP`で全小文字の既知リテラルと比較する（＝大文字小文字を
+/// 区別しない）enum的なフィールドのうち、値全体をそのまま小文字化しても
+/// 安全なもの。根拠（`refs/simutrans/src/simutrans/descriptor/writer/`）:
+/// - `waytype`（`get_waytype.cc`のSTRICMP羅列。crossingの`waytype[0]`/`waytype[1]`も同様）
+/// - `climates`（`get_climate.cc`の`get_climate_bits()`。カンマ/空白区切りの
+///   トークン列だが、この値に現れるトークンは常に気候名のみのため個別に
+///   分割・再結合せず値全体を一括小文字化してよい）
+/// - `type`（building限定。`building_writer.cc`のSTRICMP羅列）
+/// - `engine_type`（vehicle限定。`vehicle_writer.cc`のSTRICMP羅列）
+/// - `placing`（factory限定。`factory_writer.cc`のSTRICMP羅列）
+const ENUM_WHOLESALE_LOWERCASE_KEYS: &[&str] = &[
+    "waytype",
+    "waytype[0]",
+    "waytype[1]",
+    "climates",
+    "type",
+    "engine_type",
+    "placing",
+];
+
+/// `constraint[prev][N]=`/`constraint[next][N]=`（vehicle限定）のキーprefix。
+/// `vehicle_writer.cc`でこの値がSTRICMPで比較されるのは`"none"`（連結制約なし
+/// を表す特別な値）に対してのみで、それ以外の値は他のvehicleの`name=`を指す
+/// 自由記述の参照（大文字小文字を区別する）。そのため、値全体の一括小文字化は
+/// 行わず、`"none"`と大文字小文字を無視して一致した場合にのみ`"none"`へ
+/// 正規化し、それ以外の値は一切変更しない。
+const CONSTRAINT_KEY_PREFIXES: &[&str] = &["constraint[prev][", "constraint[next]["];
+
+/// トリム済みの値を、既知のenum的フィールドについてmakeobjの`STRICMP`比較と
+/// 等価な意味を保ったまま正規化する（`key`は`format_key()`適用済み＝小文字化済み
+/// 前提）。対象外のキーは値をそのまま返す。根拠は[`ENUM_WHOLESALE_LOWERCASE_KEYS`]・
+/// [`CONSTRAINT_KEY_PREFIXES`]のドキュメントコメント参照。
+fn normalize_enum_value<'a>(key: &str, trimmed_value: &'a str) -> std::borrow::Cow<'a, str> {
+    if CONSTRAINT_KEY_PREFIXES.iter().any(|p| key.starts_with(p)) {
+        if trimmed_value.eq_ignore_ascii_case("none") {
+            return std::borrow::Cow::Borrowed("none");
+        }
+        return std::borrow::Cow::Borrowed(trimmed_value);
+    }
+    if ENUM_WHOLESALE_LOWERCASE_KEYS.contains(&key) {
+        return std::borrow::Cow::Owned(trimmed_value.to_ascii_lowercase());
+    }
+    std::borrow::Cow::Borrowed(trimmed_value)
+}
+
+/// 既存の行順を保ったまま、Pair行だけ `key=value`（=前後の空白なし、値は前後トリム＋
+/// 既知のenum的フィールドの大文字小文字統一）に正規化する。コメント・スキップ行・
+/// 不正行は原文のまま通す（意味を変えない）。
 pub fn format_preserve_order(entries: &[Entry]) -> String {
     let mut out = String::new();
     for entry in entries {
@@ -94,7 +140,7 @@ pub fn format_preserve_order(entries: &[Entry]) -> String {
             Entry::Pair { key, value } => {
                 out.push_str(key);
                 out.push('=');
-                out.push_str(value.trim());
+                out.push_str(&normalize_enum_value(key, value.trim()));
                 out.push('\n');
             }
             Entry::Comment(s)
@@ -320,7 +366,7 @@ fn format_reordered_segment(
             }
             out.push_str(pair.key);
             out.push('=');
-            out.push_str(pair.value.trim());
+            out.push_str(&normalize_enum_value(pair.key, pair.value.trim()));
             out.push('\n');
         }
     }
