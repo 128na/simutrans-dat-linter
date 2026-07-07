@@ -149,6 +149,9 @@ pub enum DiagnosticCode {
     ImageOk,
     UnreadableImage,
     DateIndexOverflow,
+    NameForbiddenFilenameCharacter,
+    NarrowIntOverflow,
+    EmbeddedNulInStringField,
     // --- lint: src/rules/crossing.rs ---
     CrossingIdenticalWaytypes,
     CrossingMissingSpeed,
@@ -238,6 +241,9 @@ impl DiagnosticCode {
             DiagnosticCode::ImageOk => "image-ok",
             DiagnosticCode::UnreadableImage => "unreadable-image",
             DiagnosticCode::DateIndexOverflow => "date-index-overflow",
+            DiagnosticCode::NameForbiddenFilenameCharacter => "name-forbidden-filename-character",
+            DiagnosticCode::NarrowIntOverflow => "narrow-int-overflow",
+            DiagnosticCode::EmbeddedNulInStringField => "embedded-nul-in-string-field",
             DiagnosticCode::CrossingIdenticalWaytypes => "crossing-identical-waytypes",
             DiagnosticCode::CrossingMissingSpeed => "crossing-missing-speed",
             DiagnosticCode::CrossingMissingOpenimage => "crossing-missing-openimage",
@@ -751,6 +757,81 @@ impl DiagnosticCode {
                 fix_en: "Check the year/month values and adjust them so that year*12+month-1 falls \
                     within 0..65535 (month is normally 1..12; check for a negative year or an \
                     excessively large year)",
+            },
+            DiagnosticCode::NameForbiddenFilenameCharacter => CodeInfo {
+                code: *self,
+                source: CodeSource::Lint,
+                why_ja: "nameの値に、Windows/Unixのファイル名として使えない文字\
+                    （\\ / : * ? \" < > | や制御文字）・Windows予約デバイス名\
+                    （CON/PRN/AUX/NUL/COM1-9/LPT1-9、拡張子を除いた完全一致）・\
+                    末尾のドットや空白が含まれています。root_writer_t::write()の\
+                    separate出力（root_writer.cc:89、`obj.get(\"obj\")+\".\"+obj.get(\"name\")+\
+                    \".pak\"`を`fopen`）と、root_writer_t::uncopy()（マージ済みpakを\
+                    個別ファイルへ分割する操作、root_writer.cc:467、`writer+\".\"+node_name+\
+                    \".pak\"`を`fopen`）の2箇所が、`name=`の値をサニタイズせず\
+                    そのままファイルパスへ組み込みます。該当文字を含むとこれらの\
+                    `fopen`が失敗し、`write()`側は紛らわしいことに実際に失敗した\
+                    パスではなく元のCLI出力先引数をエラーメッセージに表示するため、\
+                    ビルド/分割の失敗原因が非常に分かりにくくなります",
+                why_en: "The value of name= contains characters not allowed in Windows/Unix \
+                    filenames (\\ / : * ? \" < > | or control characters), a reserved Windows \
+                    device name (CON/PRN/AUX/NUL/COM1-9/LPT1-9, exact match ignoring any \
+                    extension), or a trailing dot/space. Two places in root_writer_t build a \
+                    filesystem path directly from name= without sanitizing it and then fopen() \
+                    it: the separate-file output mode of write() (root_writer.cc:89, \
+                    `obj.get(\"obj\")+\".\"+obj.get(\"name\")+\".pak\"`), and uncopy() (splitting \
+                    a previously-merged pak back into per-object files, root_writer.cc:467, \
+                    `writer+\".\"+node_name+\".pak\"`). When name= contains such a character, \
+                    these fopen() calls fail, and confusingly, write()'s error message reports \
+                    the original CLI output-directory argument rather than the actual failed \
+                    per-object path, making build/split failures very hard to diagnose",
+                fix_ja: "name=の値から該当文字・予約デバイス名・末尾のドット/空白を\
+                    取り除いてください",
+                fix_en: "Remove the offending character, reserved device name, or trailing \
+                    dot/space from the value of name=",
+            },
+            DiagnosticCode::NarrowIntOverflow => CodeInfo {
+                code: *self,
+                source: CodeSource::Lint,
+                why_ja: "静的解析ルール（makeobjの`dbg->fatal`/`dbg->warning`を直接ミラーする\
+                    ものではない。DateIndexOverflow/PowerGearMismatchと同種）。この数値\
+                    フィールドは`tabfileobj_t::get_int()`/`get_int64()`（範囲チェック無しの\
+                    無条件フォールバック）で読まれた後、その値より狭いC++整数型\
+                    （`node.write_uint8`/`write_uint16`等）へ無条件に代入されて書き込まれます。\
+                    範囲外の値を指定すると、C++の暗黙変換（2の補数での切り詰め）によって\
+                    指定した値と全く異なる値が静かにpakへ書き込まれます。makeobj自体はこれを\
+                    検証しません",
+                why_en: "A static-analysis rule (not a direct mirror of makeobj's dbg->fatal/\
+                    dbg->warning; same category as DateIndexOverflow/PowerGearMismatch). This \
+                    numeric field is read via tabfileobj_t::get_int()/get_int64() (an \
+                    unconditional fallback with no range check), then unconditionally assigned \
+                    to a narrower C++ integer type (node.write_uint8/write_uint16/etc.) at the \
+                    point it is written. An out-of-range value is silently truncated by C++'s \
+                    implicit conversion (two's-complement narrowing), so a value completely \
+                    different from what was specified is written to the pak with no warning. \
+                    makeobj itself does not validate this",
+                fix_ja: "指摘された値の範囲を確認し、格納先の整数型が表現できる範囲内\
+                    （警告文中のbit幅・符号から算出される範囲）に収まるよう値を修正してください",
+                fix_en: "Check the reported value range and adjust it to fit within what the \
+                    storage integer type can represent (the range implied by the bit width and \
+                    signedness shown in the warning)",
+            },
+            DiagnosticCode::EmbeddedNulInStringField => CodeInfo {
+                code: *self,
+                source: CodeSource::Lint,
+                why_ja: "name/copyrightフィールドの値にNULバイト(\\0)が含まれています。\
+                    obj_writer_t::write_name_and_copyright経由で呼ばれるtext_writer_t::write_obj\
+                    （text_writer.cc:18、`strlen(text)`）は文字列長をNULバイトで判定するC文字列\
+                    処理のため、NULバイトより後ろの内容が警告無く静かに切り捨てられます",
+                why_en: "The value of the name/copyright field contains an embedded NUL byte (\\0). \
+                    text_writer_t::write_obj (text_writer.cc:18, `strlen(text)`), called via \
+                    obj_writer_t::write_name_and_copyright, determines the string length using C \
+                    string semantics based on the NUL byte, so any content after the NUL byte is \
+                    silently truncated with no warning",
+                fix_ja: "name/copyrightの値からNULバイトを取り除いてください（テキストエディタで\
+                    意図せず紛れ込んだ制御文字である可能性が高いです）",
+                fix_en: "Remove the NUL byte from the name/copyright value (it is likely an \
+                    accidentally embedded control character from a text editor)",
             },
             DiagnosticCode::CrossingIdenticalWaytypes => CodeInfo {
                 code: *self,
@@ -1300,6 +1381,9 @@ pub const ALL: &[DiagnosticCode] = &[
     DiagnosticCode::ImageOk,
     DiagnosticCode::UnreadableImage,
     DiagnosticCode::DateIndexOverflow,
+    DiagnosticCode::NameForbiddenFilenameCharacter,
+    DiagnosticCode::NarrowIntOverflow,
+    DiagnosticCode::EmbeddedNulInStringField,
     DiagnosticCode::CrossingIdenticalWaytypes,
     DiagnosticCode::CrossingMissingSpeed,
     DiagnosticCode::CrossingMissingOpenimage,

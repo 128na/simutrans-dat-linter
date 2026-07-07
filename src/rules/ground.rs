@@ -117,7 +117,7 @@
 //!   これを「間違い」として検出するとむしろ正しい記述を誤検知することになる
 //!   ため見送った。
 
-use super::common::check_image_ref;
+use super::common::{NameAndCopyrightStringFieldRule, check_image_ref};
 use crate::diagnostics::Diagnostic;
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
@@ -127,7 +127,10 @@ use std::path::Path;
 const MAX_SLOPES: u32 = 128;
 
 pub fn all() -> Vec<Box<dyn Rule>> {
-    vec![Box::new(SlopeImageRefRule)]
+    vec![
+        Box::new(SlopeImageRefRule),
+        Box::new(NameAndCopyrightStringFieldRule),
+    ]
 }
 
 /// `tests/ground_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で

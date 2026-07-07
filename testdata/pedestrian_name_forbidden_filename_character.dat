@@ -1,0 +1,15 @@
+obj=pedestrian
+name=CON
+copyright=fuga
+distributionweight=8
+intro_year=1
+retire_year=2990
+
+image[s]=station_cube.png.0.0
+image[w]=station_cube.png.0.0
+image[sw]=station_cube.png.0.0
+image[se]=station_cube.png.0.0
+image[n]=station_cube.png.0.0
+image[e]=station_cube.png.0.0
+image[ne]=station_cube.png.0.0
+image[nw]=station_cube.png.0.0

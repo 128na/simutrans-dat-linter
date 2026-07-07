@@ -86,3 +86,38 @@ fn missing_image_file_is_detected() {
         "missing-image-file"
     ));
 }
+
+#[test]
+fn name_forbidden_filename_character_is_detected() {
+    // name=CON はWindowsの予約デバイス名と完全一致する。root_writer_t::write()の
+    // separate出力・uncopy()がこの値をそのままfopen()するため、ビルド/分割が
+    // 失敗する（src/rules/common.rsのforbidden_filename_reason参照）。
+    assert!(has_error(
+        &check("bridge_name_forbidden_filename_character.dat"),
+        "name-forbidden-filename-character"
+    ));
+}
+
+#[test]
+fn embedded_nul_in_name_is_detected() {
+    // name="ValidBridge\0Extra" は埋め込みNULバイトを含む。text_writer_t::write_obj
+    // （text_writer.cc:18）はstrlen()で長さを計算するため、\0以降の"Extra"が
+    // 警告無く切り詰められる。
+    assert!(has(
+        &check("bridge_embedded_nul_name.dat"),
+        Severity::Warning,
+        "embedded-nul-in-string-field"
+    ));
+}
+
+#[test]
+fn narrow_int_overflow_is_detected() {
+    // topspeed=100000はuint16の範囲(0..65535)外。bridge_writer.cc:102,120の
+    // write_uint16へ静かに切り詰められる（get_intの無条件フォールバックで
+    // get_int_clampedではないため、ClampedRangeRuleではなくこちらの対象）。
+    assert!(has(
+        &check("bridge_narrow_int_overflow.dat"),
+        Severity::Warning,
+        "narrow-int-overflow"
+    ));
+}

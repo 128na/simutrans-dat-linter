@@ -2,10 +2,11 @@
 //! 期待する診断が出ない（＝空のRuleセット）ことを確認する。
 //! `tests/way_lint.rs`と同じ形式に揃えている。
 //!
-//! `good_writer.cc`にはmakeobj時点でfatal/warningになる分岐が一つも無いため
-//! （`src/rules/good.rs`冒頭のREJECTEDコメント参照）、異常系テストは無い。
-//! `check_good`自体は`all()`が空のRuleSetを返すラッパーであることの確認と、
-//! 将来ルールが追加された際にこのファイル構成をそのまま再利用できることが目的。
+//! `good_writer.cc`自体にmakeobj時点でfatal/warningになる分岐は無いが
+//! （`src/rules/good.rs`冒頭のREJECTEDコメント参照）、全obj種別共通の
+//! `name-forbidden-filename-character`/`embedded-nul-in-string-field`
+//! （`NameAndCopyrightStringFieldRule`）と、`catg`/`speed_bonus`/`mapcolor`の
+//! `narrow-int-overflow`は本ファイルでテストする。
 
 use dat_linter::diagnostics::Severity;
 use dat_linter::parser::DatFile;
@@ -27,8 +28,47 @@ fn check(file: &str) -> Vec<(Severity, &'static str)> {
         .collect()
 }
 
+fn has(diags: &[(Severity, &str)], severity: Severity, code: &str) -> bool {
+    diags.iter().any(|(s, c)| *s == severity && *c == code)
+}
+
 #[test]
 fn valid_good_has_no_errors_or_warnings() {
     let diags = check("good_valid.dat");
     assert!(diags.is_empty(), "予期しない診断: {diags:?}");
+}
+
+#[test]
+fn name_forbidden_filename_character_is_detected() {
+    // name=Passagiere. （末尾ドット）は、Windowsのファイル名として保存できない
+    // ため、root_writer_t::write()のseparate出力やuncopy()でfopen()が失敗する
+    // （src/rules/common.rsのforbidden_filename_reason参照）。
+    assert!(has(
+        &check("good_name_forbidden_filename_character.dat"),
+        Severity::Error,
+        "name-forbidden-filename-character"
+    ));
+}
+
+#[test]
+fn embedded_nul_in_name_is_detected() {
+    // name=\"Passagiere\0Extra\" は埋め込みNULバイトを含む。
+    // text_writer_t::write_obj（text_writer.cc:18）はstrlen()で長さを計算するため、
+    // \0以降の"Extra"が警告無く切り詰められる。
+    assert!(has(
+        &check("good_embedded_nul_name.dat"),
+        Severity::Warning,
+        "embedded-nul-in-string-field"
+    ));
+}
+
+#[test]
+fn narrow_int_overflow_is_detected() {
+    // catg=300はuint8の範囲(0..255)外。good_writer.cc:25の
+    // node.write_uint8(fp, obj.get_int("catg", 0))へ静かに切り詰められる。
+    assert!(has(
+        &check("good_narrow_int_overflow.dat"),
+        Severity::Warning,
+        "narrow-int-overflow"
+    ));
 }

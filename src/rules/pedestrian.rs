@@ -147,7 +147,10 @@
 //!   `cursorskin_writer_t`も呼ばれない。他obj種別と異なり、そもそも
 //!   対象フィールドが存在しない）。
 
-use super::common::{DIR_CODES, check_date_index_overflow_field, check_image_ref};
+use super::common::{
+    DIR_CODES, NameAndCopyrightStringFieldRule, check_date_index_overflow_field, check_image_ref,
+    check_narrow_int_overflow_field,
+};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::{Language, t};
@@ -163,6 +166,8 @@ pub fn all() -> Vec<Box<dyn Rule>> {
     vec![
         Box::new(DirectionImageRefRule),
         Box::new(DateIndexOverflowRule),
+        Box::new(NameAndCopyrightStringFieldRule),
+        Box::new(NarrowIntFieldsRule),
     ]
 }
 
@@ -293,6 +298,36 @@ impl Rule for DateIndexOverflowRule {
             "retire_year",
             2999,
             Some("retire_month"),
+            ctx.language,
+        ));
+        diags
+    }
+}
+
+/// `pedestrian_writer.cc:23,71`: `distributionweight`（`uint16`）・`offset`
+/// （`uint16`）はいずれも`obj.get_int(key, def)`（範囲チェック無しの無条件
+/// フォールバック）で読まれた後、`node.write_uint16`へ無条件に代入される。
+/// 根拠・設計は`common::check_narrow_int_overflow_field`のdocコメント参照
+/// （`DateIndexOverflowRule`と同種の静的解析ルール）。
+struct NarrowIntFieldsRule;
+impl Rule for NarrowIntFieldsRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let mut diags = Vec::new();
+        diags.extend(check_narrow_int_overflow_field(
+            dat,
+            "distributionweight",
+            1,
+            16,
+            false,
+            ctx.language,
+        ));
+        diags.extend(check_narrow_int_overflow_field(
+            dat,
+            "offset",
+            20,
+            16,
+            false,
             ctx.language,
         ));
         diags

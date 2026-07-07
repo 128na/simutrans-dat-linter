@@ -54,9 +54,13 @@
 //!   fatal/warning無しで無名（0バイト文字列）のsound_nameが書き込まれるだけ
 //!   （sound_writer.cc:16-17,30）。goodの`name`未指定見送りと同じ理由で、
 //!   makeobj時点でのfatal/warning根拠が無いため見送り。
-//! - `sound_nr` の妥当性検証（`NO_SOUND`=0xFFFF以外の値の意味論チェック等）:
-//!   `get_int`で無条件に読み、欠落時は`NO_SOUND`へのサイレントフォールバックのみ
-//!   （`get_int_clamped`ではない）。goodのvalue/catg等と同じ理由で見送り。
+//! - `sound_nr` の「欠落・意味論的な妥当性」検証（`NO_SOUND`=0xFFFF以外の値の
+//!   意味論チェック等）: `get_int`で無条件に読み、欠落時は`NO_SOUND`への
+//!   サイレントフォールバックのみ（`get_int_clamped`ではない）。goodのvalue/catg等と
+//!   同じ理由で見送り。ただし`(uint16)`への明示キャスト（sound_writer.cc:29）が
+//!   静かな切り詰めを起こす別の懸念は`SoundNrNarrowIntRule`（下記）で検出する
+//!   （「欠落・意味論」の話とは別に、「狭い型への静かなオーバーフロー」という
+//!   date-index-overflowと同種の静的解析懸念）。
 //! - `sound_name`が実在する音声ファイル（`sound/`ディレクトリ内の`.wav`）を
 //!   指しているかの実在性検証: 対応する分岐（`get_sound_id`の`Sound "%s" not
 //!   found`警告）はゲーム読み込み時（simutrans本体、`sound_desc_t::init`/
@@ -67,17 +71,35 @@
 //!   （`text_writer_t::write_obj`が空文字列を無条件許容）で見送り。
 //! - `copyright` 未指定チェック: goodと同じ理由で見送り。
 
+use super::common::{NameAndCopyrightStringFieldRule, check_narrow_int_overflow_field};
 use crate::diagnostics::Diagnostic;
 use crate::parser::DatFile;
-use crate::registry::Rule;
+use crate::registry::{Rule, RuleContext};
 use std::path::Path;
 
-/// `sound_writer.cc`にはmakeobj時点でfatal/warningになる分岐が一つも無いため、
-/// 現時点でこのVecは空。obj=soundを登録すること自体の価値は、obj種別を問わず
-/// 動作する`check_duplicate_keys`（`rules/mod.rs`経由でmain.rsから常時実行）を
-/// sound datにも適用できるようにする点にある（goodと同じ理由）。
+/// `sound_writer.cc`自体にmakeobj時点でfatal/warningになる分岐は一つも無いが、
+/// name/copyright（`NameAndCopyrightStringFieldRule`、全obj種別共通）と、
+/// `sound_nr`（`SoundNrNarrowIntRule`、下記docコメント参照）はこのobj種別にも
+/// 適用できる。
 pub fn all() -> Vec<Box<dyn Rule>> {
-    vec![]
+    vec![
+        Box::new(NameAndCopyrightStringFieldRule),
+        Box::new(SoundNrNarrowIntRule),
+    ]
+}
+
+/// `sound_writer.cc:29`: `(uint16)obj.get_int("sound_nr", NO_SOUND)`は
+/// `obj.get_int(...)`（範囲チェック無しの無条件フォールバック、デフォルト値
+/// `NO_SOUND`=0xFFFF=65535）を明示的に`uint16`へキャストする。`get_int`の戻り値は
+/// Cの`int`（実質32bit符号あり）であるため、65536以上や負の値を指定すると
+/// キャストで静かに切り詰められる。根拠・設計は
+/// `common::check_narrow_int_overflow_field`のdocコメント参照
+/// （`date-index-overflow`と同種の静的解析ルール）。
+struct SoundNrNarrowIntRule;
+impl Rule for SoundNrNarrowIntRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        check_narrow_int_overflow_field(ctx.dat, "sound_nr", 0xFFFF, 16, false, ctx.language)
+    }
 }
 
 /// `tests/sound_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で

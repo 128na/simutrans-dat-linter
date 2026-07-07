@@ -60,13 +60,18 @@
 //! REJECTED（候補として検討したが根拠不十分、またはmakeobj側にfatal/warning分岐が
 //! 無いため実装しなかった）:
 //! - `topspeed`（`get_int("topspeed", 999)`）・`cost`/`maintenance`
-//!   （`get_int64`）・`axle_load`（`get_int("axle_load", 9999)`）・
-//!   `intro_year`/`intro_month`/`retire_year`/`retire_month`（いずれも`get_int`）の
-//!   妥当性検証: tunnel_writer.cc全文を精読したが、これら7つの数値フィールドは
-//!   全て無条件フォールバックのみで読まれており`get_int_clamped`は一度も
-//!   呼ばれていない（tunnel_writer.cc:22-33）。bridgeの`ClampedRangeRule`に
+//!   （`get_int64`）・`intro_year`/`intro_month`/`retire_year`/`retire_month`
+//!   （いずれも`get_int`）の妥当性検証: tunnel_writer.cc全文を精読したが、これらの
+//!   数値フィールドは全て無条件フォールバックのみで読まれており`get_int_clamped`は
+//!   一度も呼ばれていない（tunnel_writer.cc:22-33）。bridgeの`ClampedRangeRule`に
 //!   相当する根拠がtunnelには無いため見送り（wayのtopspeed等・goodのvalue等が
-//!   見送られたのと同じ理由）。
+//!   見送られたのと同じ理由）。`topspeed`自体はローカル変数が`sint32`で書き込みも
+//!   `write_sint32`（narrowing自体が発生しない）ため、`narrow-int-overflow`の
+//!   対象にもならない。一方`axle_load`（`const uint16 axle_load =
+//!   obj.get_int("axle_load", 9999)`）は`obj.get_int()`の戻り値
+//!   （実質32bitの`int`）をC++の代入時点で`uint16`へ狭めているため、
+//!   `AxleLoadNarrowIntRule`（静的解析層、`date-index-overflow`と同種）の
+//!   対象にした。
 //! - 画像未指定（空文字列/"-"）の警告: bridgeの`FrontImageWarningRule`が依拠する
 //!   `dbg->warning(..., "No %s specified (might still work)", ...)`という
 //!   分岐は`bridge_writer.cc`固有のコードであり、`tunnel_writer.cc`には
@@ -92,7 +97,10 @@
 //!   遅延する。goodのfreight参照・vehicleのconstraint参照が見送られたのと同じ
 //!   理由（ディレクトリ横断のレジストリが無い現状のスコープ外）。
 
-use super::common::{check_date_index_overflow_field, check_image_ref};
+use super::common::{
+    NameAndCopyrightStringFieldRule, check_date_index_overflow_field, check_image_ref,
+    check_narrow_int_overflow_field,
+};
 use crate::diagnostics::Diagnostic;
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
@@ -107,6 +115,8 @@ pub fn all() -> Vec<Box<dyn Rule>> {
         Box::new(WaytypeRequiredRule),
         Box::new(ImageRefRule),
         Box::new(DateIndexOverflowRule),
+        Box::new(NameAndCopyrightStringFieldRule),
+        Box::new(AxleLoadNarrowIntRule),
     ]
 }
 
@@ -219,5 +229,16 @@ impl Rule for DateIndexOverflowRule {
             ctx.language,
         ));
         diags
+    }
+}
+
+/// `tunnel_writer.cc:26`: `axle_load`（`uint16`）は`obj.get_int("axle_load", 9999)`
+/// （範囲チェック無しの無条件フォールバック）で読まれた後、`node.write_uint16`へ
+/// 無条件に代入される。根拠・設計は`common::check_narrow_int_overflow_field`の
+/// docコメント参照（`DateIndexOverflowRule`と同種の静的解析ルール）。
+struct AxleLoadNarrowIntRule;
+impl Rule for AxleLoadNarrowIntRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        check_narrow_int_overflow_field(ctx.dat, "axle_load", 9999, 16, false, ctx.language)
     }
 }

@@ -210,7 +210,10 @@
 //!   （`get_color`のデフォルト値とFATAL判定がどちらも255のため）。本ツールも
 //!   同じ曖昧さを引き継ぐ（区別する根拠が無い）。
 
-use super::common::{CursorIconPolicy, CursorIconRule, DimsRule, TileImageRule, resolve_dims};
+use super::common::{
+    CursorIconPolicy, CursorIconRule, DimsRule, NameAndCopyrightStringFieldRule, TileImageRule,
+    resolve_dims,
+};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::{Language, t};
@@ -244,6 +247,7 @@ pub fn all(dat: &DatFile) -> Vec<Box<dyn Rule>> {
         Box::new(SmokeOffsetRule),
         Box::new(ProbabilityClampRule),
         Box::new(ProductivityZeroRule),
+        Box::new(NameAndCopyrightStringFieldRule),
     ]
 }
 

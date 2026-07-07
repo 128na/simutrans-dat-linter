@@ -320,6 +320,237 @@ fn strip_zoomable_prefix_and_trim(value: &str) -> &str {
     value.strip_prefix('>').unwrap_or(value).trim()
 }
 
+/// `root_writer_t::write()`（separateモード、root_writer.cc:85-93）と
+/// `root_writer_t::uncopy()`（マージ済みpakを個別ファイルへ分割する操作、
+/// root_writer.cc:420-473）の2箇所が、`.dat`の`name=`フィールド値を一切
+/// サニタイズせずファイルパスへ組み込み、`fopen()`する（それぞれ
+/// `obj.get("obj")+"."+obj.get("name")+".pak"`、
+/// `writer+"."+node_name+".pak"`）。`name=`に以下のいずれかが含まれると
+/// この`fopen()`が失敗し、しかも`write()`側のエラーメッセージは紛らわしいことに
+/// 実際に失敗したパスではなく元のCLI出力先引数を表示するため、
+/// ビルド/分割の失敗原因が非常に分かりにくくなる（真のディレクトリ
+/// トラバーサル脱出が確実に可能というわけではないため、セキュリティ上の
+/// 脆弱性としてではなく「分かりにくいビルド/分割の失敗」として扱う）:
+///
+/// - Windowsファイル名で禁止された文字: `\ / : * ? " < > |`
+/// - 制御文字（0x20未満、および DEL 0x7F）
+/// - Windows予約デバイス名（大文字小文字を無視、拡張子を除いた完全一致）:
+///   CON/PRN/AUX/NUL/COM1-9/LPT1-9
+/// - 末尾のドットまたは空白
+///
+/// obj種別を問わず`name=`を持つ全obj種別（`obj_writer_t::write_name_and_copyright`が
+/// factory以外の21種で直接呼ばれ、factoryはbuilding_writer_t::write_objへ委譲する
+/// ため間接的に対象になる。実質22種全て）から共有する。
+const FORBIDDEN_FILENAME_CHARS: &[char] = &['\\', '/', ':', '*', '?', '"', '<', '>', '|'];
+
+const RESERVED_DEVICE_NAMES: &[&str] = &[
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
+/// `name=`の値が上記の禁止パターンに該当するかどうかの理由（診断メッセージに
+/// そのまま埋め込む）。`None`は問題なし。
+fn forbidden_filename_reason(name: &str, lang: Language) -> Option<String> {
+    if let Some(c) = name.chars().find(|c| FORBIDDEN_FILENAME_CHARS.contains(c)) {
+        return Some(t!(lang,
+            ja: "Windowsのファイル名で使用できない文字 '{c}' を含んでいます",
+            en: "contains the character '{c}', which is not allowed in Windows filenames",
+            c = c,
+        ));
+    }
+    if let Some(c) = name
+        .chars()
+        .find(|c| (*c as u32) < 0x20 || (*c as u32) == 0x7F)
+    {
+        return Some(t!(lang,
+            ja: "制御文字（0x{code:02X}）を含んでいます",
+            en: "contains a control character (0x{code:02X})",
+            code = c as u32,
+        ));
+    }
+    // 拡張子を除いた完全一致（Windowsの予約デバイス名判定と同じ規則）。
+    let stem = name.split('.').next().unwrap_or(name);
+    if RESERVED_DEVICE_NAMES
+        .iter()
+        .any(|d| d.eq_ignore_ascii_case(stem))
+    {
+        return Some(t!(lang,
+            ja: "Windowsの予約デバイス名 \"{stem}\" と一致します",
+            en: "matches the reserved Windows device name \"{stem}\"",
+            stem = stem,
+        ));
+    }
+    if name.ends_with('.') || name.ends_with(' ') {
+        return Some(t!(lang,
+            ja: "末尾がドットまたは空白です",
+            en: "ends with a dot or space",
+        ));
+    }
+    None
+}
+
+/// `obj_writer_t::write_name_and_copyright`（obj_writer.cc:62-70）は`name=`/
+/// `copyright=`の値を`text_writer_t::instance()->write_obj`（text_writer.cc:12-23）へ
+/// そのまま渡す。`text_writer_t::write_obj`は`strlen(text)`で長さを計算してから
+/// その長さ分だけ書き込むため、値の途中に埋め込みNULバイトがあると`strlen`が
+/// そこで止まり、以降の文字が黙って切り詰められる（エラーも警告も無い）。
+///
+/// `dat_linter`自身のパーサ（`parser.rs`）はファイルを`String::from_utf8`
+/// （失敗時はShift-JISへフォールバック）で読み、行分割は`str::lines()`
+/// （`\n`/`\r\n`のみを区切りとする）で行う。埋め込みNULバイト（0x00）はUTF-8として
+/// 妥当な1バイトであり、`lines()`はNULを区切りとして扱わないため、`key=value`の
+/// `value`部分に埋め込みNULがそのまま残った`String`が`DatFile::get()`から
+/// 返る（`str::split_once('=')`もNULで区切ったりしない）。つまりこのチェックは
+/// dat_linterの読み込みモデル上でも実際に到達可能である。
+///
+/// obj種別を問わず`name`/`copyright`を持つ全obj種別で共有する
+/// （`NameAndCopyrightStringFieldRule`と同じ理由でfactory含む22種全てが対象）。
+pub fn check_embedded_nul_field(dat: &DatFile, key: &str, lang: Language) -> Vec<Diagnostic> {
+    let Some(value) = dat.get(key) else {
+        return Vec::new();
+    };
+    let Some(nul_pos) = value.find('\0') else {
+        return Vec::new();
+    };
+    let truncated = &value[..nul_pos];
+    vec![Diagnostic::warning(
+        DiagnosticCode::EmbeddedNulInStringField,
+        t!(lang,
+            ja: "{key} の値に埋め込みNULバイトが含まれています。\
+                 text_writer_t::write_obj（text_writer.cc:12-23）は`strlen()`で長さを\
+                 計算するため、NUL以降の文字列（\"{rest}\"）が警告無しに切り詰められ、\
+                 pakには\"{truncated}\"のみが書き込まれます",
+            en: "The value of {key} contains an embedded NUL byte. text_writer_t::write_obj \
+                 (text_writer.cc:12-23) computes the length via strlen(), so everything after \
+                 the NUL (\"{rest}\") is silently truncated with no warning, and only \
+                 \"{truncated}\" is written to the pak",
+            key = key,
+            rest = &value[nul_pos + 1..],
+            truncated = truncated,
+        ),
+    )]
+}
+
+/// `name`/`copyright`という2つの文字列フィールドに対する共有ルール。
+/// `forbidden_filename_reason`（`name`のみ対象、ファイル名として危険な文字）と
+/// `check_embedded_nul_field`（`name`/`copyright`両方対象、埋め込みNULによる
+/// `strlen`切り詰め）を1つの`Rule`にまとめ、各obj種別の`all()`から1回
+/// `Box::new`するだけで両方のチェックが有効になるようにする（22のobj種別
+/// モジュール全てに複数の個別`Box::new`を書かせるより、「name/copyright
+/// 文字列フィールドの検証」という1つの関心事としてまとめた方が呼び出し側の
+/// 重複が少ない）。
+pub struct NameAndCopyrightStringFieldRule;
+impl Rule for NameAndCopyrightStringFieldRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let lang = ctx.language;
+        let mut diags = Vec::new();
+
+        if let Some(name) = dat.get("name")
+            && let Some(reason) = forbidden_filename_reason(name, lang)
+        {
+            diags.push(Diagnostic::error(
+                DiagnosticCode::NameForbiddenFilenameCharacter,
+                t!(lang,
+                    ja: "name={name} はファイル名として使うと問題があります: {reason}。\
+                         root_writer_t::write()（separate出力）・root_writer_t::uncopy()\
+                         （マージ済みpakの分割）はこの値をサニタイズせずファイルパスへ\
+                         組み込んでfopen()するため、ビルド/分割が失敗し、しかも\
+                         エラーメッセージが実際に失敗したパスを示さないため原因が\
+                         分かりにくくなります",
+                    en: "name={name} is problematic when used as a filename: {reason}. \
+                         root_writer_t::write() (separate output mode) and root_writer_t::uncopy() \
+                         (splitting a merged pak) embed this value into a filesystem path without \
+                         sanitizing it and then fopen() it, so the build/split fails, and \
+                         confusingly the error message does not point at the actual failed path, \
+                         making the cause hard to diagnose",
+                    name = name,
+                    reason = reason,
+                ),
+            ));
+        }
+
+        diags.extend(check_embedded_nul_field(dat, "name", lang));
+        diags.extend(check_embedded_nul_field(dat, "copyright", lang));
+
+        diags
+    }
+}
+
+/// `date-index-overflow`と同種の静的解析ルールを一般化した、単一の数値フィールド用の
+/// 「狭いC++整数型への無条件代入によるオーバーフロー」チェック。
+///
+/// 対象は`tabfileobj_t::get_int()`/`get_int64()`（範囲チェック無しの無条件
+/// フォールバック、`get_int_clamped`ではない）で読まれた後、その値より狭い
+/// C++整数型（`node.write_uint8`/`write_uint16`等）へ**無条件に**代入・書き込み
+/// される数値フィールドである。値がその型の表現範囲外だと、C++の暗黙変換
+/// （2の補数での切り詰め）によって指定した値と全く無関係な値が静かにpakへ
+/// 書き込まれる。makeobj自体はこれを検証しない（`dbg->fatal`/`dbg->warning`なし）。
+///
+/// `date-index-overflow`（`check_date_index_overflow_field`）が
+/// `year*12+month-1`という合成式1つに特化しているのに対し、こちらは単一の
+/// フィールド値をそのまま対象の型範囲と比較する、より汎用的な版である。
+/// 両者は同じ「静的解析」層（`PowerGearMismatchRule`と同種）に属するが、
+/// 診断codeは`DiagnosticCode::NarrowIntOverflow`という共通の1つを全呼び出し元で
+/// 共有する（`date-index-overflow`・`image-coordinate-out-of-bounds`が
+/// フィールドをまたいで単一codeを共有する既存の設計に倣う）。
+///
+/// `bit_width`は格納先のC++整数型のビット幅（8/16/32/64）、`signed`は
+/// 符号ありかどうか。符号ありなら`-(2^(bit_width-1))..2^(bit_width-1)-1`、
+/// 符号なしなら`0..2^bit_width-1`が有効範囲になる。
+pub fn check_narrow_int_overflow_field(
+    dat: &DatFile,
+    key: &str,
+    default: i64,
+    bit_width: u32,
+    signed: bool,
+    lang: Language,
+) -> Vec<Diagnostic> {
+    let Some(value) = dat
+        .get(key)
+        .and_then(|v| v.trim().parse::<i64>().ok())
+        .or(Some(default))
+    else {
+        return Vec::new();
+    };
+    // キー自体が無い場合はdefaultが使われる（呼び出し元がmakeobjのデフォルト値を
+    // 渡す前提。defaultは常に範囲内であるはずなので、この関数はdefault自体の
+    // 妥当性を検証しない）。パース不能な値は`strtol`同様0扱いになる
+    // （`check_clamped_int_field`と同じ近似方針、tabfile.cc:183-198参照）。
+    let (min, max) = if signed {
+        let max = (1i64 << (bit_width - 1)) - 1;
+        let min = -(1i64 << (bit_width - 1));
+        (min, max)
+    } else {
+        (0i64, (1i64 << bit_width) - 1)
+    };
+
+    if value < min || value > max {
+        vec![Diagnostic::warning(
+            DiagnosticCode::NarrowIntOverflow,
+            t!(lang,
+                ja: "{key}={value} は格納先の{sign}{bit_width}bit整数の範囲({min}..{max})外です。\
+                     makeobjはget_int()/get_int64()で読んだ値を範囲チェック無しにこの型へ\
+                     無条件代入するため、範囲外の値は2の補数による切り詰めで\
+                     全く無関係な値へ静かに変わります（makeobj自体はこれを検証しません）",
+                en: "{key}={value} is outside the range ({min}..{max}) of the {sign}{bit_width}-bit \
+                     integer it is stored in. makeobj unconditionally assigns the value read via \
+                     get_int()/get_int64() into this type with no range check, so an out-of-range \
+                     value silently changes into an unrelated value via two's-complement \
+                     truncation (makeobj itself does not validate this)",
+                key = key,
+                value = value,
+                min = min,
+                max = max,
+                sign = if signed { "signed " } else { "unsigned " },
+                bit_width = bit_width,
+            ),
+        )]
+    } else {
+        Vec::new()
+    }
+}
+
 /// 画像参照からファイル名を取り出す。`image_writer_t::write_obj`
 /// （image_writer.cc:372-388）は次の2段階でファイル名の幹を取り出し、
 /// 無条件で`".png"`を付与する:

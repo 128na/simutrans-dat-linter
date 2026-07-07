@@ -63,7 +63,10 @@ use std::path::Path;
 /// 共有される`common::AllImagesRule`（skin_writer_t::write_objそのもの、根拠は
 /// 上記コメント参照）。
 pub fn all() -> Vec<Box<dyn Rule>> {
-    vec![Box::new(common::AllImagesRule)]
+    vec![
+        Box::new(common::AllImagesRule),
+        Box::new(common::NameAndCopyrightStringFieldRule),
+    ]
 }
 
 /// `tests/cursor_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で

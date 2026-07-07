@@ -94,7 +94,7 @@
 //!   `.dat`側にage数を指定するキーは存在しない。従って「age数が不正」という
 //!   ルールは成立しない（そもそも検証対象のキーが無い）。
 
-use super::common::check_image_ref;
+use super::common::{NameAndCopyrightStringFieldRule, check_image_ref};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
@@ -106,7 +106,10 @@ use std::path::Path;
 const AGE_COUNT: u32 = 5;
 
 pub fn all() -> Vec<Box<dyn Rule>> {
-    vec![Box::new(AgeSeasonImageRule)]
+    vec![
+        Box::new(AgeSeasonImageRule),
+        Box::new(NameAndCopyrightStringFieldRule),
+    ]
 }
 
 /// `tests/tree_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で

@@ -115,6 +115,41 @@ fn date_index_overflow_is_detected() {
     ));
 }
 
+#[test]
+fn name_forbidden_filename_character_is_detected() {
+    // name=CON はWindowsの予約デバイス名と完全一致する。root_writer_t::write()の
+    // separate出力・uncopy()がこの値をそのままfopen()するため、ビルド/分割が
+    // 失敗する（src/rules/common.rsのforbidden_filename_reason参照）。
+    assert!(has_error(
+        &check("crossing_name_forbidden_filename_character.dat"),
+        "name-forbidden-filename-character"
+    ));
+}
+
+#[test]
+fn embedded_nul_in_name_is_detected() {
+    // name="ValidCrossing\0Extra" は埋め込みNULバイトを含む。
+    // text_writer_t::write_obj（text_writer.cc:18）はstrlen()で長さを計算するため、
+    // \0以降の"Extra"が警告無く切り詰められる。
+    assert!(has(
+        &check("crossing_embedded_nul_name.dat"),
+        Severity::Warning,
+        "embedded-nul-in-string-field"
+    ));
+}
+
+#[test]
+fn narrow_int_overflow_is_detected() {
+    // speed[0]=100000はuint16の範囲(0..65535)外。crossing_writer.cc:87,93の
+    // write_uint16へ静かに切り詰められる（SpeedRequiredRuleは0判定のみで
+    // 非ゼロの範囲外は別途このルールで検出する）。
+    assert!(has(
+        &check("crossing_narrow_int_overflow.dat"),
+        Severity::Warning,
+        "narrow-int-overflow"
+    ));
+}
+
 /// 第6弾: pak128実データ
 /// （`infrastructure/road_rail_crossings/p128_crossing_road040_rail080.dat`の
 /// `OpenImage[NS,EW][0-1]=...<0+$1>.<2*$0+1>`）で確認された、方向名（ribi）

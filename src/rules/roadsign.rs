@@ -109,7 +109,10 @@
 //!   skin_writer.cc:40-51）。way/bridge/tunnelのcursor/icon省略が見送られたのと
 //!   同じ理由。
 
-use super::common::{check_date_index_overflow_field, check_image_ref};
+use super::common::{
+    NameAndCopyrightStringFieldRule, check_date_index_overflow_field, check_image_ref,
+    check_narrow_int_overflow_field,
+};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
@@ -129,6 +132,8 @@ pub fn all() -> Vec<Box<dyn Rule>> {
         Box::new(WaytypeRequiredRule),
         Box::new(ImageRule),
         Box::new(DateIndexOverflowRule),
+        Box::new(NameAndCopyrightStringFieldRule),
+        Box::new(NarrowIntFieldsRule),
     ]
 }
 
@@ -292,6 +297,37 @@ impl Rule for DateIndexOverflowRule {
             "retire_year",
             2999,
             Some("retire_month"),
+            ctx.language,
+        ));
+        diags
+    }
+}
+
+/// `roadsign_writer.cc:85-86`: `min_speed`（`uint16`）・`offset_left`（`sint8`）は
+/// いずれも`obj.get_int(key, def)`（範囲チェック無しの無条件フォールバック）で
+/// 読まれた後、対応する`node.write_uint16`/`write_uint8`（`write_sint8`は内部で
+/// `write_uint8`へキャストする、obj_node.h参照）へ無条件に代入される。根拠・設計は
+/// `common::check_narrow_int_overflow_field`のdocコメント参照
+/// （`DateIndexOverflowRule`と同種の静的解析ルール）。
+struct NarrowIntFieldsRule;
+impl Rule for NarrowIntFieldsRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let mut diags = Vec::new();
+        diags.extend(check_narrow_int_overflow_field(
+            dat,
+            "min_speed",
+            0,
+            16,
+            false,
+            ctx.language,
+        ));
+        diags.extend(check_narrow_int_overflow_field(
+            dat,
+            "offset_left",
+            14,
+            8,
+            true,
             ctx.language,
         ));
         diags

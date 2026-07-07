@@ -27,10 +27,13 @@
 //!
 //! REJECTED（候補として検討したが根拠不十分、またはmakeobj側にfatal/warning分岐が
 //! 無いため実装しなかった）:
-//! - `topspeed`（`get_int("topspeed", 999)`）・`cost`/`maintenance`
-//!   （`get_int64`）の妥当性検証: いずれも無条件フォールバックのみで
-//!   `get_int_clamped`ではない（bridge_writer.cc:102-104）。wayのtopspeed/
-//!   max_weight/axle_loadが見送られたのと同じ理由。
+//! - `cost`/`maintenance`（`get_int64`）の妥当性検証: 無条件フォールバックのみで
+//!   `get_int_clamped`ではない（bridge_writer.cc:103-104）。wayのtopspeed/
+//!   max_weight/axle_loadが見送られたのと同じ理由。`topspeed`
+//!   （`get_int("topspeed", 999)`）自体は`node.write_uint16(outfp, topspeed)`と
+//!   いう狭い型へ無条件代入されるため、`TopspeedNarrowIntRule`（静的解析層、
+//!   `date-index-overflow`と同種）の対象にはした（fatal/warning根拠が無い点は
+//!   変わらないが、狭い型への切り詰めという別の問題を検出する）。
 //! - `max_lenght`（歴史的スペルミス）と`max_length`（正しいスペル）の二重キー
 //!   挙動そのものの警告: `max_length = get_int_clamped("max_length", max_length, ...)`
 //!   は`max_lenght`で読んだ値をdefaultとして`max_length`が存在すれば上書きする、
@@ -59,7 +62,9 @@
 //!   cursor/iconが空でもfatal/warningを出さない（wayのcursor/iconが見送られた
 //!   のと同じ理由）。
 
-use super::common::check_image_ref;
+use super::common::{
+    NameAndCopyrightStringFieldRule, check_image_ref, check_narrow_int_overflow_field,
+};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
@@ -85,6 +90,8 @@ pub fn all() -> Vec<Box<dyn Rule>> {
         Box::new(WaytypeRequiredRule),
         Box::new(ClampedRangeRule),
         Box::new(FrontImageWarningRule),
+        Box::new(NameAndCopyrightStringFieldRule),
+        Box::new(TopspeedNarrowIntRule),
     ]
 }
 
@@ -262,5 +269,18 @@ impl Rule for FrontImageWarningRule {
         }
 
         diags
+    }
+}
+
+/// `bridge_writer.cc:102,120`: `topspeed`は`obj.get_int("topspeed", 999)`
+/// （範囲チェック無しの無条件フォールバック、`get_int_clamped`ではない）で
+/// 読まれた後、`node.write_uint16(outfp, topspeed)`という狭い型へ無条件代入される。
+/// 根拠・設計は`common::check_narrow_int_overflow_field`のdocコメント参照
+/// （`ClampedRangeRule`が対象とする他の数値フィールドとは異なり`get_int_clamped`
+/// 経由ではないため、静的解析層のこちらのルールで別途カバーする）。
+struct TopspeedNarrowIntRule;
+impl Rule for TopspeedNarrowIntRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        check_narrow_int_overflow_field(ctx.dat, "topspeed", 999, 16, false, ctx.language)
     }
 }

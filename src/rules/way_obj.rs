@@ -146,7 +146,9 @@
 //!   拒否する分岐は無い（get_waytype()は既知13種のいずれでも受理する）。
 //!   crossingの「意味のある交差の組み合わせ」検証が見送られたのと同じ理由。
 
-use super::common::{check_date_index_overflow_field, check_image_ref};
+use super::common::{
+    NameAndCopyrightStringFieldRule, check_date_index_overflow_field, check_image_ref,
+};
 use crate::diagnostics::Diagnostic;
 use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
@@ -171,6 +173,7 @@ pub fn all() -> Vec<Box<dyn Rule>> {
         Box::new(OwnWaytypeRequiredRule),
         Box::new(ImageRefRule),
         Box::new(DateIndexOverflowRule),
+        Box::new(NameAndCopyrightStringFieldRule),
     ]
 }
 

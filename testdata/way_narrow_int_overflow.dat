@@ -1,0 +1,12 @@
+obj=way
+name=OverflowRoad
+waytype=road
+cost=1000
+maintenance=100
+topspeed=120
+max_weight=999
+axle_load=100000
+clip_below=1
+intro_year=2000
+system_type=300
+image[-]=station_cube.png.0.0

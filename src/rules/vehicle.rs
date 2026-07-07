@@ -11,8 +11,16 @@
 //! 根拠とするが、このルールはゲームエンジンのランタイムコード（`src/simutrans/simconvoi.cc`）
 //! を根拠とする「静的解析」層のルールである（`couplings`サブコマンドと同種の位置づけ）。
 //! makeobj自身はこのフィールドの組み合わせを一切検証しない。
+//!
+//! `NarrowIntFieldsRule`（`payload`/`speed`/`axle_load`/`length`）も同じ「静的解析」層
+//! のルールで、`DateIndexOverflowRule`と同種（common.rsの`check_narrow_int_overflow_field`
+//! 参照）。`NameAndCopyrightStringFieldRule`はobj種別を問わず共有される
+//! `name`/`copyright`フィールドの検証（common.rs参照）。
 
-use super::common::{DIR_CODES, check_date_index_overflow_field};
+use super::common::{
+    DIR_CODES, NameAndCopyrightStringFieldRule, check_date_index_overflow_field,
+    check_narrow_int_overflow_field,
+};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
@@ -65,6 +73,8 @@ pub fn all() -> Vec<Box<dyn Rule>> {
         Box::new(FreightImageTypeRule),
         Box::new(PowerGearMismatchRule),
         Box::new(DateIndexOverflowRule),
+        Box::new(NameAndCopyrightStringFieldRule),
+        Box::new(NarrowIntFieldsRule),
     ]
 }
 
@@ -381,6 +391,53 @@ impl Rule for DateIndexOverflowRule {
             "retire_year",
             2999,
             Some("retire_month"),
+            ctx.language,
+        ));
+        diags
+    }
+}
+
+/// vehicle_writer.cc:98,99 / 106,107 / 115,116 / 166,167: `payload`/`speed`/
+/// `axle_load`/`length`はいずれも`tabfileobj_t::get_int()`（範囲チェック無しの
+/// 無条件フォールバック）で読まれた後、無条件に狭いC++整数型へ代入・書き込み
+/// される（`payload`/`speed`/`axle_load`は`uint16`、`length`は`uint8`）。
+/// 根拠・設計は`common::check_narrow_int_overflow_field`のdocコメント参照
+/// （`DateIndexOverflowRule`/`PowerGearMismatchRule`と同種の静的解析ルール）。
+struct NarrowIntFieldsRule;
+impl Rule for NarrowIntFieldsRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let mut diags = Vec::new();
+        diags.extend(check_narrow_int_overflow_field(
+            dat,
+            "payload",
+            0,
+            16,
+            false,
+            ctx.language,
+        ));
+        diags.extend(check_narrow_int_overflow_field(
+            dat,
+            "speed",
+            0,
+            16,
+            false,
+            ctx.language,
+        ));
+        diags.extend(check_narrow_int_overflow_field(
+            dat,
+            "axle_load",
+            0,
+            16,
+            false,
+            ctx.language,
+        ));
+        diags.extend(check_narrow_int_overflow_field(
+            dat,
+            "length",
+            8,
+            8,
+            false,
             ctx.language,
         ));
         diags

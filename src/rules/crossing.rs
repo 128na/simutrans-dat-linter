@@ -101,7 +101,10 @@
 //!   どの2つの異なるwaytypeの組み合わせが「意味のある交差」かを判定するロジックは
 //!   makeobj側に存在しない（ゲーム側の`crossing_logic_t`が実行時に使い方を決める）。
 
-use super::common::{KNOWN_WAYTYPES, check_date_index_overflow_field, check_image_ref};
+use super::common::{
+    KNOWN_WAYTYPES, NameAndCopyrightStringFieldRule, check_date_index_overflow_field,
+    check_image_ref, check_narrow_int_overflow_field,
+};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
@@ -165,6 +168,8 @@ pub fn all() -> Vec<Box<dyn Rule>> {
         Box::new(OpenImageRequiredRule),
         Box::new(ImageRefRule),
         Box::new(DateIndexOverflowRule),
+        Box::new(NameAndCopyrightStringFieldRule),
+        Box::new(SpeedNarrowIntRule),
     ]
 }
 
@@ -365,6 +370,38 @@ impl Rule for DateIndexOverflowRule {
             "retire_year",
             2999,
             Some("retire_month"),
+            ctx.language,
+        ));
+        diags
+    }
+}
+
+/// `crossing_writer.cc:87-88`: `speed[0]`/`speed[1]`（いずれも`uint16`）は
+/// `obj.get_int(key, 0)`（範囲チェック無しの無条件フォールバック）で読まれた後、
+/// `node.write_uint16`へ無条件に代入される。`SpeedRequiredRule`は「どちらかが0」
+/// （未指定含む）をFATAL相当として検出するが、非ゼロの範囲外の値
+/// （例: 65536以上）を防ぐものではないため、別の懸念として本ルールで検出する。
+/// 根拠・設計は`common::check_narrow_int_overflow_field`のdocコメント参照
+/// （`DateIndexOverflowRule`と同種の静的解析ルール）。
+struct SpeedNarrowIntRule;
+impl Rule for SpeedNarrowIntRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let mut diags = Vec::new();
+        diags.extend(check_narrow_int_overflow_field(
+            dat,
+            "speed[0]",
+            0,
+            16,
+            false,
+            ctx.language,
+        ));
+        diags.extend(check_narrow_int_overflow_field(
+            dat,
+            "speed[1]",
+            0,
+            16,
+            false,
             ctx.language,
         ));
         diags

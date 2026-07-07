@@ -117,3 +117,42 @@ fn date_index_overflow_is_detected() {
         "date-index-overflow"
     ));
 }
+
+#[test]
+fn narrow_int_overflow_is_detected() {
+    // axle_load=100000はuint16の範囲(0..65535)外、system_type=300はuint8の範囲
+    // (0..255)外。way_writer.cc:41,52のwrite_uint16/write_uint8へ静かに
+    // 切り詰められる。
+    let diags = check("way_narrow_int_overflow.dat");
+    let overflow_count = diags
+        .iter()
+        .filter(|(s, c)| *s == Severity::Warning && *c == "narrow-int-overflow")
+        .count();
+    assert_eq!(
+        overflow_count, 2,
+        "axle_load/system_typeの2件が検出されるはず: {diags:?}"
+    );
+}
+
+#[test]
+fn name_forbidden_filename_character_is_detected() {
+    // name=CON はWindowsの予約デバイス名と完全一致する。root_writer_t::write()の
+    // separate出力・uncopy()がこの値をそのままfopen()するため、ビルド/分割が
+    // 失敗する（src/rules/common.rsのforbidden_filename_reason参照）。
+    assert!(has_error(
+        &check("way_name_forbidden_filename_character.dat"),
+        "name-forbidden-filename-character"
+    ));
+}
+
+#[test]
+fn embedded_nul_in_name_is_detected() {
+    // name="ValidRoad\0Extra" は埋め込みNULバイトを含む。text_writer_t::write_obj
+    // （text_writer.cc:18）はstrlen()で長さを計算するため、\0以降の"Extra"が
+    // 警告無く切り詰められる。
+    assert!(has(
+        &check("way_embedded_nul_name.dat"),
+        Severity::Warning,
+        "embedded-nul-in-string-field"
+    ));
+}

@@ -148,7 +148,7 @@
 //!   `cursorskin_writer_t`も呼ばれない。他obj種別と異なり、そもそも対象フィールドが
 //!   存在しない）。
 
-use super::common::{KNOWN_WAYTYPES, check_image_ref};
+use super::common::{KNOWN_WAYTYPES, NameAndCopyrightStringFieldRule, check_image_ref};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::{Language, t};
@@ -163,6 +163,7 @@ pub fn all() -> Vec<Box<dyn Rule>> {
     vec![
         Box::new(WaytypeIfPresentValidRule),
         Box::new(SeasonImageRule),
+        Box::new(NameAndCopyrightStringFieldRule),
     ]
 }
 

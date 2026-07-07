@@ -103,3 +103,40 @@ fn date_index_overflow_is_detected() {
         "date-index-overflow"
     ));
 }
+
+#[test]
+fn name_forbidden_filename_character_is_detected() {
+    // name=CON はWindowsの予約デバイス名と完全一致する。root_writer_t::write()の
+    // separate出力・uncopy()がこの値をそのままfopen()するため、ビルド/分割が
+    // 失敗する（src/rules/common.rsのforbidden_filename_reason参照）。
+    assert!(has_error(
+        &check("pedestrian_name_forbidden_filename_character.dat"),
+        "name-forbidden-filename-character"
+    ));
+}
+
+#[test]
+fn embedded_nul_in_copyright_is_detected() {
+    // copyright="fuga\0bar" は埋め込みNULバイトを含む。text_writer_t::write_obj
+    // （text_writer.cc:18）はstrlen()で長さを計算するため、\0以降の"bar"が
+    // 警告無く切り詰められる。
+    assert!(has_warning(
+        &check("pedestrian_embedded_nul_copyright.dat"),
+        "embedded-nul-in-string-field"
+    ));
+}
+
+#[test]
+fn narrow_int_overflow_is_detected() {
+    // distributionweight=100000/offset=100000はいずれもuint16の範囲(0..65535)外。
+    // pedestrian_writer.cc:23,71,83,85のwrite_uint16へ静かに切り詰められる。
+    let diags = check("pedestrian_narrow_int_overflow.dat");
+    let overflow_count = diags
+        .iter()
+        .filter(|(s, c)| *s == Severity::Warning && *c == "narrow-int-overflow")
+        .count();
+    assert_eq!(
+        overflow_count, 2,
+        "distributionweight/offsetの2件が検出されるはず: {diags:?}"
+    );
+}

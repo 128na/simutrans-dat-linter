@@ -12,13 +12,20 @@
 //!   imagelist_writer_t::write_obj経由で空文字列のキーがそのまま「空画像」として
 //!   書かれるだけで、fatal/warningの分岐が無い（`image[-]`/`image[-][0]`だけが
 //!   明示的にdbg->fatalされる特別扱い。way_writer.cc:98-154参照）。
-//! - `topspeed` / `max_weight` / `axle_load` の妥当性検証: いずれも
-//!   `obj.get_int(...)`で無条件に読み、範囲外や欠落値へのfatal/warningが無い
-//!   （欠落時は999/999/9999にサイレントフォールバックするのみ。way_writer.cc:39-41）。
-//!   vehicleのweight/speedチェックが見送られたのと同じ理由
-//!   （「意図的な省略」と「入力ミス」を区別する根拠がmakeobjソース上に無い）。
+//! - `topspeed` / `max_weight` の妥当性検証: いずれも`obj.get_int(...)`で無条件に
+//!   読み、範囲外や欠落値へのfatal/warningが無い（欠落時は999/999にサイレント
+//!   フォールバックするのみ。way_writer.cc:39-40）。vehicleのweight/speedチェックが
+//!   見送られたのと同じ理由（「意図的な省略」と「入力ミス」を区別する根拠が
+//!   makeobjソース上に無い）。ただし`axle_load`（同じく`get_int`）は
+//!   `write_uint16`という狭い型へ無条件代入されるため、`NarrowIntFieldsRule`
+//!   （静的解析層、`date-index-overflow`と同種）の対象にはした
+//!   （fatal/warning根拠が無い点は変わらないが、狭い型への切り詰めという
+//!   別の問題を検出する）。
 
-use super::common::{check_date_index_overflow_field, check_image_ref};
+use super::common::{
+    NameAndCopyrightStringFieldRule, check_date_index_overflow_field, check_image_ref,
+    check_narrow_int_overflow_field,
+};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
@@ -32,6 +39,8 @@ pub fn all() -> Vec<Box<dyn Rule>> {
         Box::new(BaseImageRequiredRule),
         Box::new(ClipBelowRangeRule),
         Box::new(DateIndexOverflowRule),
+        Box::new(NameAndCopyrightStringFieldRule),
+        Box::new(NarrowIntFieldsRule),
     ]
 }
 
@@ -157,6 +166,36 @@ impl Rule for DateIndexOverflowRule {
             "retire_year",
             2999,
             Some("retire_month"),
+            ctx.language,
+        ));
+        diags
+    }
+}
+
+/// `way_writer.cc:41,52`: `axle_load`（`uint16`）・`system_type`（`uint8`）は
+/// いずれも`obj.get_int(key, def)`（範囲チェック無しの無条件フォールバック）で
+/// 読まれた後、対応する`node.write_uint16`/`write_uint8`へ無条件に代入される。
+/// 根拠・設計は`common::check_narrow_int_overflow_field`のdocコメント参照
+/// （`DateIndexOverflowRule`と同種の静的解析ルール）。
+struct NarrowIntFieldsRule;
+impl Rule for NarrowIntFieldsRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let mut diags = Vec::new();
+        diags.extend(check_narrow_int_overflow_field(
+            dat,
+            "axle_load",
+            9999,
+            16,
+            false,
+            ctx.language,
+        ));
+        diags.extend(check_narrow_int_overflow_field(
+            dat,
+            "system_type",
+            0,
+            8,
+            false,
             ctx.language,
         ));
         diags

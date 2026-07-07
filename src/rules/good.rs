@@ -64,17 +64,63 @@
 //!   他obj種別からの被参照解決はスコープ外（vehicleのfreight xref未解決と同じ理由、
 //!   `xref_writer_t::write_obj`はこの参照を検証せずゲーム読み込み時まで遅延する）。
 
+use super::common::{NameAndCopyrightStringFieldRule, check_narrow_int_overflow_field};
 use crate::diagnostics::Diagnostic;
 use crate::parser::DatFile;
-use crate::registry::Rule;
+use crate::registry::{Rule, RuleContext};
 use std::path::Path;
 
-/// `good_writer.cc`にはmakeobj時点でfatal/warningになる分岐が一つも無いため、
-/// 現時点でこのVecは空。obj=goodを登録すること自体の価値は、obj種別を問わず
-/// 動作する`check_duplicate_keys`（`rules/mod.rs`経由でmain.rsから常時実行）を
-/// good datにも適用できるようにする点にある。
+/// `good_writer.cc`自体にmakeobj時点でfatal/warningになる分岐は一つも無いが、
+/// name/copyright（`NameAndCopyrightStringFieldRule`、全obj種別共通）と、
+/// `catg`/`speed_bonus`/`mapcolor`（`NarrowIntOverflowRule`、下記docコメント参照）は
+/// このobj種別にも適用できる。
 pub fn all() -> Vec<Box<dyn Rule>> {
-    vec![]
+    vec![
+        Box::new(NameAndCopyrightStringFieldRule),
+        Box::new(NarrowIntOverflowRule),
+    ]
+}
+
+/// `good_writer.cc:25,26,28`: `catg`（uint8）・`speed_bonus`（uint16）・
+/// `mapcolor`（uint8）はいずれも`obj.get_int(key, def)`（範囲チェック無しの
+/// 無条件フォールバック）で読まれた後、対応する`node.write_uint8`/`write_uint16`へ
+/// 無条件に代入される。`weight_per_unit`（uint16、line 27）も同じ`get_int`経由だが、
+/// デフォルト100・実務上の値域が狭く、範囲外を指定する動機が乏しいため対象外とした
+/// （`catg`/`mapcolor`はuint8という特に狭い型で、255を超える値を書きやすい実務上の
+/// リスクがあるためこちらを優先した）。根拠・設計は
+/// `common::check_narrow_int_overflow_field`のdocコメント参照
+/// （`date-index-overflow`と同種の静的解析ルール）。
+struct NarrowIntOverflowRule;
+impl Rule for NarrowIntOverflowRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let mut diags = Vec::new();
+        diags.extend(check_narrow_int_overflow_field(
+            dat,
+            "catg",
+            0,
+            8,
+            false,
+            ctx.language,
+        ));
+        diags.extend(check_narrow_int_overflow_field(
+            dat,
+            "speed_bonus",
+            0,
+            16,
+            false,
+            ctx.language,
+        ));
+        diags.extend(check_narrow_int_overflow_field(
+            dat,
+            "mapcolor",
+            255,
+            8,
+            false,
+            ctx.language,
+        ));
+        diags
+    }
 }
 
 /// `tests/good_lint.rs`専用。本番と同じ`RuleSet::for_obj_type`経由で

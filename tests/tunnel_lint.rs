@@ -112,3 +112,38 @@ fn date_index_overflow_is_detected() {
         "date-index-overflow"
     ));
 }
+
+#[test]
+fn name_forbidden_filename_character_is_detected() {
+    // name=CON はWindowsの予約デバイス名と完全一致する。root_writer_t::write()の
+    // separate出力・uncopy()がこの値をそのままfopen()するため、ビルド/分割が
+    // 失敗する（src/rules/common.rsのforbidden_filename_reason参照）。
+    assert!(has_error(
+        &check("tunnel_name_forbidden_filename_character.dat"),
+        "name-forbidden-filename-character"
+    ));
+}
+
+#[test]
+fn embedded_nul_in_name_is_detected() {
+    // name="ValidTunnel\0Extra" は埋め込みNULバイトを含む。text_writer_t::write_obj
+    // （text_writer.cc:18）はstrlen()で長さを計算するため、\0以降の"Extra"が
+    // 警告無く切り詰められる。
+    assert!(has(
+        &check("tunnel_embedded_nul_name.dat"),
+        Severity::Warning,
+        "embedded-nul-in-string-field"
+    ));
+}
+
+#[test]
+fn narrow_int_overflow_is_detected() {
+    // axle_load=100000はuint16の範囲(0..65535)外。tunnel_writer.cc:26のローカル
+    // 変数がuint16であるため、obj.get_int()の戻り値（実質int）を代入する時点で
+    // 静かに切り詰められる。
+    assert!(has(
+        &check("tunnel_narrow_int_overflow.dat"),
+        Severity::Warning,
+        "narrow-int-overflow"
+    ));
+}

@@ -1,8 +1,16 @@
 //! `obj=building` の検証ルール。検証根拠は `rules/mod.rs` 冒頭コメント参照。
+//!
+//! `NarrowIntFieldsRule`（`capacity`）は`DateIndexOverflowRule`と同種の「静的解析」層の
+//! ルール。`building_writer.cc:244` `sint32 capacity = obj.get_int("capacity", level * 32);`
+//! はローカル変数こそ`sint32`だが、実際の書き込みは`building_writer.cc:365`
+//! `node.write_uint16(fp, capacity);`であり、`sint32`→`uint16`という符号・幅の
+//! 両方が変わる narrowing が発生する（ローカル変数の型だけを見て「sint32だから
+//! 広くて安全」と判断してはいけない、という具体例。`common::check_narrow_int_overflow_field`
+//! のdocコメント参照）。
 
 use super::common::{
-    CursorIconPolicy, CursorIconRule, DimsRule, KNOWN_WAYTYPES, TileImageRule,
-    check_date_index_overflow_field, resolve_dims,
+    CursorIconPolicy, CursorIconRule, DimsRule, KNOWN_WAYTYPES, NameAndCopyrightStringFieldRule,
+    TileImageRule, check_date_index_overflow_field, check_narrow_int_overflow_field, resolve_dims,
 };
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
@@ -107,6 +115,8 @@ pub fn all(dat: &DatFile) -> Vec<Box<dyn Rule>> {
         }),
         Box::new(DateIndexOverflowRule),
         Box::new(BooleanStyleFieldRule),
+        Box::new(NameAndCopyrightStringFieldRule),
+        Box::new(CapacityNarrowIntRule),
     ]
 }
 
@@ -289,6 +299,26 @@ impl Rule for DateIndexOverflowRule {
             ctx.language,
         ));
         diags
+    }
+}
+
+/// `building_writer.cc:244-247,365`: `capacity`はローカル変数こそ`sint32`
+/// （`sint32 capacity = obj.get_int("capacity", level * 32);`）だが、実際の書き込みは
+/// `node.write_uint16(fp, capacity);`であり、`sint32`→`uint16`という符号・幅の両方が
+/// 変わるnarrowingが発生する。`obj.get_int()`自体は範囲チェック無しの無条件
+/// フォールバックで、`get_int_clamped`ではない。`station_capacity`という別名キーも
+/// 同じ`capacity`変数へ読み込まれる（`capacity == level*32`のときのみ、
+/// building_writer.cc:245-246）が、こちらは`capacity`が未指定のときのみ評価される
+/// 経路であり、`capacity=`が明示指定されていれば`station_capacity`は評価されない。
+/// このルールは`capacity=`が明示指定された場合のみを検出する（`level`の値は
+/// `type`分岐に依存する複雑な計算のため、`capacity`未指定時のデフォルト値
+/// `level*32`自体の検証は行わない。デフォルト値は常に安全な範囲に収まる前提で
+/// `0`を渡す）。根拠・設計は`common::check_narrow_int_overflow_field`の
+/// docコメント参照（`DateIndexOverflowRule`と同種の静的解析ルール）。
+struct CapacityNarrowIntRule;
+impl Rule for CapacityNarrowIntRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        check_narrow_int_overflow_field(ctx.dat, "capacity", 0, 16, false, ctx.language)
     }
 }
 

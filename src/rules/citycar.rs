@@ -123,7 +123,10 @@
 //!   `cursorskin_writer_t`も呼ばれない。他obj種別と異なり、そもそも対象フィールドが
 //!   存在しない）。
 
-use super::common::{DIR_CODES, check_date_index_overflow_field, check_image_ref};
+use super::common::{
+    DIR_CODES, NameAndCopyrightStringFieldRule, check_date_index_overflow_field, check_image_ref,
+    check_narrow_int_overflow_field,
+};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
@@ -135,6 +138,8 @@ pub fn all() -> Vec<Box<dyn Rule>> {
     vec![
         Box::new(DirectionImageRefRule),
         Box::new(DateIndexOverflowRule),
+        Box::new(NameAndCopyrightStringFieldRule),
+        Box::new(DistributionWeightNarrowIntRule),
     ]
 }
 
@@ -201,5 +206,17 @@ impl Rule for DateIndexOverflowRule {
             ctx.language,
         ));
         diags
+    }
+}
+
+/// `citycar_writer.cc:19`: `distributionweight`（`uint16`）は
+/// `obj.get_int("distributionweight", 1)`（範囲チェック無しの無条件フォールバック）で
+/// 読まれた後、`node.write_uint16`へ無条件に代入される。根拠・設計は
+/// `common::check_narrow_int_overflow_field`のdocコメント参照
+/// （`DateIndexOverflowRule`と同種の静的解析ルール）。
+struct DistributionWeightNarrowIntRule;
+impl Rule for DistributionWeightNarrowIntRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        check_narrow_int_overflow_field(ctx.dat, "distributionweight", 1, 16, false, ctx.language)
     }
 }
