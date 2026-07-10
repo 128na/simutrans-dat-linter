@@ -129,3 +129,40 @@ impl fmt::Display for Diagnostic {
         }
     }
 }
+
+/// `--format json`（`dat_linter lint`専用、第1弾: VSCode拡張のDiagnostics統合）が
+/// 出力するJSONスキーマ専用のシリアライズ用構造体。
+///
+/// `Diagnostic`本体に`derive(Serialize)`を直接付けない: `Diagnostic`は内部実装
+/// （`Severity`はOrd導出のための宣言順、`DiagnosticCode`はenum、`Location`は
+/// 1-indexed行番号+キー名）であり、JSON出力の対外スキーマ（`severity`は
+/// `"error"/"warn"/"info"/"debug"`という固定文字列、`line`/`key`はJSON上
+/// `null`になりうるフラットな`Option`）とは表現を分離しておきたい
+/// （内部のenum表現を変更してもJSONスキーマを壊さないようにするため）。
+#[derive(Debug, serde::Serialize)]
+pub struct JsonDiagnostic {
+    pub severity: &'static str,
+    pub code: &'static str,
+    pub message: String,
+    /// 1-indexed。`Diagnostic::location`が`None`（値ではなくキー自体が欠落している
+    /// 診断等、自然な単一行を持たない）の場合は`null`になる。
+    pub line: Option<usize>,
+    pub key: Option<String>,
+}
+
+impl From<&Diagnostic> for JsonDiagnostic {
+    fn from(d: &Diagnostic) -> Self {
+        JsonDiagnostic {
+            severity: match d.severity {
+                Severity::Error => "error",
+                Severity::Warning => "warn",
+                Severity::Info => "info",
+                Severity::Debug => "debug",
+            },
+            code: d.code.as_str(),
+            message: d.message.clone(),
+            line: d.location.as_ref().map(|loc| loc.line),
+            key: d.location.as_ref().map(|loc| loc.key.clone()),
+        }
+    }
+}

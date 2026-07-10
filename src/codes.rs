@@ -201,6 +201,12 @@ pub enum DiagnosticCode {
     MissingName,
     DanglingVehicleConstraint,
     UnsatisfiableConstraint,
+    // --- lint: src/commands/lint.rs — `--format json`専用。テキストモードでは
+    // 対応するメッセージがeprintln!されるだけでDiagnosticとしては構築されない
+    // （obj=は未対応です等）が、JSON出力ではdiagnostics配列内の1エントリとして
+    // 構造化する必要があるため新設した。
+    FileReadFailed,
+    UnsupportedObjType,
 }
 
 impl DiagnosticCode {
@@ -283,6 +289,8 @@ impl DiagnosticCode {
             DiagnosticCode::MissingName => "missing-name",
             DiagnosticCode::DanglingVehicleConstraint => "dangling-vehicle-constraint",
             DiagnosticCode::UnsatisfiableConstraint => "unsatisfiable-constraint",
+            DiagnosticCode::FileReadFailed => "file-read-failed",
+            DiagnosticCode::UnsupportedObjType => "unsupported-obj-type",
         }
     }
 
@@ -1338,6 +1346,42 @@ impl DiagnosticCode {
                 fix_en: "Review the constraint[prev]/constraint[next] chain and ensure a path exists \
                     that can reach \"none\" (allowed to be first/last)",
             },
+            DiagnosticCode::FileReadFailed => CodeInfo {
+                code: *self,
+                source: CodeSource::Lint,
+                why_ja: "`.dat`ファイル自体の読み込みに失敗しました（存在しない・権限が無い等、\
+                    `DatFile::parse_all`のI/Oエラー）。makeobj自身のエラーではなく、\
+                    dat_linterのファイル読み込み層のエラーです。`--format json`実行時のみ、\
+                    テキストモードのエラーメッセージと同じ状況をdiagnostics配列内の\
+                    1エントリとして構造化するために使われます",
+                why_en: "Reading the .dat file itself failed (it does not exist, permission denied, \
+                    etc. — an I/O error from DatFile::parse_all). This is not a makeobj error but a \
+                    dat_linter file-reading error. It is only used under --format json, to represent \
+                    the same situation as the text-mode error message as a structured entry in the \
+                    diagnostics array",
+                fix_ja: "ファイルパス・存在・アクセス権限、および文字エンコーディング（UTF-8または\
+                    Shift-JIS）を確認してください",
+                fix_en: "Check the file path, its existence, access permissions, and character \
+                    encoding (UTF-8 or Shift-JIS)",
+            },
+            DiagnosticCode::UnsupportedObjType => CodeInfo {
+                code: *self,
+                source: CodeSource::Lint,
+                why_ja: "`.dat`ファイルの`obj=`の値が、dat_linterが検証をサポートするobj種別\
+                    （`dat_linter lint -h`に列挙される22種）のいずれにも一致しません\
+                    （`obj=`自体が欠落しているファイル・レコードも含む）。`--format json`実行時のみ、\
+                    テキストモードの\"obj=... は未対応です\"メッセージと同じ状況を\
+                    diagnostics配列内の1エントリとして構造化するために使われます",
+                why_en: "The .dat file's obj= value does not match any obj type dat_linter supports \
+                    validating (the 22 types listed in `dat_linter lint -h`), including files/records \
+                    where obj= itself is missing. It is only used under --format json, to represent \
+                    the same situation as the text-mode \"obj=... is not supported\" message as a \
+                    structured entry in the diagnostics array",
+                fix_ja: "obj=の値の綴りを確認するか、`dat_linter lint -h`で対応obj種別の一覧を\
+                    確認してください",
+                fix_en: "Check the spelling of obj=, or see `dat_linter lint -h` for the list of \
+                    supported obj types",
+            },
         }
     }
 }
@@ -1426,6 +1470,8 @@ pub const ALL: &[DiagnosticCode] = &[
     DiagnosticCode::MissingName,
     DiagnosticCode::DanglingVehicleConstraint,
     DiagnosticCode::UnsatisfiableConstraint,
+    DiagnosticCode::FileReadFailed,
+    DiagnosticCode::UnsupportedObjType,
 ];
 
 /// 後方互換用のエイリアス。以前は`ALL_CODES: &[CodeInfo]`という名前の静的配列

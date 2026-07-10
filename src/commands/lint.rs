@@ -1,17 +1,28 @@
 //! `lint`サブコマンドの実行ロジック。
 //!
 //! 第13弾: `src/main.rs`のSRP分割で切り出した。振る舞いは分割前と完全に同一。
+//!
+//! 第1弾（VSCode拡張のDiagnostics統合）: `--format json`を追加した。
+//! `args.format == LintFormat::Text`の経路（`run_lint`後半・`lint_one_file`・
+//! `lint_one_file_counts`）はこの変更の前後で完全に同一の`eprintln!`/`println!`
+//! 出力・exit codeを維持する（既存テストがそのまま通ることを要求されているため、
+//! 既存関数の内部にif/elseで分岐を混ぜ込まず、`args.format`による分岐は
+//! `run_lint`の冒頭で行い、`LintFormat::Json`は完全に独立した経路
+//! （`run_lint_json`/`lint_one_file_json`）へ委譲する設計にした）。
+//! JSON経路はstdoutへ`serde_json::to_string`を1回だけ出力し、stderrには
+//! 何も書かない。
 
-use crate::cli::LintArgs;
+use crate::cli::{LintArgs, LintFormat};
 use crate::commands::common::{aggregate_multi_file, exit_code_for, resolve_paths_or_exit};
 use crate::fs_walk::supported_obj_list;
+use dat_linter::codes::DiagnosticCode;
 use dat_linter::config::LintConfig;
-use dat_linter::diagnostics::Severity;
+use dat_linter::diagnostics::{Diagnostic, JsonDiagnostic, Severity};
 use dat_linter::i18n::{Language, t};
 use dat_linter::parser::DatFile;
 use dat_linter::registry::{RuleContext, RuleSet};
 use dat_linter::rules;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 pub fn run_lint(args: &LintArgs, language: Language) -> ExitCode {
@@ -36,6 +47,10 @@ pub fn run_lint(args: &LintArgs, language: Language) -> ExitCode {
         Ok(p) => p,
         Err(code) => return code,
     };
+
+    if args.format == LintFormat::Json {
+        return run_lint_json(&paths, level, &config, language, args.tile_size);
+    }
 
     // 単一ファイル指定時は従来通りの出力・終了コードのみ（サマリ行を追加しない）。
     if paths.len() == 1 {
@@ -233,4 +248,185 @@ fn lint_one_file_counts(
     // exit 0のままだった）。
     let failed = error_count > 0 || warning_count > 0 || unsupported > 0;
     (error_count, warning_count, failed)
+}
+
+// --- `--format json`専用の経路 --------------------------------------------
+
+/// `--format json`のトップレベル出力スキーマ。
+/// `{ "files": [...], "summary": { "error_count": N, "warning_count": N } }`。
+#[derive(serde::Serialize)]
+struct JsonLintOutput {
+    files: Vec<JsonFileReport>,
+    summary: JsonLintSummary,
+}
+
+#[derive(serde::Serialize)]
+struct JsonFileReport {
+    path: String,
+    diagnostics: Vec<JsonDiagnostic>,
+}
+
+#[derive(serde::Serialize)]
+struct JsonLintSummary {
+    error_count: usize,
+    warning_count: usize,
+}
+
+/// `--format json`のトップレベル。単一ファイル・複数ファイルを区別せず、
+/// 常に`files`配列（要素数1以上）+ `summary`の1つのJSONオブジェクトを
+/// stdoutへ1回だけ出力する。stderrへは一切書かない。
+///
+/// exit codeの成否判定（error/warningが1件でもあれば非0）は`Text`と同じ
+/// 挙動を維持する（`unsupported`はerror severityの`unsupported-obj-type`
+/// 診断としてerror_countに畳み込まれるため、`Text`モードの
+/// `error_count>0||warning_count>0||unsupported>0`と等価になる）。
+fn run_lint_json(
+    paths: &[PathBuf],
+    level: Severity,
+    config: &LintConfig,
+    language: Language,
+    tile_size_override: Option<u32>,
+) -> ExitCode {
+    let mut files = Vec::with_capacity(paths.len());
+    let mut total_error_count = 0usize;
+    let mut total_warning_count = 0usize;
+
+    for path in paths {
+        let (diagnostics, error_count, warning_count) =
+            lint_one_file_json(path, level, config, language, tile_size_override);
+        total_error_count += error_count;
+        total_warning_count += warning_count;
+        files.push(JsonFileReport {
+            path: path.display().to_string(),
+            diagnostics,
+        });
+    }
+
+    let output = JsonLintOutput {
+        files,
+        summary: JsonLintSummary {
+            error_count: total_error_count,
+            warning_count: total_warning_count,
+        },
+    };
+
+    match serde_json::to_string(&output) {
+        Ok(json) => println!("{json}"),
+        Err(e) => {
+            // シリアライズ自体が失敗するのはバグ（`JsonDiagnostic`は
+            // `String`/`&'static str`/`Option<usize>`のみで構成され、通常は
+            // 失敗し得ない）だが、`--format text`との対称性のためstdoutへは
+            // 有効なJSONを出さずstderrへ報告する（JSON出力の途中まで書いて
+            // 壊れたJSONをstdoutへ流すよりは安全）。
+            eprintln!("failed to serialize JSON lint output: {e}");
+            return ExitCode::FAILURE;
+        }
+    }
+
+    if total_error_count > 0 || total_warning_count > 0 {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+/// 1ファイルをJSON向けに検証する。`lint_one_file_counts`（Text版）と同じ
+/// 検証ロジック（`DatFile::parse_all`→未対応objチェック→`RuleSet::run`）を
+/// たどるが、`eprintln!`/`println!`する代わりに`JsonDiagnostic`の`Vec`として
+/// 蓄積して返す。`(diagnostics, error_count, warning_count)`を返す
+/// （`error_count`/`warning_count`はText版の集計と同じく`level`によらず
+/// 全診断を数える。`diagnostics`自体はText版が実際に1行ずつ表示する診断と
+/// 同じ`d.severity <= level`でフィルタする）。
+fn lint_one_file_json(
+    path: &Path,
+    level: Severity,
+    config: &LintConfig,
+    language: Language,
+    tile_size_override: Option<u32>,
+) -> (Vec<JsonDiagnostic>, usize, usize) {
+    let records = match DatFile::parse_all(path) {
+        Ok(r) => r,
+        Err(e) => {
+            let diag = Diagnostic::error(
+                DiagnosticCode::FileReadFailed,
+                t!(language,
+                    ja: "読み込みに失敗しました ({e})",
+                    en: "Failed to read the file ({e})",
+                    e = e,
+                ),
+            );
+            return (vec![JsonDiagnostic::from(&diag)], 1, 0);
+        }
+    };
+
+    // Text版と同じく、レコード0件（obj定義が無い）は「obj=は未対応です」相当。
+    if records.is_empty() {
+        let diag = Diagnostic::error(
+            DiagnosticCode::UnsupportedObjType,
+            t!(language,
+                ja: "obj= は未対応です。{list} のみ検証できます",
+                en: "obj= is not supported. Only {list} can be validated",
+                list = supported_obj_list(),
+            ),
+        );
+        return (vec![JsonDiagnostic::from(&diag)], 1, 0);
+    }
+
+    let dat_dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut json_diagnostics = Vec::new();
+    let mut error_count = 0usize;
+    let mut warning_count = 0usize;
+
+    for dat in records.iter() {
+        let obj_type = dat.get("obj").unwrap_or("").to_string();
+
+        let Some(rule_set) = RuleSet::for_obj_type(&obj_type, dat) else {
+            let diag = Diagnostic::error(
+                DiagnosticCode::UnsupportedObjType,
+                t!(language,
+                    ja: "obj={obj_type} は未対応です。{list} のみ検証できます",
+                    en: "obj={obj_type} is not supported. Only {list} can be validated",
+                    obj_type = obj_type,
+                    list = supported_obj_list(),
+                ),
+            );
+            json_diagnostics.push(JsonDiagnostic::from(&diag));
+            error_count += 1;
+            continue;
+        };
+
+        // Text版（`lint_one_file_counts`）と同じ優先順位でタイルサイズを解決する。
+        let tile_size = tile_size_override
+            .or_else(|| dat.get("cell_size").and_then(|s| s.trim().parse().ok()))
+            .unwrap_or_else(|| config.tile_size_for(path));
+
+        let ctx = RuleContext {
+            dat,
+            dat_dir,
+            language,
+            tile_size,
+        };
+        let mut record_diags = rules::check_duplicate_keys(dat, language);
+        record_diags.extend(rule_set.run(&ctx));
+        record_diags.retain(|d| config.is_enabled(d.code));
+
+        // カウントはText版の集計（`level`によらず全診断を数える）と揃える。
+        for d in &record_diags {
+            match d.severity {
+                Severity::Error => error_count += 1,
+                Severity::Warning => warning_count += 1,
+                _ => {}
+            }
+        }
+        // diagnostics配列自体は、Text版が実際にeprintln!する行と同じ
+        // `d.severity <= level`でフィルタする。
+        json_diagnostics.extend(
+            record_diags
+                .iter()
+                .filter(|d| d.severity <= level)
+                .map(JsonDiagnostic::from),
+        );
+    }
+
+    (json_diagnostics, error_count, warning_count)
 }

@@ -27,4 +27,5 @@ clap = { version = "4", default-features = false, features = [
 encoding_rs = "0.8"
 glob = "0.3.3"
 serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1"
 toml = "1.1.2"
