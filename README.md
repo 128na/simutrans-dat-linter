@@ -8,8 +8,8 @@ makeobj が認識する全 22 obj 種別を検証します。
 
 ## 特徴
 
-- **`lint`** — makeobj では見逃される問題を pak 化前に検出
 - **`fmt`** — `.dat` を慣習的な形式へ自動整形
+- **`lint`** — makeobj では見逃される問題を pak 化前に検出
 - **`analyze`** — 複数ファイルを横断して車両連結制約を検証
 
 対応 obj 種別・各コマンドの詳細は [`docs/`](docs/) を参照してください。
@@ -31,8 +31,8 @@ dat_linter lint addons/vehicle.dat
 ## 主要コマンド
 
 ```
-dat_linter lint  <file|dir|glob>       # 静的検証
 dat_linter fmt   <file|dir|glob> -w    # 整形して書き戻す
+dat_linter lint  <file|dir|glob>       # 静的検証
 dat_linter analyze <vehicle_dat_dir>   # 車両連結制約の解析
 ```
 
@@ -53,12 +53,12 @@ language = "en"
 
 ## 詳細ドキュメント
 
-| ドキュメント | 内容 |
-|---|---|
-| [docs/lint.md](docs/lint.md) | `lint` の使い方・対応 obj 種別 |
-| [docs/fmt.md](docs/fmt.md) | フォーマッタ |
-| [docs/analyze.md](docs/analyze.md) | 静的解析 |
-| [docs/config.md](docs/config.md) | 設定・ログ・終了コード |
+| ドキュメント                       | 内容                           |
+| ---------------------------------- | ------------------------------ |
+| [docs/fmt.md](docs/fmt.md)         | フォーマッタ                   |
+| [docs/lint.md](docs/lint.md)       | `lint` の使い方・対応 obj 種別 |
+| [docs/analyze.md](docs/analyze.md) | 静的解析                       |
+| [docs/config.md](docs/config.md)   | 設定・ログ・終了コード         |
 
 開発者向け情報（アーキテクチャ・テスト・リリース手順）は [CLAUDE.md](CLAUDE.md) を参照してください。
 
