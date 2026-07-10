@@ -89,6 +89,8 @@ const LINT_VERBOSE_HELP_JA: &str = "-v: info まで表示 / -vv: debug まで表
 const LINT_VERBOSE_HELP_EN: &str = "-v: show up to info / -vv: show up to debug";
 const CONFIG_HELP_JA: &str = "ルールのinclude/exclude等の設定ファイル（TOML）。省略時はカレントディレクトリの dat_linter.toml を自動探索する";
 const CONFIG_HELP_EN: &str = "Configuration file (TOML) for rule include/exclude etc. If omitted, dat_linter.toml in the current directory is auto-discovered";
+const LINT_TILE_SIZE_HELP_JA: &str = "画像タイルサイズ（makeobj pak<N>のN）をこの実行に限り強制的に上書きする（優先順位は--configのタイルサイズ設定より高い）。省略時はdat_linter.tomlの[tile_size]・.datのcell_size=から解決する";
+const LINT_TILE_SIZE_HELP_EN: &str = "Force the image tile size (the N in makeobj pak<N>) for this run only (takes priority over dat_linter.toml's tile size settings). If omitted, resolved from dat_linter.toml's [tile_size] and the .dat's cell_size=";
 const FMT_PATH_HELP_JA: &str = "単一ファイル・ディレクトリ・globパターン（例 `refs/*.dat`, `refs/**/*.dat`）。複数ファイルに解決された場合は --write が必須";
 const FMT_PATH_HELP_EN: &str = "A single file, directory, or glob pattern (e.g. `refs/*.dat`, `refs/**/*.dat`). --write is required when multiple files match";
 const FMT_NO_REORDER_HELP_JA: &str =
@@ -144,10 +146,15 @@ pub fn apply_language_to_help(cmd: clap::Command, lang: Language) -> clap::Comma
                 Language::Japanese => LINT_VERBOSE_HELP_JA,
                 Language::English => LINT_VERBOSE_HELP_EN,
             };
+            let tile_size_help = match lang {
+                Language::Japanese => LINT_TILE_SIZE_HELP_JA,
+                Language::English => LINT_TILE_SIZE_HELP_EN,
+            };
             c.about(about)
                 .mut_arg("path", |a| a.help(path_help))
                 .mut_arg("verbose", |a| a.help(verbose_help))
                 .mut_arg("config", |a| a.help(config_help))
+                .mut_arg("tile_size", |a| a.help(tile_size_help))
         })
         .mut_subcommand("fmt", |c| {
             let about = match lang {
@@ -229,6 +236,11 @@ pub struct LintArgs {
     /// `dat_linter.toml`を自動探索する（存在しなければ全ルール有効）。
     #[arg(long)]
     pub config: Option<PathBuf>,
+    /// 画像タイルサイズ（`makeobj pak<N>`のN）をこの実行に限り強制的に上書きする。
+    /// 優先順位は`.dat`の`cell_size=`・`dat_linter.toml`の`[tile_size]`のどちらよりも
+    /// 高い（1回限りの明示的な検証用途を想定）。省略時はconfig/`cell_size=`から解決する。
+    #[arg(long)]
+    pub tile_size: Option<u32>,
 }
 
 #[derive(clap::Args)]

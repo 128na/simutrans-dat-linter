@@ -106,7 +106,14 @@ impl Rule for BaseImageRequiredRule {
         // 冬季画像なし分岐ではimage[-]が実際に読まれる画像なので、存在確認とサイズ確認を行う
         // （image[-][0]分岐ではimage[-]は評価されない。way_writer.cc:88-96参照）。
         if season0.is_empty() && !no_season.is_empty() {
-            check_image_ref(no_season, ctx.dat_dir, "image[-]", &mut diags, ctx.language);
+            check_image_ref(
+                no_season,
+                ctx.dat_dir,
+                "image[-]",
+                &mut diags,
+                ctx.language,
+                ctx.tile_size,
+            );
         }
         diags
     }

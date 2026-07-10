@@ -39,11 +39,11 @@ pub fn run_lint(args: &LintArgs, language: Language) -> ExitCode {
 
     // 単一ファイル指定時は従来通りの出力・終了コードのみ（サマリ行を追加しない）。
     if paths.len() == 1 {
-        return lint_one_file(&paths[0], level, &config, language);
+        return lint_one_file(&paths[0], level, &config, language, args.tile_size);
     }
 
     let counts = aggregate_multi_file(&paths, |path| {
-        lint_one_file_counts(path, level, &config, language)
+        lint_one_file_counts(path, level, &config, language, args.tile_size)
     });
 
     // 第10弾（項目1）: 指摘が一切無い（合計error/warningが共に0、かつ個々のファイルで
@@ -71,8 +71,9 @@ fn lint_one_file(
     level: Severity,
     config: &LintConfig,
     language: Language,
+    tile_size_override: Option<u32>,
 ) -> ExitCode {
-    let (_, _, failed) = lint_one_file_counts(path, level, config, language);
+    let (_, _, failed) = lint_one_file_counts(path, level, config, language, tile_size_override);
     if failed {
         ExitCode::FAILURE
     } else {
@@ -87,6 +88,7 @@ fn lint_one_file_counts(
     level: Severity,
     config: &LintConfig,
     language: Language,
+    tile_size_override: Option<u32>,
 ) -> (usize, usize, bool) {
     let records = match DatFile::parse_all(path) {
         Ok(r) => r,
@@ -154,10 +156,22 @@ fn lint_one_file_counts(
             continue;
         };
 
+        // タイルサイズの解決優先順位（高い方が勝つ。dat_linter::config::LintConfig
+        // モジュール冒頭docコメント「tile_size」参照）:
+        // 1. `--tile-size` CLI引数（1回限りの明示的な上書き）
+        // 2. `.dat`自身の`cell_size=`フィールド（`obj_writer.cc:50`の
+        //    `obj.get_int("cell_size", default_image_size)`に対応する実在フィールド）
+        // 3. `dat_linter.toml`の`[tile_size]`（`LintConfig::tile_size_for`が
+        //    overrides/defaultを解決する）
+        let tile_size = tile_size_override
+            .or_else(|| dat.get("cell_size").and_then(|s| s.trim().parse().ok()))
+            .unwrap_or_else(|| config.tile_size_for(path));
+
         let ctx = RuleContext {
             dat,
             dat_dir,
             language,
+            tile_size,
         };
         let mut record_diags = rules::check_duplicate_keys(dat, language);
         record_diags.extend(rule_set.run(&ctx));

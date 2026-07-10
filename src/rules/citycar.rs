@@ -174,7 +174,14 @@ impl Rule for DirectionImageRefRule {
                     ),
                 ));
             } else {
-                check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
+                check_image_ref(
+                    value,
+                    ctx.dat_dir,
+                    &key,
+                    &mut diags,
+                    ctx.language,
+                    ctx.tile_size,
+                );
             }
         }
 

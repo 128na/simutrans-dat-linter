@@ -10,6 +10,14 @@ pub struct RuleContext<'a> {
     /// 診断メッセージの出力言語。`config.rs`の`[general] language`から解決される
     /// （未指定・設定ファイル無しの場合は`Language::default()`=English）。
     pub language: Language,
+    /// 画像タイルサイズ（`makeobj pak<N>`のNに相当）。`check_image_ref`が
+    /// 画像サイズ・タイル座標の検証に使う。解決優先順位（呼び出し元
+    /// `commands/lint.rs::lint_one_file_counts`参照）: `--tile-size`CLI引数 >
+    /// `.dat`の`cell_size=`フィールド（`obj_writer.cc:50`の
+    /// `obj.get_int("cell_size", default_image_size)`に対応する実在フィールド） >
+    /// `dat_linter.toml`の`[tile_size] overrides`（パスのglobマッチ） >
+    /// `[tile_size] default` > `crate::rules::common::DEFAULT_TILE_SIZE`（128）。
+    pub tile_size: u32,
 }
 
 /// 1つのobj種別に対する1つの検査項目。obj種別ごとの`Vec<Box<dyn Rule>>`を

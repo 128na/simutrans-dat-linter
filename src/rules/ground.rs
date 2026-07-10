@@ -165,7 +165,14 @@ impl Rule for SlopeImageRefRule {
                 // （src/rules/common.rs）側に一元化されている。以前はここに
                 // `value != "-"`ガードを個別追加していたが、第8弾で共通化した
                 // ため不要（`check_image_ref`冒頭のdocコメント参照）。
-                check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
+                check_image_ref(
+                    value,
+                    ctx.dat_dir,
+                    &key,
+                    &mut diags,
+                    ctx.language,
+                    ctx.tile_size,
+                );
                 phase += 1;
                 // 安全弁: dat構文異常でphaseが際限なく増え続ける事態を避ける
                 // （makeobj自身は無限ループ`for (;;phase++)`だが、実用上十分大きい

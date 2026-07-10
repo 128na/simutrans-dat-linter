@@ -1,0 +1,9 @@
+obj=citycar
+name=BadImageSizeCityCar
+copyright=fuga
+distributionweight=2
+speed=50
+
+image[s]=station_cube.png.0.0
+image[w]=bad_size.png.0.0
+cell_size=64

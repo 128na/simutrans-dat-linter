@@ -233,7 +233,14 @@ impl Rule for ImageRefRule {
                 let key = format!("{prefix}[{ribi}]");
                 let value = dat.get(&key).unwrap_or("");
                 if !value.is_empty() {
-                    check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
+                    check_image_ref(
+                        value,
+                        ctx.dat_dir,
+                        &key,
+                        &mut diags,
+                        ctx.language,
+                        ctx.tile_size,
+                    );
                 }
             }
         }
@@ -244,7 +251,14 @@ impl Rule for ImageRefRule {
                 let key = format!("{prefix}[{slope}]");
                 let value = dat.get(&key).unwrap_or("");
                 if !value.is_empty() {
-                    check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
+                    check_image_ref(
+                        value,
+                        ctx.dat_dir,
+                        &key,
+                        &mut diags,
+                        ctx.language,
+                        ctx.tile_size,
+                    );
                 }
             }
         }
@@ -257,7 +271,14 @@ impl Rule for ImageRefRule {
                 let key = format!("{prefix}[{slope}]");
                 let value = dat.get(&key).unwrap_or("");
                 if !value.is_empty() {
-                    check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
+                    check_image_ref(
+                        value,
+                        ctx.dat_dir,
+                        &key,
+                        &mut diags,
+                        ctx.language,
+                        ctx.tile_size,
+                    );
                 }
             }
         }
@@ -270,7 +291,14 @@ impl Rule for ImageRefRule {
                 let key = format!("{prefix}[{ribi}]");
                 let value = dat.get(&key).unwrap_or("");
                 if !value.is_empty() {
-                    check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
+                    check_image_ref(
+                        value,
+                        ctx.dat_dir,
+                        &key,
+                        &mut diags,
+                        ctx.language,
+                        ctx.tile_size,
+                    );
                 }
             }
         }
@@ -280,7 +308,14 @@ impl Rule for ImageRefRule {
         for key in ["cursor", "icon"] {
             let value = dat.get(key).unwrap_or("");
             if !value.is_empty() {
-                check_image_ref(value, ctx.dat_dir, key, &mut diags, ctx.language);
+                check_image_ref(
+                    value,
+                    ctx.dat_dir,
+                    key,
+                    &mut diags,
+                    ctx.language,
+                    ctx.tile_size,
+                );
             }
         }
 

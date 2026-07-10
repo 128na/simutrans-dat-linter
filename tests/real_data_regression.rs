@@ -76,6 +76,7 @@ fn check_all_records(file: &str) -> Vec<Vec<(Severity, &'static str)>> {
                     dat,
                     dat_dir: &dir,
                     language: Language::default(),
+                    tile_size: dat_linter::rules::common::DEFAULT_TILE_SIZE,
                 };
                 diags.extend(rule_set.run(&ctx));
             }

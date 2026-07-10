@@ -370,3 +370,92 @@ fn describe_help_arg_text_is_english_by_default() {
         "CODE引数のhelpが表示されるべき: {stdout}"
     );
 }
+
+// --- pak64/pak192等マルチサイズ対応: `--tile-size`によるタイルサイズ上書き -------
+
+#[test]
+fn lint_help_arg_text_mentions_tile_size() {
+    let output = bin().args(["lint", "-h"]).output().expect("起動に失敗");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("--tile-size"),
+        "lintのhelpに--tile-sizeが表示されるべき: {stdout}"
+    );
+}
+
+/// `testdata/citycar_bad_image_size.dat`が参照する`bad_size.png`は64x64
+/// （128の倍数ではないが64の倍数）。デフォルト（128）ではエラーになるが、
+/// `--tile-size 64`を渡すとタイルサイズの倍数チェックを通ることを確認する
+/// （CLI引数がconfig/cell_size=より優先される、という優先順位のエンドツーエンド確認）。
+#[test]
+fn default_tile_size_rejects_64x64_image() {
+    let path = testdata_dir().join("citycar_bad_image_size.dat");
+    let output = bin()
+        .args(["lint", path.to_str().unwrap()])
+        .output()
+        .expect("起動に失敗");
+    assert!(
+        !output.status.success(),
+        "デフォルト(128)では64x64画像はエラーになるべき"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("image-size-not-multiple-of-128"),
+        "128の倍数でないエラーが出るべき: {stderr}"
+    );
+}
+
+#[test]
+fn tile_size_flag_overrides_default_and_accepts_64x64_image() {
+    let path = testdata_dir().join("citycar_bad_image_size.dat");
+    let output = bin()
+        .args(["lint", path.to_str().unwrap(), "--tile-size", "64"])
+        .output()
+        .expect("起動に失敗");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("image-size-not-multiple-of-128"),
+        "--tile-size 64指定時は64x64画像がサイズエラーにならないべき: {stderr}"
+    );
+}
+
+/// `--tile-size`は`dat_linter.toml`の`[tile_size] default`より優先される。
+#[test]
+fn tile_size_flag_overrides_config_default() {
+    let tmp = std::env::temp_dir().join("dat_linter_cli_test_tile_size_cli_over_config");
+    let _ = std::fs::create_dir_all(&tmp);
+    std::fs::write(tmp.join("dat_linter.toml"), "[tile_size]\ndefault = 32\n")
+        .expect("config書き込みに失敗");
+    let path = testdata_dir().join("citycar_bad_image_size.dat");
+
+    let output = bin()
+        .args(["lint", path.to_str().unwrap(), "--tile-size", "64"])
+        .current_dir(&tmp)
+        .output()
+        .expect("起動に失敗");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    assert!(
+        !stderr.contains("image-size-not-multiple-of-128"),
+        "config([tile_size] default=32)よりCLIの--tile-size 64が優先されるべき: {stderr}"
+    );
+}
+
+/// `.dat`自身の`cell_size=`（`obj_writer.cc`の実在フィールド）は、`--tile-size`が
+/// 指定されない限りconfig/デフォルトより優先される。
+/// `testdata/citycar_cell_size_override.dat`は`citycar_bad_image_size.dat`と同じ
+/// 64x64画像参照に`cell_size=64`を追加したもの。
+#[test]
+fn cell_size_field_overrides_config_default_when_no_cli_flag() {
+    let path = testdata_dir().join("citycar_cell_size_override.dat");
+    let output = bin()
+        .args(["lint", path.to_str().unwrap()])
+        .output()
+        .expect("起動に失敗");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("image-size-not-multiple-of-128"),
+        "cell_size=64指定時はデフォルト(128)ではなく64を基準に検証されるべき: {stderr}"
+    );
+}

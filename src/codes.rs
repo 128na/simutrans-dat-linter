@@ -674,46 +674,51 @@ impl DiagnosticCode {
             DiagnosticCode::ImageSizeNotMultipleOf128 => CodeInfo {
                 code: *self,
                 source: CodeSource::Lint,
-                why_ja: "参照画像の幅または高さが128の倍数ではありません。image_writer.ccの\
-                    block_load()は幅/高さが128（pak128のimg_size）の倍数でないと読み込み失敗を返し、\
+                why_ja: "参照画像の幅または高さが画像タイルサイズ（既定128、`.dat`の`cell_size=`や\
+                    `dat_linter.toml`の`[tile_size]`・`--tile-size`で変更可能）の倍数ではありません。\
+                    image_writer.ccのblock_load()は幅/高さがimg_sizeの倍数でないと読み込み失敗を返し、\
                     write_obj側がobj_pak_exception_tをthrowしてpak生成全体を中断させます",
-                why_en: "The referenced image's width or height is not a multiple of 128. image_writer.\
-                    cc's block_load() fails to load images whose width/height is not a multiple of 128 \
-                    (pak128's img_size), and write_obj throws obj_pak_exception_t, aborting pak \
-                    generation entirely",
-                fix_ja: "画像を128x128単位（128, 256, 384...）のサイズにリサイズ・パディングしてください",
-                fix_en: "Resize or pad the image to a multiple of 128x128 (128, 256, 384, ...)",
+                why_en: "The referenced image's width or height is not a multiple of the image tile \
+                    size (128 by default; configurable via the .dat's cell_size=, dat_linter.toml's \
+                    [tile_size], or --tile-size). image_writer.cc's block_load() fails to load images \
+                    whose width/height is not a multiple of img_size, and write_obj throws \
+                    obj_pak_exception_t, aborting pak generation entirely",
+                fix_ja: "画像をタイルサイズ単位（例: 128の場合は128, 256, 384...）にリサイズ・\
+                    パディングしてください",
+                fix_en: "Resize or pad the image to a multiple of the tile size (e.g. 128, 256, 384, \
+                    ... for a 128 tile size)",
             },
             DiagnosticCode::ImageCoordinateOutOfBounds => CodeInfo {
                 code: *self,
                 source: CodeSource::Lint,
                 why_ja: "画像参照で指定された行/列（例: \"foo.334.0\"のrow=334, col=0）が、実際の\
-                    画像ファイルのタイル数（幅/128, 高さ/128）を超えています。image_writer.ccの\
-                    write_objは`col >= width/img_size || row >= height/img_size`のとき\
-                    \"invalid image number in ...\"としてobj_pak_exception_tをthrowし、\
+                    画像ファイルのタイル数（幅/img_size, 高さ/img_size）を超えています。\
+                    image_writer.ccのwrite_objは`col >= width/img_size || row >= height/img_size`\
+                    のとき\"invalid image number in ...\"としてobj_pak_exception_tをthrowし、\
                     pak生成全体を中断させます。1引数省略形（\"foo.334\"のようにcolを省略した形式）でも、\
                     実際のタイル数を使ってrow/colへ展開し直した後の値で同じ判定が行われます",
                 why_en: "The row/column specified in an image reference (e.g. row=334, col=0 in \
-                    \"foo.334.0\") exceeds the image file's actual tile grid (width/128, height/128). \
-                    image_writer.cc's write_obj throws obj_pak_exception_t (\"invalid image number in \
-                    ...\") when `col >= width/img_size || row >= height/img_size`, aborting pak \
-                    generation entirely. The same check applies to the 1-argument shorthand form \
-                    (e.g. \"foo.334\", omitting col), after it is expanded into row/col using the \
-                    image's actual tile count",
+                    \"foo.334.0\") exceeds the image file's actual tile grid (width/img_size, \
+                    height/img_size). image_writer.cc's write_obj throws obj_pak_exception_t \
+                    (\"invalid image number in ...\") when `col >= width/img_size || \
+                    row >= height/img_size`, aborting pak generation entirely. The same check applies \
+                    to the 1-argument shorthand form (e.g. \"foo.334\", omitting col), after it is \
+                    expanded into row/col using the image's actual tile count",
                 fix_ja: "参照している行/列番号を確認し、画像の実際のタイルグリッド範囲内\
-                    （0..幅/128, 0..高さ/128）に収まるよう修正するか、画像をより大きなタイル数を\
-                    持つファイルに差し替えてください",
+                    （0..幅/img_size, 0..高さ/img_size）に収まるよう修正するか、画像をより大きな\
+                    タイル数を持つファイルに差し替えてください",
                 fix_en: "Check the referenced row/column number and correct it to fit within the \
-                    image's actual tile grid (0..width/128, 0..height/128), or replace the image with \
-                    one that has enough tiles",
+                    image's actual tile grid (0..width/img_size, 0..height/img_size), or replace the \
+                    image with one that has enough tiles",
             },
             DiagnosticCode::ImageOk => CodeInfo {
                 code: *self,
                 source: CodeSource::Lint,
-                why_ja: "情報表示です（Diagnostic::info）。参照画像が存在し、サイズも128の倍数で\
-                    あることを示すだけで、問題ではありません",
+                why_ja: "情報表示です（Diagnostic::info）。参照画像が存在し、サイズも画像タイルサイズの\
+                    倍数であることを示すだけで、問題ではありません",
                 why_en: "An informational message (Diagnostic::info) confirming that the referenced \
-                    image exists and its size is a multiple of 128. It does not indicate a problem",
+                    image exists and its size is a multiple of the image tile size. It does not \
+                    indicate a problem",
                 fix_ja: "対応不要です",
                 fix_en: "No action needed",
             },

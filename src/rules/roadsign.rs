@@ -227,7 +227,14 @@ fn check_numbered(ctx: &RuleContext) -> Vec<Diagnostic> {
             }
             break;
         }
-        check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
+        check_image_ref(
+            value,
+            ctx.dat_dir,
+            &key,
+            &mut diags,
+            ctx.language,
+            ctx.tile_size,
+        );
     }
     diags
 }
@@ -268,7 +275,14 @@ fn check_2d(ctx: &RuleContext) -> Vec<Diagnostic> {
                     ),
                 ));
             } else {
-                check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
+                check_image_ref(
+                    value,
+                    ctx.dat_dir,
+                    &key,
+                    &mut diags,
+                    ctx.language,
+                    ctx.tile_size,
+                );
             }
         }
     }

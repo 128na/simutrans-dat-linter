@@ -18,7 +18,30 @@
 //! [rules]
 //! include = ["obsolete-type", "missing-waytype"]
 //! exclude = ["duplicate-key"]
+//!
+//! [tile_size]
+//! default = 128
+//! overrides = [
+//!     { glob = "**/misc_GUI_64/**", size = 64 },
+//! ]
 //! ```
+//!
+//! ## `tile_size`（画像タイルサイズ、pak64/pak192等マルチサイズ対応）
+//! `check_image_ref`（`rules/common.rs`）が画像サイズ・タイル座標の検証に使う
+//! タイルサイズ（`makeobj pak<N>`のN）を解決する設定。次の優先順位で決まる
+//! （高い方が勝つ。詳細な設計根拠は`rules/common.rs`の`DEFAULT_TILE_SIZE`
+//! docコメント参照）:
+//!
+//! 1. `--tile-size` CLI引数（1回の実行に限る明示的な上書き）
+//! 2. `.dat`ファイル自身の`cell_size=`フィールド（`obj_writer.cc:50`の
+//!    `obj.get_int("cell_size", default_image_size)`に対応する実在のフィールド。
+//!    ファイル単位の指定であり最も信頼できる情報源だが、実データでの使用例は
+//!    稀）
+//! 3. `[tile_size] overrides`: 検証対象パスに対する`glob`パターンマッチ
+//!    （最初にマッチした要素を採用）。実際の`pak128/Makefile`が`DIRS64`/
+//!    `DIRS128`でディレクトリ単位にビルド対象を振り分けている実例を模倣した、
+//!    「1プロジェクト内でサイズが混在する」ケース向けの仕組み
+//! 4. `[tile_size] default`（省略時は128）
 //!
 //! ## include/exclude の意味論
 //! 1. `include` が空なら「全ルール（`Diagnostic.code`）が候補」。非空なら
@@ -90,6 +113,18 @@ language = "en"
 [rules]
 include = []
 exclude = []
+
+# [tile_size]
+# default: image tile size (makeobj's pak<N>) used when nothing else applies.
+#   Defaults to 128 (pak128) if omitted entirely.
+# overrides: per-path glob -> tile size, checked in order (first match wins).
+#   Mirrors how a real pak128/Makefile assigns some directories to DIRS64
+#   instead of DIRS128 (e.g. a pak64-only GUI asset directory living inside
+#   an otherwise pak128 tree).
+# default = 128
+# overrides = [
+#     { glob = "**/misc_GUI_64/**", size = 64 },
+# ]
 "#;
 
 #[derive(Debug, Default, Deserialize)]
@@ -98,6 +133,8 @@ struct RawConfig {
     general: RawGeneralConfig,
     #[serde(default)]
     rules: RawRulesConfig,
+    #[serde(default)]
+    tile_size: RawTileSizeConfig,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -114,6 +151,20 @@ struct RawRulesConfig {
     exclude: Vec<String>,
 }
 
+#[derive(Debug, Default, Deserialize)]
+struct RawTileSizeConfig {
+    #[serde(default)]
+    default: Option<u32>,
+    #[serde(default)]
+    overrides: Vec<RawTileSizeOverride>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawTileSizeOverride {
+    glob: String,
+    size: u32,
+}
+
 /// 読み込み・正規化済みの設定。`is_enabled`で`Diagnostic.code`ごとに
 /// 有効/無効を判定し、`language()`で出力言語を取得する。
 ///
@@ -126,6 +177,11 @@ pub struct LintConfig {
     include: HashSet<String>,
     exclude: HashSet<String>,
     language: Language,
+    tile_size_default: u32,
+    /// パスへの`glob`マッチで解決するタイルサイズ上書き。宣言順を保持し、
+    /// `tile_size_for`は最初にマッチした要素を採用する
+    /// （TOML配列の順序＝ユーザーが書いた優先順位、という素直な解釈）。
+    tile_size_overrides: Vec<(glob::Pattern, u32)>,
 }
 
 impl Default for LintConfig {
@@ -135,14 +191,17 @@ impl Default for LintConfig {
 }
 
 impl LintConfig {
-    /// 全ルールが有効・言語はデフォルト(English)の設定
-    /// （設定ファイル無しの状態と同義。fmtのreorderも
-    /// `is_enabled(DiagnosticCode::FmtReorderApplied)`が`true`を返すため既定で有効）。
+    /// 全ルールが有効・言語はデフォルト(English)・タイルサイズは
+    /// `DEFAULT_TILE_SIZE`(128)固定の設定（設定ファイル無しの状態と同義。
+    /// fmtのreorderも`is_enabled(DiagnosticCode::FmtReorderApplied)`が
+    /// `true`を返すため既定で有効）。
     pub fn all_enabled() -> Self {
         LintConfig {
             include: HashSet::new(),
             exclude: HashSet::new(),
             language: Language::default(),
+            tile_size_default: crate::rules::common::DEFAULT_TILE_SIZE,
+            tile_size_overrides: Vec::new(),
         }
     }
 
@@ -206,10 +265,29 @@ impl LintConfig {
             .as_deref()
             .and_then(Language::from_str)
             .unwrap_or_default();
+        let tile_size_default = raw
+            .tile_size
+            .default
+            .unwrap_or(crate::rules::common::DEFAULT_TILE_SIZE);
+        let mut tile_size_overrides = Vec::with_capacity(raw.tile_size.overrides.len());
+        for o in raw.tile_size.overrides {
+            let pattern = glob::Pattern::new(&o.glob).map_err(|e| {
+                t!(error_lang,
+                    ja: "{p} の [tile_size] overrides に不正なglobパターンがあります (\"{glob}\": {e})",
+                    en: "{p} has an invalid glob pattern in [tile_size] overrides (\"{glob}\": {e})",
+                    p = path.display(),
+                    glob = o.glob,
+                    e = e,
+                )
+            })?;
+            tile_size_overrides.push((pattern, o.size));
+        }
         Ok(LintConfig {
             include: raw.rules.include.into_iter().collect(),
             exclude: raw.rules.exclude.into_iter().collect(),
             language,
+            tile_size_default,
+            tile_size_overrides,
         })
     }
 
@@ -231,6 +309,23 @@ impl LintConfig {
     /// `Language::default()`（English）。
     pub fn language(&self) -> Language {
         self.language
+    }
+
+    /// `path`（検証対象の`.dat`ファイルパス）に適用すべき画像タイルサイズを解決する。
+    /// `[tile_size] overrides`を宣言順に見て最初にマッチした`glob`の`size`を返し、
+    /// 何もマッチしなければ`[tile_size] default`（省略時`DEFAULT_TILE_SIZE`=128）を返す。
+    ///
+    /// `.dat`自身の`cell_size=`フィールドや`--tile-size`CLI引数はここでは扱わない
+    /// （呼び出し元の`commands/lint.rs::lint_one_file_counts`が、この関数の戻り値を
+    /// 含む優先順位付けをレコードごとに行う。モジュール冒頭docコメント
+    /// 「`tile_size`（画像タイルサイズ）」参照）。
+    pub fn tile_size_for(&self, path: &Path) -> u32 {
+        for (pattern, size) in &self.tile_size_overrides {
+            if pattern.matches_path(path) {
+                return *size;
+            }
+        }
+        self.tile_size_default
     }
 }
 
@@ -271,6 +366,8 @@ mod tests {
             include: raw.rules.include.into_iter().collect(),
             exclude: raw.rules.exclude.into_iter().collect(),
             language: Language::default(),
+            tile_size_default: crate::rules::common::DEFAULT_TILE_SIZE,
+            tile_size_overrides: Vec::new(),
         };
         assert!(cfg.is_enabled(DiagnosticCode::ObsoleteType));
     }
@@ -281,6 +378,8 @@ mod tests {
             include: ["obsolete-type".to_string()].into_iter().collect(),
             exclude: HashSet::new(),
             language: Language::default(),
+            tile_size_default: crate::rules::common::DEFAULT_TILE_SIZE,
+            tile_size_overrides: Vec::new(),
         };
         assert!(cfg.is_enabled(DiagnosticCode::ObsoleteType));
         assert!(!cfg.is_enabled(DiagnosticCode::MissingWaytype));
@@ -292,6 +391,8 @@ mod tests {
             include: ["obsolete-type".to_string()].into_iter().collect(),
             exclude: ["obsolete-type".to_string()].into_iter().collect(),
             language: Language::default(),
+            tile_size_default: crate::rules::common::DEFAULT_TILE_SIZE,
+            tile_size_overrides: Vec::new(),
         };
         assert!(!cfg.is_enabled(DiagnosticCode::ObsoleteType));
     }
@@ -302,6 +403,8 @@ mod tests {
             include: HashSet::new(),
             exclude: ["duplicate-key".to_string()].into_iter().collect(),
             language: Language::default(),
+            tile_size_default: crate::rules::common::DEFAULT_TILE_SIZE,
+            tile_size_overrides: Vec::new(),
         };
         assert!(!cfg.is_enabled(DiagnosticCode::DuplicateKey));
         assert!(cfg.is_enabled(DiagnosticCode::ObsoleteType));
@@ -321,6 +424,8 @@ mod tests {
             include: raw.rules.include.into_iter().collect(),
             exclude: raw.rules.exclude.into_iter().collect(),
             language: Language::default(),
+            tile_size_default: crate::rules::common::DEFAULT_TILE_SIZE,
+            tile_size_overrides: Vec::new(),
         };
         assert!(cfg.is_enabled(DiagnosticCode::ObsoleteType));
         assert!(!cfg.is_enabled(DiagnosticCode::MissingWaytype));
@@ -468,5 +573,72 @@ mod tests {
         let _ = std::fs::remove_file(&tmp);
         assert!(result.is_err(), "既存ファイルへの上書きはエラーになるべき");
         assert!(content_after.contains("custom content"));
+    }
+
+    #[test]
+    fn all_enabled_tile_size_defaults_to_128() {
+        let cfg = LintConfig::all_enabled();
+        assert_eq!(cfg.tile_size_for(Path::new("anything.dat")), 128);
+    }
+
+    #[test]
+    fn tile_size_default_is_honored_via_load_from() {
+        let tmp = std::env::temp_dir().join("dat_linter_test_tile_size_default.toml");
+        std::fs::write(&tmp, "[tile_size]\ndefault = 64\n").unwrap();
+        let cfg = LintConfig::load_from(&tmp).unwrap();
+        let _ = std::fs::remove_file(&tmp);
+        assert_eq!(cfg.tile_size_for(Path::new("anywhere/foo.dat")), 64);
+    }
+
+    #[test]
+    fn tile_size_override_wins_for_matching_path() {
+        let tmp = std::env::temp_dir().join("dat_linter_test_tile_size_override.toml");
+        std::fs::write(
+            &tmp,
+            "[tile_size]\ndefault = 128\noverrides = [{ glob = \"**/misc_GUI_64/**\", size = 64 }]\n",
+        )
+        .unwrap();
+        let cfg = LintConfig::load_from(&tmp).unwrap();
+        let _ = std::fs::remove_file(&tmp);
+        assert_eq!(
+            cfg.tile_size_for(Path::new("base/misc_GUI_64/wkz_icons.dat")),
+            64
+        );
+        assert_eq!(cfg.tile_size_for(Path::new("base/misc_GUI/mouse.dat")), 128);
+    }
+
+    #[test]
+    fn first_matching_tile_size_override_wins() {
+        let tmp = std::env::temp_dir().join("dat_linter_test_tile_size_override_order.toml");
+        std::fs::write(
+            &tmp,
+            "[tile_size]\n\
+             default = 128\n\
+             overrides = [\n\
+             { glob = \"**/gui/**\", size = 64 },\n\
+             { glob = \"**/gui/big/**\", size = 192 },\n\
+             ]\n",
+        )
+        .unwrap();
+        let cfg = LintConfig::load_from(&tmp).unwrap();
+        let _ = std::fs::remove_file(&tmp);
+        // "gui/big/"配下も先に書かれた"gui/**"に先勝ちでマッチする（宣言順優先）。
+        assert_eq!(cfg.tile_size_for(Path::new("gui/big/logo.dat")), 64);
+    }
+
+    #[test]
+    fn invalid_tile_size_override_glob_is_rejected() {
+        let tmp = std::env::temp_dir().join("dat_linter_test_tile_size_invalid_glob.toml");
+        std::fs::write(
+            &tmp,
+            "[tile_size]\noverrides = [{ glob = \"[\", size = 64 }]\n",
+        )
+        .unwrap();
+        let err = LintConfig::load_from(&tmp).unwrap_err();
+        let _ = std::fs::remove_file(&tmp);
+        assert!(
+            err.contains("tile_size"),
+            "不正なglobパターンのエラーメッセージに[tile_size]の文脈が含まれるべき: {err:?}"
+        );
     }
 }

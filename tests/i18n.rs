@@ -27,6 +27,7 @@ fn missing_cursor_icon_message(language: Language) -> String {
         dat: &dat,
         dat_dir: &dir,
         language,
+        tile_size: dat_linter::rules::common::DEFAULT_TILE_SIZE,
     };
     let rule_set = RuleSet::for_obj_type("building", &dat).expect("building は対応済みのはず");
     let diags = rule_set.run(&ctx);

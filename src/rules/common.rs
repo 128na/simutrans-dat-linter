@@ -55,6 +55,7 @@ pub fn check_via_dispatch(obj_type: &str, dat: &DatFile, dat_dir: &Path) -> Vec<
         dat,
         dat_dir,
         language: Language::default(),
+        tile_size: DEFAULT_TILE_SIZE,
     };
     RuleSet::for_obj_type(obj_type, dat)
         .unwrap_or_else(|| panic!("RuleSet::for_obj_type({obj_type:?}) returned None"))
@@ -81,38 +82,24 @@ pub const KNOWN_WAYTYPES: &[&str] = &[
     "decoration",
 ];
 
-/// pak128の画像タイルサイズ。このプロジェクトは現状pak128のみを対象とする
+/// 画像タイルサイズが未指定の場合のフォールバック値（pak128のデフォルト）。
 /// （image_writer.cc:270-275 `block_load()`: `if ((width%img_size!=0)||
 /// (height%img_size!=0)) dbg->error(...)`で読み込み失敗を返し、
 /// `write_obj`側（image_writer.cc:409-413）が`throw obj_pak_exception_t(...)`で
 /// pak生成全体を中断させる。実質的にビルドを失敗させる意味でFATAL相当）。
 ///
-/// REJECTED（第6弾で再調査、対応不要と判断）: pak128実データ全体への`lint`実行で
-/// `base/misc_GUI_64/`配下のファイル（`wkz_icons.png`が3136x384等、128の倍数でない）
-/// が`image-size-not-multiple-of-128`として大量に誤検知しているように見えたため、
-/// `image_writer.cc`と`obj_writer.cc`を再調査した。結果:
-/// - `img_size`は固定の128ではなく**実行時に決まるグローバル変数**
-///   （`image_writer_t::img_size`、デフォルト64）で、`obj_writer_t::write()`
-///   （obj_writer.cc:50）が`.dat`ごとに`obj.get_int("cell_size", default_image_size)`で
-///   設定し直す。`default_image_size`自体は`makeobj pak<N>`のCLI引数
-///   （`makeobj.cc:85-91`、`atoi(argv[0]+3)`）で決まる、つまり**「どのサイズで
-///   ビルドするか」はコマンドライン引数次第**であり、`.dat`ファイル自体には
-///   通常このサイズ情報を持たない（`cell_size=`フィールドで個別に上書きできるが、
-///   pak128の実データにはこのフィールドを使う`.dat`が1件も無いことも確認した）
-/// - `pak128/Makefile`（`DIRS64`/`DIRS128`の変数分け、`$(MAKEOBJ) PAK`と
-///   `$(MAKEOBJ) verbose PAK128`の呼び分け）を確認したところ、
-///   `base/misc_GUI_64`はpak128ビルドの対象**外**で、意図的に`PAK`
-///   （デフォルトサイズ、実質pak64）でビルドされる別系統のアセットだった
-/// - つまりこの誤検知は「本ツールが128チェックのロジックを誤っている」のではなく、
-///   「pak128という1つのsubmodule内に、実際にはpak128としてビルドされない
-///   pak64専用アセットが同居している」という、`.dat`ファイル単体からは
-///   判別不可能な外部のビルド設定に起因するもの。`.dat`内に`cell_size=`が
-///   無い以上、本ツール（1ファイルを見て検証する設計）に判別する手段が無い
-///
-/// 結論: 128チェック自体はpak128としてビルドする`.dat`に対しては正しく、
-/// `misc_GUI_64`はそもそも本ツールの対象範囲（pak128）外のアセットである。
-/// 誤検知ではないため`check_image_ref`のロジックは変更しない。
-pub const PAK_TILE_SIZE: u32 = 128;
+/// 第X弾: 当初このプロジェクトは`PAK_TILE_SIZE: u32 = 128`固定でpak128のみを
+/// 対象としていた（第6弾で`base/misc_GUI_64/`誤検知に見えた件を調査し、
+/// 「img_sizeは`makeobj pak<N>`引数・`.dat`の`cell_size=`で決まる実行時値であり、
+/// 128固定は誤りではなくスコープの選択である」と結論づけた経緯がある）。
+/// その後pak64/pak192等マルチサイズ対応の要望を受け、`RuleContext::tile_size`
+/// （`check_image_ref`が実際に使う値）は呼び出し元
+/// （`commands/lint.rs::lint_one_file_counts`）が
+/// `--tile-size` CLI引数 > `.dat`の`cell_size=` > `dat_linter.toml`の
+/// `[tile_size] overrides`（globパスマッチ、`pak128/Makefile`の
+/// `DIRS64`/`DIRS128`ディレクトリ振り分けと同じ発想） > `[tile_size] default`
+/// の優先順位で解決し、最後の保険としてこの`DEFAULT_TILE_SIZE`を使う。
+pub const DEFAULT_TILE_SIZE: u32 = 128;
 
 /// `vehicle_writer.cc`/`citycar_writer.cc:38`/`pedestrian_writer.cc:25-27`の
 /// `dir_codes`配列そのもの（画像キーの添字となる8方向）。vehicle/citycar/pedestrianの
@@ -120,7 +107,7 @@ pub const PAK_TILE_SIZE: u32 = 128;
 pub const DIR_CODES: [&str; 8] = ["s", "w", "sw", "se", "n", "e", "ne", "nw"];
 
 /// 画像参照（`icon=`, `frontimage[...]=`等）を検証する。ファイル存在確認と
-/// サイズが`PAK_TILE_SIZE`の倍数か（`image_writer.cc`の該当fatalチェック）を見る。
+/// サイズが`tile_size`の倍数か（`image_writer.cc`の該当fatalチェック）を見る。
 /// building・vehicleの画像フィールドはどちらも同じ`layer.season.frame`形式の
 /// サフィックスを持つため、両者から共有する。
 /// waytypeを表すフィールドの必須性・既知値チェック。`get_waytype()`を無条件に
@@ -688,6 +675,7 @@ pub fn check_image_ref(
     context: &str,
     diags: &mut Vec<Diagnostic>,
     lang: Language,
+    tile_size: u32,
 ) {
     let value = strip_zoomable_prefix_and_trim(value);
     if value == "-" {
@@ -733,26 +721,26 @@ pub fn check_image_ref(
     match image::open(&path) {
         Ok(img) => {
             let (w, h) = (img.width(), img.height());
-            if w % PAK_TILE_SIZE != 0 || h % PAK_TILE_SIZE != 0 {
+            if w % tile_size != 0 || h % tile_size != 0 {
                 diags.push(Diagnostic::error(
                     DiagnosticCode::ImageSizeNotMultipleOf128,
                     t!(lang,
-                        ja: "{context}: {filename} のサイズが {w}x{h} です。makeobj pak128 は{tile}の倍数でないとエラーになります",
-                        en: "{context}: {filename} has size {w}x{h}. makeobj pak128 requires dimensions to be a multiple of {tile}",
+                        ja: "{context}: {filename} のサイズが {w}x{h} です。makeobj は画像タイルサイズ（{tile}）の倍数でないとエラーになります",
+                        en: "{context}: {filename} has size {w}x{h}. makeobj requires dimensions to be a multiple of the image tile size ({tile})",
                         context = context,
                         filename = filename,
                         w = w,
                         h = h,
-                        tile = PAK_TILE_SIZE,
+                        tile = tile_size,
                     ),
                 ));
             } else if let Some(numkey) = extract_numkey(value) {
                 // image_writer.cc:390-418: row/colを解決し、実際の画像タイル数
-                // （width/img_size, height/img_size）と比較する。128の倍数チェック
-                // （上のif節）を通った後なので、ここでのタイル数は整数になる。
+                // （width/img_size, height/img_size）と比較する。tile_sizeの倍数
+                // チェック（上のif節）を通った後なので、ここでのタイル数は整数になる。
                 let (raw_row, raw_col) = resolve_row_col(&numkey);
-                let cols = (w / PAK_TILE_SIZE) as i64;
-                let rows = (h / PAK_TILE_SIZE) as i64;
+                let cols = (w / tile_size) as i64;
+                let rows = (h / tile_size) as i64;
                 let (row, col) = match raw_col {
                     Some(c) => (raw_row, c),
                     // image_writer.cc:415-418: 1引数省略形（2つ目の"."が無い場合）は
@@ -840,7 +828,14 @@ impl Rule for AllImagesRule {
                 break;
             }
             if value != "-" {
-                check_image_ref(value, ctx.dat_dir, &key, &mut diags, ctx.language);
+                check_image_ref(
+                    value,
+                    ctx.dat_dir,
+                    &key,
+                    &mut diags,
+                    ctx.language,
+                    ctx.tile_size,
+                );
             }
             i += 1;
             // 安全弁: dat構文異常でiが際限なく増え続ける事態を避ける
@@ -985,10 +980,24 @@ impl Rule for CursorIconRule {
         }
 
         if !icon.is_empty() {
-            check_image_ref(icon, ctx.dat_dir, "icon", &mut diags, ctx.language);
+            check_image_ref(
+                icon,
+                ctx.dat_dir,
+                "icon",
+                &mut diags,
+                ctx.language,
+                ctx.tile_size,
+            );
         }
         if !cursor.is_empty() {
-            check_image_ref(cursor, ctx.dat_dir, "cursor", &mut diags, ctx.language);
+            check_image_ref(
+                cursor,
+                ctx.dat_dir,
+                "cursor",
+                &mut diags,
+                ctx.language,
+                ctx.tile_size,
+            );
         }
         diags
     }
@@ -1063,6 +1072,7 @@ impl Rule for TileImageRule {
                                 &format!("frontimage[{l}][{y}][{x}]"),
                                 &mut diags,
                                 ctx.language,
+                                ctx.tile_size,
                             );
                         }
                         if let Some(v) = back {
@@ -1072,6 +1082,7 @@ impl Rule for TileImageRule {
                                 &format!("backimage[{l}][{y}][{x}]"),
                                 &mut diags,
                                 ctx.language,
+                                ctx.tile_size,
                             );
                         }
                     }

@@ -203,9 +203,9 @@ impl Rule for DirectionImageRefRule {
         });
 
         if is_animated {
-            check_animated_images(dat, ctx.dat_dir, &mut diags, ctx.language);
+            check_animated_images(dat, ctx.dat_dir, &mut diags, ctx.language, ctx.tile_size);
         } else {
-            check_static_images(dat, ctx.dat_dir, &mut diags, ctx.language);
+            check_static_images(dat, ctx.dat_dir, &mut diags, ctx.language, ctx.tile_size);
         }
 
         diags
@@ -214,7 +214,13 @@ impl Rule for DirectionImageRefRule {
 
 /// 静止分岐（is_animated偽）: pedestrian_writer.cc:55-59。citycarの
 /// `DirectionImageRefRule`と全く同じ構造。
-fn check_static_images(dat: &DatFile, dat_dir: &Path, diags: &mut Vec<Diagnostic>, lang: Language) {
+fn check_static_images(
+    dat: &DatFile,
+    dat_dir: &Path,
+    diags: &mut Vec<Diagnostic>,
+    lang: Language,
+    tile_size: u32,
+) {
     for dir in DIR_CODES {
         let key = format!("image[{dir}]");
         let value = dat.get(&key).unwrap_or("");
@@ -230,7 +236,7 @@ fn check_static_images(dat: &DatFile, dat_dir: &Path, diags: &mut Vec<Diagnostic
                 ),
             ));
         } else {
-            check_image_ref(value, dat_dir, &key, diags, lang);
+            check_image_ref(value, dat_dir, &key, diags, lang, tile_size);
         }
     }
 }
@@ -242,6 +248,7 @@ fn check_animated_images(
     dat_dir: &Path,
     diags: &mut Vec<Diagnostic>,
     lang: Language,
+    tile_size: u32,
 ) {
     for dir in DIR_CODES {
         let mut frame = 0u32;
@@ -269,7 +276,7 @@ fn check_animated_images(
                 }
                 break;
             }
-            check_image_ref(value, dat_dir, &key, diags, lang);
+            check_image_ref(value, dat_dir, &key, diags, lang, tile_size);
             frame += 1;
         }
     }

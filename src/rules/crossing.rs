@@ -342,7 +342,14 @@ impl Rule for ImageRefRule {
         ];
         for key in LIST_KEYS {
             for (value, full_key) in make_list(ctx.dat, key) {
-                check_image_ref(value, ctx.dat_dir, &full_key, &mut diags, ctx.language);
+                check_image_ref(
+                    value,
+                    ctx.dat_dir,
+                    &full_key,
+                    &mut diags,
+                    ctx.language,
+                    ctx.tile_size,
+                );
             }
         }
         diags

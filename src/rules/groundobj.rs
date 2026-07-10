@@ -243,9 +243,23 @@ impl Rule for SeasonImageRule {
             .max(1);
 
         if speed == 0 {
-            check_fixed_images(dat, ctx.dat_dir, seasons, &mut diags, ctx.language);
+            check_fixed_images(
+                dat,
+                ctx.dat_dir,
+                seasons,
+                &mut diags,
+                ctx.language,
+                ctx.tile_size,
+            );
         } else {
-            check_moving_images(dat, ctx.dat_dir, seasons, &mut diags, ctx.language);
+            check_moving_images(
+                dat,
+                ctx.dat_dir,
+                seasons,
+                &mut diags,
+                ctx.language,
+                ctx.tile_size,
+            );
         }
 
         diags
@@ -261,6 +275,7 @@ fn check_fixed_images(
     seasons: i64,
     diags: &mut Vec<Diagnostic>,
     lang: Language,
+    tile_size: u32,
 ) {
     let mut phase = 0u32;
     loop {
@@ -270,7 +285,7 @@ fn check_fixed_images(
             // groundobj_writer.cc:66-69: goto finish_images。このphase以降は走査しない。
             break;
         }
-        check_image_ref(season0, dat_dir, &season0_key, diags, lang);
+        check_image_ref(season0, dat_dir, &season0_key, diags, lang, tile_size);
 
         for season in 1..seasons {
             let key = format!("image[{phase}][{season}]");
@@ -291,7 +306,7 @@ fn check_fixed_images(
                     ),
                 ));
             } else {
-                check_image_ref(value, dat_dir, &key, diags, lang);
+                check_image_ref(value, dat_dir, &key, diags, lang, tile_size);
             }
         }
 
@@ -325,6 +340,7 @@ fn check_moving_images(
     seasons: i64,
     diags: &mut Vec<Diagnostic>,
     lang: Language,
+    tile_size: u32,
 ) {
     for dir in DIR_CODES {
         for season in 0..seasons {
@@ -345,7 +361,7 @@ fn check_moving_images(
                     ),
                 ));
             } else {
-                check_image_ref(value, dat_dir, &key, diags, lang);
+                check_image_ref(value, dat_dir, &key, diags, lang, tile_size);
             }
         }
     }
