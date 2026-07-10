@@ -1,0 +1,18 @@
+# Minimal dat_linter config used by the integration tests in test/extension.test.ts.
+# Passed explicitly via --config so dat_linter never falls back to auto-generating
+# a dat_linter.toml next to the linted file (see README.md "開発者向けメモ").
+#
+# NOTE: this file is deliberately NOT named dat_linter.toml. The repo-wide
+# .gitignore has a rule for "/dat_linter.toml" (root only, see ../../.gitignore),
+# which does not match this path, but keeping the "test-*" naming convention from
+# the original PoC (try-out/vscode-dat-linter-poc/) avoids any ambiguity.
+
+[general]
+language = "en"
+
+[fmt]
+reorder = true
+
+[rules]
+include = []
+exclude = []
