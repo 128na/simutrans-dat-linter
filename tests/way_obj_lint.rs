@@ -124,3 +124,43 @@ fn date_index_overflow_is_detected() {
         "date-index-overflow"
     ));
 }
+
+#[test]
+fn unknown_own_waytype_diagnostic_has_correct_line_number() {
+    // 第2弾（行番号付与の機械的配線）: `way_obj_unknown_own_waytype.dat`の
+    // `own_waytype=nonexistent_waytype`は4行目（common::check_waytype_fieldに
+    // 新規配線した「値は存在するが不正」パターン、OwnWaytypeRequiredRule経由）。
+    let dir = testdata_dir();
+    let path = dir.join("way_obj_unknown_own_waytype.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    let diags = rules::check_way_obj(&dat, &dir);
+    let d = diags
+        .iter()
+        .find(|d| {
+            d.code == dat_linter::codes::DiagnosticCode::UnknownWaytype
+                && d.location
+                    .as_ref()
+                    .is_some_and(|loc| loc.key == "own_waytype")
+        })
+        .expect("own_waytypeのunknown-waytypeが検出されるべき");
+    let loc = d.location.as_ref().unwrap();
+    assert_eq!(loc.line, 4);
+}
+
+#[test]
+fn missing_image_file_diagnostic_has_correct_line_number() {
+    // 第2弾: `way_obj_missing_image_file.dat`の
+    // `frontimage[-]=nonexistent_way_obj_image.png.0.0`は5行目（ImageRefRuleの
+    // frontimage/backimageループから`dat.line_of(&key)`を渡す）。
+    let dir = testdata_dir();
+    let path = dir.join("way_obj_missing_image_file.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    let diags = rules::check_way_obj(&dat, &dir);
+    let d = diags
+        .iter()
+        .find(|d| d.code == dat_linter::codes::DiagnosticCode::MissingImageFile)
+        .expect("missing-image-fileが検出されるべき");
+    let loc = d.location.as_ref().expect("locationが付与されているべき");
+    assert_eq!(loc.line, 5);
+    assert_eq!(loc.key, "frontimage[-]");
+}

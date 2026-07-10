@@ -118,3 +118,20 @@ fn moving_groundobj_missing_direction_is_detected() {
         "missing-season-image"
     ));
 }
+
+#[test]
+fn unknown_waytype_diagnostic_has_correct_line_number() {
+    // 第2弾（行番号付与の機械的配線）: `groundobj_unknown_waytype.dat`の
+    // `waytype=nonexistent_waytype`は3行目。
+    let dir = testdata_dir();
+    let path = dir.join("groundobj_unknown_waytype.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    let diags = rules::check_groundobj(&dat, &dir);
+    let d = diags
+        .iter()
+        .find(|d| d.code == dat_linter::codes::DiagnosticCode::UnknownWaytype)
+        .expect("unknown-waytypeが検出されるべき");
+    let loc = d.location.as_ref().expect("locationが付与されているべき");
+    assert_eq!(loc.line, 3);
+    assert_eq!(loc.key, "waytype");
+}

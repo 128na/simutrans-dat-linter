@@ -162,6 +162,7 @@ impl Rule for AgeSeasonImageRule {
                         &mut diags,
                         ctx.language,
                         ctx.tile_size,
+                        dat.line_of(&key),
                     );
                 }
             }

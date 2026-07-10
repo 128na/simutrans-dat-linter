@@ -236,7 +236,15 @@ fn check_static_images(
                 ),
             ));
         } else {
-            check_image_ref(value, dat_dir, &key, diags, lang, tile_size);
+            check_image_ref(
+                value,
+                dat_dir,
+                &key,
+                diags,
+                lang,
+                tile_size,
+                dat.line_of(&key),
+            );
         }
     }
 }
@@ -276,7 +284,15 @@ fn check_animated_images(
                 }
                 break;
             }
-            check_image_ref(value, dat_dir, &key, diags, lang, tile_size);
+            check_image_ref(
+                value,
+                dat_dir,
+                &key,
+                diags,
+                lang,
+                tile_size,
+                dat.line_of(&key),
+            );
             frame += 1;
         }
     }

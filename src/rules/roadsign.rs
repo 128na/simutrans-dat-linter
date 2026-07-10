@@ -234,6 +234,7 @@ fn check_numbered(ctx: &RuleContext) -> Vec<Diagnostic> {
             &mut diags,
             ctx.language,
             ctx.tile_size,
+            dat.line_of(&key),
         );
     }
     diags
@@ -282,6 +283,7 @@ fn check_2d(ctx: &RuleContext) -> Vec<Diagnostic> {
                     &mut diags,
                     ctx.language,
                     ctx.tile_size,
+                    dat.line_of(&key),
                 );
             }
         }

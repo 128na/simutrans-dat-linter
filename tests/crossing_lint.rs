@@ -169,3 +169,21 @@ fn ribi_parameter_expansion_resolves_openimage_and_avoids_false_positive() {
          crossing-missing-openimage 等のerrorは出ないべき: {errors:?}"
     );
 }
+
+#[test]
+fn identical_waytypes_diagnostic_has_correct_line_number() {
+    // 第2弾（行番号付与の機械的配線）: `crossing_identical_waytypes.dat`の
+    // `waytype[0]=schiene_tram`は3行目（IdenticalWaytypesRuleが代表として
+    // waytype[0]を指す）。
+    let dir = testdata_dir();
+    let path = dir.join("crossing_identical_waytypes.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    let diags = rules::check_crossing(&dat, &dir);
+    let d = diags
+        .iter()
+        .find(|d| d.code == dat_linter::codes::DiagnosticCode::CrossingIdenticalWaytypes)
+        .expect("crossing-identical-waytypesが検出されるべき");
+    let loc = d.location.as_ref().expect("locationが付与されているべき");
+    assert_eq!(loc.line, 3);
+    assert_eq!(loc.key, "waytype[0]");
+}

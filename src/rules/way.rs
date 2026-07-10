@@ -113,6 +113,7 @@ impl Rule for BaseImageRequiredRule {
                 &mut diags,
                 ctx.language,
                 ctx.tile_size,
+                ctx.dat.line_of("image[-]"),
             );
         }
         diags

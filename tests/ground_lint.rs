@@ -80,3 +80,21 @@ fn bad_image_size_is_detected() {
         "image-size-not-multiple-of-128"
     ));
 }
+
+#[test]
+fn missing_image_file_diagnostic_has_correct_line_number() {
+    // 第2弾（行番号付与の機械的配線）: `ground_missing_image_file.dat`の
+    // `image[0][0]=no_such_file.png.0.0`は4行目（common::check_image_refに
+    // 新規配線したline引数、SlopeImageRefRuleから`dat.line_of(&key)`を渡す）。
+    let dir = testdata_dir();
+    let path = dir.join("ground_missing_image_file.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    let diags = rules::check_ground(&dat, &dir);
+    let d = diags
+        .iter()
+        .find(|d| d.code == dat_linter::codes::DiagnosticCode::MissingImageFile)
+        .expect("missing-image-fileが検出されるべき");
+    let loc = d.location.as_ref().expect("locationが付与されているべき");
+    assert_eq!(loc.line, 4);
+    assert_eq!(loc.key, "image[0][0]");
+}

@@ -167,3 +167,36 @@ fn productivity_zero_is_detected() {
         "factory-productivity-zero"
     ));
 }
+
+#[test]
+fn type_override_diagnostic_has_correct_line_number() {
+    // 第2弾（行番号付与の機械的配線）: `factory_type_override.dat`の`type=res`は
+    // 5行目（`.at()`が新規に配線された「値は存在するが不正」パターン）。
+    let dir = testdata_dir();
+    let path = dir.join("factory_type_override.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    let diags = rules::check_factory(&dat, &dir);
+    let d = diags
+        .iter()
+        .find(|d| d.code == dat_linter::codes::DiagnosticCode::FactoryTypeOverride)
+        .expect("factory-type-overrideが検出されるべき");
+    let loc = d.location.as_ref().expect("locationが付与されているべき");
+    assert_eq!(loc.line, 5);
+    assert_eq!(loc.key, "type");
+}
+
+#[test]
+fn output_capacity_too_small_diagnostic_has_correct_line_number() {
+    // 第2弾: `factory_output_capacity_too_small.dat`の`outputcapacity[0]=5`は9行目。
+    let dir = testdata_dir();
+    let path = dir.join("factory_output_capacity_too_small.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    let diags = rules::check_factory(&dat, &dir);
+    let d = diags
+        .iter()
+        .find(|d| d.code == dat_linter::codes::DiagnosticCode::FactoryOutputCapacityTooSmall)
+        .expect("factory-output-capacity-too-smallが検出されるべき");
+    let loc = d.location.as_ref().expect("locationが付与されているべき");
+    assert_eq!(loc.line, 9);
+    assert_eq!(loc.key, "outputcapacity[0]");
+}

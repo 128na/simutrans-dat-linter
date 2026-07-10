@@ -270,7 +270,7 @@ impl Rule for TypeOverrideRule {
         if type_name.is_empty() || type_name == "fac" {
             return Vec::new();
         }
-        vec![Diagnostic::error(
+        let diag = Diagnostic::error(
             DiagnosticCode::FactoryTypeOverride,
             t!(ctx.language,
                 ja: "type={type_name} が明示されています。factory_writer.cc:220の\
@@ -287,7 +287,12 @@ impl Rule for TypeOverrideRule {
                      does not function as a factory. Do not specify type= for obj=factory",
                 type_name = type_name,
             ),
-        )]
+        );
+        // `type_name`が非空である以上`type`キーは必ずパーサに登録済み。
+        vec![match ctx.dat.line_of("type") {
+            Some(line) => diag.at(line, "type"),
+            None => diag,
+        }]
     }
 }
 
@@ -307,7 +312,7 @@ impl Rule for MapColorRule {
             .filter(|v| (0..=255).contains(v))
             .unwrap_or(255);
         if resolved == 255 {
-            vec![Diagnostic::error(
+            let diag = Diagnostic::error(
                 DiagnosticCode::FactoryMissingMapcolor,
                 t!(ctx.language,
                     ja: "mapcolor が未指定（または255）です。factory_writer.cc は\
@@ -320,7 +325,14 @@ impl Rule for MapColorRule {
                          (mapcolor)\"). makeobj itself cannot distinguish an explicit 255 from \
                          an unspecified value",
                 ),
-            )]
+            );
+            // `mapcolor`キーが実際に存在する場合（255を明示指定・範囲外値・
+            // パース不能な値のいずれか）のみその行を指す。キー自体が無い場合は
+            // `location: None`のまま返す。
+            vec![match ctx.dat.line_of("mapcolor") {
+                Some(line) => diag.at(line, "mapcolor"),
+                None => diag,
+            }]
         } else {
             vec![Diagnostic::info(
                 DiagnosticCode::FactoryMapcolorOk,
@@ -359,7 +371,7 @@ impl Rule for OutputCapacityRule {
                 .and_then(|v| v.trim().parse::<i64>().ok())
                 .unwrap_or(0);
             if cap < 11 {
-                diags.push(Diagnostic::warning(
+                let diag = Diagnostic::warning(
                     DiagnosticCode::FactoryOutputCapacityTooSmall,
                     t!(ctx.language,
                         ja: "{cap_key}={cap} は11未満です。factory_writerは\
@@ -372,7 +384,13 @@ impl Rule for OutputCapacityRule {
                         cap_key = cap_key,
                         cap = cap,
                     ),
-                ));
+                );
+                // `cap_key`が未指定でdefault(0)が使われた場合は`location: None`
+                // のまま返す（0行目という嘘の位置情報は作らない）。
+                diags.push(match dat.line_of(&cap_key) {
+                    Some(line) => diag.at(line, cap_key.clone()),
+                    None => diag,
+                });
             }
         }
         diags
@@ -472,7 +490,7 @@ fn check_probability_field(
         .and_then(|v| v.trim().parse::<i64>().ok())
         .unwrap_or(default);
     if value >= 10000 {
-        diags.push(Diagnostic::warning(
+        let diag = Diagnostic::warning(
             DiagnosticCode::FactoryProbabilityClamped,
             t!(lang,
                 ja: "{key}={value} は10000以上です。factory_writerはこの値を\
@@ -483,7 +501,12 @@ fn check_probability_field(
                 value = value,
                 message = message,
             ),
-        ));
+        );
+        // `key`が未指定でdefaultが使われた場合は`location: None`のまま返す。
+        diags.push(match dat.line_of(key) {
+            Some(line) => diag.at(line, key.to_string()),
+            None => diag,
+        });
     }
 }
 
@@ -518,7 +541,7 @@ impl Rule for ProductivityZeroRule {
             .and_then(|v| v.trim().parse::<i64>().ok())
             .unwrap_or(10);
         if productivity == 0 {
-            vec![Diagnostic::error(
+            let diag = Diagnostic::error(
                 DiagnosticCode::FactoryProductivityZero,
                 t!(ctx.language,
                     ja: "productivity=0 です。ゲームランタイム（simfab.cc）はfactory配置時に\
@@ -532,7 +555,13 @@ impl Rule for ProductivityZeroRule {
                          division by zero (undefined behavior, usually a crash). makeobj itself \
                          does not check this value at all",
                 ),
-            )]
+            );
+            // defaultが10（非0）のため、productivity==0に到達するのは
+            // `productivity`キーが実在し明示的に0が指定された場合のみ。
+            vec![match ctx.dat.line_of("productivity") {
+                Some(line) => diag.at(line, "productivity"),
+                None => diag,
+            }]
         } else {
             Vec::new()
         }

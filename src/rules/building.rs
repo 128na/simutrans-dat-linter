@@ -154,42 +154,56 @@ impl Rule for TypeWaytypeRule {
         let type_name = ctx.dat.get_lower("type");
         let waytype = ctx.dat.get_lower("waytype");
         let mut diags = Vec::new();
-        check_type_and_waytype(&type_name, &waytype, &mut diags, ctx.language);
+        check_type_and_waytype(ctx.dat, &type_name, &waytype, &mut diags, ctx.language);
         diags
     }
 }
 
 fn check_type_and_waytype(
+    dat: &DatFile,
     type_name: &str,
     waytype: &str,
     diags: &mut Vec<Diagnostic>,
     lang: Language,
 ) {
+    // `type`/`waytype`の行番号解決ヘルパー。「値は存在するが不正」パターンの
+    // 診断（ObsoleteType/UnknownType/UnknownWaytype）にのみ`.at()`を付与する
+    // （`key`が非空である呼び出し元でのみ使うため、`line_of`は必ず`Some`を
+    // 返すはずだが、`None`の場合でも0行目のような嘘の位置情報は作らない）。
+    let at_key = |diag: Diagnostic, key: &str| match dat.line_of(key) {
+        Some(line) => diag.at(line, key.to_string()),
+        None => diag,
+    };
+
     if OBSOLETE_TYPES.contains(&type_name) {
-        diags.push(Diagnostic::error(
+        let diag = Diagnostic::error(
             DiagnosticCode::ObsoleteType,
             t!(lang,
                 ja: "type={type_name} は obsolete です。stop/extension と waytype を使ってください",
                 en: "type={type_name} is obsolete. Use stop/extension with waytype instead",
                 type_name = type_name,
             ),
-        ));
+        );
+        diags.push(at_key(diag, "type"));
         return;
     }
     if !KNOWN_TYPES.contains(&type_name) {
-        diags.push(Diagnostic::error(
+        let diag = Diagnostic::error(
             DiagnosticCode::UnknownType,
             t!(lang,
                 ja: "type={type_name} は makeobj が認識できない値です（FATAL ERRORになります）",
                 en: "type={type_name} is not a value makeobj recognizes (this becomes a FATAL ERROR)",
                 type_name = type_name,
             ),
-        ));
+        );
+        diags.push(at_key(diag, "type"));
         return;
     }
 
     if TYPES_REQUIRING_WAYTYPE.contains(&type_name) {
         if waytype.is_empty() {
+            // waytypeキー自体が欠落している（または空文字列の）ケース。
+            // `.at()`は呼ばず`location: None`のまま返す。
             diags.push(Diagnostic::error(
                 DiagnosticCode::MissingWaytype,
                 t!(lang,
@@ -199,14 +213,15 @@ fn check_type_and_waytype(
                 ),
             ));
         } else if !KNOWN_WAYTYPES.contains(&waytype) {
-            diags.push(Diagnostic::error(
+            let diag = Diagnostic::error(
                 DiagnosticCode::UnknownWaytype,
                 t!(lang,
                     ja: "waytype={waytype} は不正な値です（FATAL ERRORになります）",
                     en: "waytype={waytype} is not a valid value (this becomes a FATAL ERROR)",
                     waytype = waytype,
                 ),
-            ));
+            );
+            diags.push(at_key(diag, "waytype"));
         } else {
             diags.push(Diagnostic::info(
                 DiagnosticCode::TypeWaytypeOk,
@@ -224,14 +239,15 @@ fn check_type_and_waytype(
                 ),
             ));
         } else if !KNOWN_WAYTYPES.contains(&waytype) {
-            diags.push(Diagnostic::error(
+            let diag = Diagnostic::error(
                 DiagnosticCode::UnknownWaytype,
                 t!(lang,
                     ja: "waytype={waytype} は不正な値です（FATAL ERRORになります）",
                     en: "waytype={waytype} is not a valid value (this becomes a FATAL ERROR)",
                     waytype = waytype,
                 ),
-            ));
+            );
+            diags.push(at_key(diag, "waytype"));
         } else {
             diags.push(Diagnostic::info(
                 DiagnosticCode::TypeWaytypeOk,
@@ -250,13 +266,19 @@ struct ObsoleteKeywordRule;
 impl Rule for ObsoleteKeywordRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
         if ctx.dat.get("extension_building").is_some() {
-            vec![Diagnostic::error(
+            let diag = Diagnostic::error(
                 DiagnosticCode::ObsoleteKeyword,
                 t!(ctx.language,
                     ja: "extension_building は obsolete です。type=stop/extension と waytype を使ってください",
                     en: "extension_building is obsolete. Use type=stop/extension with waytype instead",
                 ),
-            )]
+            );
+            // `dat.get("extension_building")`が`Some`を返している以上、
+            // `line_of`は必ず`Some`を返す。
+            vec![match ctx.dat.line_of("extension_building") {
+                Some(line) => diag.at(line, "extension_building"),
+                None => diag,
+            }]
         } else {
             Vec::new()
         }
@@ -353,7 +375,7 @@ impl Rule for BooleanStyleFieldRule {
                 continue;
             };
             if value != 0 && value != 1 {
-                diags.push(Diagnostic::warning(
+                let diag = Diagnostic::warning(
                     DiagnosticCode::BooleanStyleFieldNotZeroOrOne,
                     t!(ctx.language,
                         ja: "{key}={value} は0/1以外の値です。building_writer.ccは\
@@ -369,7 +391,13 @@ impl Rule for BooleanStyleFieldRule {
                         key = key,
                         value = value,
                     ),
-                ));
+                );
+                // `dat.get(key)`が`Some`を返している（早期returnを通過済み）ため、
+                // `key`は必ずパーサに登録済みで`line_of`は`Some`を返す。
+                diags.push(match dat.line_of(key) {
+                    Some(line) => diag.at(line, key.to_string()),
+                    None => diag,
+                });
             }
         }
         diags

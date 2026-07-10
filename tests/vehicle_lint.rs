@@ -180,3 +180,20 @@ fn narrow_int_overflow_is_detected() {
         "speed/payload/axle_load/lengthの4件が検出されるはず: {diags:?}"
     );
 }
+
+#[test]
+fn unknown_engine_type_diagnostic_has_correct_line_number() {
+    // 第2弾（行番号付与の機械的配線）: `vehicle_bad_engine_type.dat`の
+    // `engine_type=elctric`は4行目。
+    let dir = testdata_dir();
+    let path = dir.join("vehicle_bad_engine_type.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    let diags = rules::check_vehicle(&dat, &dir);
+    let d = diags
+        .iter()
+        .find(|d| d.code == dat_linter::codes::DiagnosticCode::UnknownEngineType)
+        .expect("unknown-engine-typeが検出されるべき");
+    let loc = d.location.as_ref().expect("locationが付与されているべき");
+    assert_eq!(loc.line, 4);
+    assert_eq!(loc.key, "engine_type");
+}

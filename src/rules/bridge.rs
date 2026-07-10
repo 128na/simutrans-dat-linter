@@ -251,7 +251,7 @@ impl Rule for FrontImageWarningRule {
                     };
                     let value = dat.get(&key).unwrap_or("");
                     if value.len() <= 2 {
-                        diags.push(Diagnostic::warning(
+                        let diag = Diagnostic::warning(
                             DiagnosticCode::NoBridgeImageSpecified,
                             t!(ctx.language,
                                 ja: "{key} が未指定です（\"No {key} specified (might still work)\"）。\
@@ -260,7 +260,14 @@ impl Rule for FrontImageWarningRule {
                                      makeobj does not treat this as FATAL, but warns",
                                 key = key,
                             ),
-                        ));
+                        );
+                        // `key`が完全に未指定（`line_of`が`None`）の場合は
+                        // `location: None`のまま、"-"等の短い値が明示指定されている
+                        // 場合はその行を指す。
+                        diags.push(match dat.line_of(&key) {
+                            Some(line) => diag.at(line, key.clone()),
+                            None => diag,
+                        });
                     } else {
                         check_image_ref(
                             value,
@@ -269,6 +276,7 @@ impl Rule for FrontImageWarningRule {
                             &mut diags,
                             ctx.language,
                             ctx.tile_size,
+                            dat.line_of(&key),
                         );
                     }
                 }

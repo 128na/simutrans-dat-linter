@@ -240,6 +240,7 @@ impl Rule for ImageRefRule {
                         &mut diags,
                         ctx.language,
                         ctx.tile_size,
+                        dat.line_of(&key),
                     );
                 }
             }
@@ -258,6 +259,7 @@ impl Rule for ImageRefRule {
                         &mut diags,
                         ctx.language,
                         ctx.tile_size,
+                        dat.line_of(&key),
                     );
                 }
             }
@@ -278,6 +280,7 @@ impl Rule for ImageRefRule {
                         &mut diags,
                         ctx.language,
                         ctx.tile_size,
+                        dat.line_of(&key),
                     );
                 }
             }
@@ -298,6 +301,7 @@ impl Rule for ImageRefRule {
                         &mut diags,
                         ctx.language,
                         ctx.tile_size,
+                        dat.line_of(&key),
                     );
                 }
             }
@@ -315,6 +319,7 @@ impl Rule for ImageRefRule {
                     &mut diags,
                     ctx.language,
                     ctx.tile_size,
+                    dat.line_of(key),
                 );
             }
         }

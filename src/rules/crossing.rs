@@ -220,7 +220,7 @@ impl Rule for IdenticalWaytypesRule {
         if let (Some(r0), Some(r1)) = (resolve_waytype(&w0), resolve_waytype(&w1))
             && r0 == r1
         {
-            return vec![Diagnostic::error(
+            let diag = Diagnostic::error(
                 DiagnosticCode::CrossingIdenticalWaytypes,
                 t!(ctx.language,
                     ja: "waytype[0]={w0} と waytype[1]={w1} は同じ種別のwayに解決されます。\
@@ -232,7 +232,13 @@ impl Rule for IdenticalWaytypesRule {
                     w0 = w0,
                     w1 = w1,
                 ),
-            )];
+            );
+            // 両方とも既知値（非空）であることを確認済みのため`waytype[0]`は
+            // 必ずパーサに登録済み。2キーのうち代表として`waytype[0]`を指す。
+            return vec![match ctx.dat.line_of("waytype[0]") {
+                Some(line) => diag.at(line, "waytype[0]"),
+                None => diag,
+            }];
         }
         Vec::new()
     }
@@ -342,6 +348,7 @@ impl Rule for ImageRefRule {
         ];
         for key in LIST_KEYS {
             for (value, full_key) in make_list(ctx.dat, key) {
+                let line = ctx.dat.line_of(&full_key);
                 check_image_ref(
                     value,
                     ctx.dat_dir,
@@ -349,6 +356,7 @@ impl Rule for ImageRefRule {
                     &mut diags,
                     ctx.language,
                     ctx.tile_size,
+                    line,
                 );
             }
         }

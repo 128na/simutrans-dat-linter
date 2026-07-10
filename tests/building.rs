@@ -252,6 +252,42 @@ fn embedded_nul_in_name_is_detected() {
 }
 
 #[test]
+fn obsolete_type_diagnostic_has_correct_line_number() {
+    // 第2弾（行番号付与の機械的配線）: `broken_obsolete_type.dat`の`type=station`は
+    // 3行目（`.at()`が新規に配線された「値は存在するが不正」パターン）。
+    let dir = testdata_dir();
+    let path = dir.join("broken_obsolete_type.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    let diags = rules::check_building(&dat, &dir);
+    let d = diags
+        .iter()
+        .find(|d| d.code == dat_linter::codes::DiagnosticCode::ObsoleteType)
+        .expect("obsolete-typeが検出されるべき");
+    let loc = d.location.as_ref().expect("locationが付与されているべき");
+    assert_eq!(loc.line, 3);
+    assert_eq!(loc.key, "type");
+}
+
+#[test]
+fn boolean_style_field_diagnostic_has_correct_line_number() {
+    // 第2弾: `broken_boolean_style_field.dat`の`NoInfo=999`は7行目
+    // （BOOLEAN_STYLE_FIELDSの最初のヒット、`noinfo`キー）。
+    let dir = testdata_dir();
+    let path = dir.join("broken_boolean_style_field.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    let diags = rules::check_building(&dat, &dir);
+    let d = diags
+        .iter()
+        .find(|d| {
+            d.code == dat_linter::codes::DiagnosticCode::BooleanStyleFieldNotZeroOrOne
+                && d.location.as_ref().is_some_and(|loc| loc.key == "noinfo")
+        })
+        .expect("noinfoのboolean-style-field-not-zero-or-oneが検出されるべき");
+    let loc = d.location.as_ref().unwrap();
+    assert_eq!(loc.line, 7);
+}
+
+#[test]
 fn capacity_narrow_int_overflow_is_detected() {
     // capacity=100000はuint16の範囲(0..65535)外。building_writer.cc:244,365の
     // sint32ローカル変数から`node.write_uint16(fp, capacity)`へ静かに

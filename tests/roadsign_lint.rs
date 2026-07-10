@@ -189,3 +189,21 @@ fn narrow_int_overflow_is_detected() {
         "min_speed/offset_leftの2件が検出されるはず: {diags:?}"
     );
 }
+
+#[test]
+fn missing_image_file_diagnostic_has_correct_line_number() {
+    // 第2弾（行番号付与の機械的配線）: `roadsign_missing_image_file.dat`の
+    // `image[n][0]=nonexistent.png.0.0`は5行目（common::check_image_refに
+    // 新規配線したline引数、check_2dから`dat.line_of(&key)`を渡す）。
+    let dir = testdata_dir();
+    let path = dir.join("roadsign_missing_image_file.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    let diags = rules::check_roadsign(&dat, &dir);
+    let d = diags
+        .iter()
+        .find(|d| d.code == dat_linter::codes::DiagnosticCode::MissingImageFile)
+        .expect("missing-image-fileが検出されるべき");
+    let loc = d.location.as_ref().expect("locationが付与されているべき");
+    assert_eq!(loc.line, 5);
+    assert_eq!(loc.key, "image[n][0]");
+}

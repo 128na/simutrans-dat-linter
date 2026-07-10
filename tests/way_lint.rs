@@ -156,3 +156,39 @@ fn embedded_nul_in_name_is_detected() {
         "embedded-nul-in-string-field"
     ));
 }
+
+#[test]
+fn clip_below_out_of_range_diagnostic_has_correct_line_number() {
+    // 第2弾（行番号付与の機械的配線）: `way_clip_below_out_of_range.dat`の
+    // `clip_below=5`は5行目（common::check_clamped_int_fieldに新規配線、
+    // bridge.rsのClampedRangeRuleと共有のヘルパー）。
+    let dir = testdata_dir();
+    let path = dir.join("way_clip_below_out_of_range.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    let diags = rules::check_way(&dat, &dir);
+    let d = diags
+        .iter()
+        .find(|d| d.code == dat_linter::codes::DiagnosticCode::ClipBelowOutOfRange)
+        .expect("clip-below-out-of-rangeが検出されるべき");
+    let loc = d.location.as_ref().expect("locationが付与されているべき");
+    assert_eq!(loc.line, 5);
+    assert_eq!(loc.key, "clip_below");
+}
+
+#[test]
+fn missing_image_file_diagnostic_has_correct_line_number() {
+    // 第2弾: `way_missing_image_file.dat`の`image[-]=nonexistent_way_image.png.0.0`
+    // は5行目（common::check_image_refに新規配線したline引数、way.rsの
+    // BaseImageRequiredRuleから`dat.line_of("image[-]")`を渡す）。
+    let dir = testdata_dir();
+    let path = dir.join("way_missing_image_file.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    let diags = rules::check_way(&dat, &dir);
+    let d = diags
+        .iter()
+        .find(|d| d.code == dat_linter::codes::DiagnosticCode::MissingImageFile)
+        .expect("missing-image-fileが検出されるべき");
+    let loc = d.location.as_ref().expect("locationが付与されているべき");
+    assert_eq!(loc.line, 5);
+    assert_eq!(loc.key, "image[-]");
+}

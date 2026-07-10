@@ -121,3 +121,40 @@ fn narrow_int_overflow_is_detected() {
         "narrow-int-overflow"
     ));
 }
+
+#[test]
+fn clamped_value_out_of_range_diagnostic_has_correct_line_number() {
+    // 第2弾（行番号付与の機械的配線）: `bridge_clamped_out_of_range.dat`の
+    // `pillar_asymmetric=5`は5行目（common::check_clamped_int_fieldに新規配線）。
+    let dir = testdata_dir();
+    let path = dir.join("bridge_clamped_out_of_range.dat");
+    let dat = dat_linter::parser::DatFile::parse(&path).expect("パースに失敗");
+    let diags = dat_linter::rules::check_bridge(&dat, &dir);
+    let d = diags
+        .iter()
+        .find(|d| d.code == dat_linter::codes::DiagnosticCode::ClampedValueOutOfRange)
+        .expect("clamped-value-out-of-rangeが検出されるべき");
+    let loc = d.location.as_ref().expect("locationが付与されているべき");
+    assert_eq!(loc.line, 5);
+    assert_eq!(loc.key, "pillar_asymmetric");
+}
+
+#[test]
+fn no_bridge_image_specified_diagnostic_has_correct_line_number() {
+    // 第2弾: `bridge_missing_front_image.dat`はfrontimage系24キーが全て未指定
+    // （キー自体が無い）だが、値が"2文字以下"のケースには本来値が存在する
+    // ケースも含まれるため、`.at()`は`line_of`が`Some`を返す場合のみ付与される
+    // （キー自体が無いこのfixtureでは`location`が`None`のままであるべき）。
+    let dir = testdata_dir();
+    let path = dir.join("bridge_missing_front_image.dat");
+    let dat = dat_linter::parser::DatFile::parse(&path).expect("パースに失敗");
+    let diags = dat_linter::rules::check_bridge(&dat, &dir);
+    let d = diags
+        .iter()
+        .find(|d| d.code == dat_linter::codes::DiagnosticCode::NoBridgeImageSpecified)
+        .expect("no-bridge-image-specifiedが検出されるべき");
+    assert!(
+        d.location.is_none(),
+        "キー自体が欠落している場合はlocationがNoneのままであるべき: {d:?}"
+    );
+}

@@ -147,3 +147,21 @@ fn narrow_int_overflow_is_detected() {
         "narrow-int-overflow"
     ));
 }
+
+#[test]
+fn image_coordinate_out_of_bounds_diagnostic_has_correct_line_number() {
+    // 第2弾（行番号付与の機械的配線）: `tunnel_image_coordinate_out_of_bounds.dat`の
+    // `frontimage[n][0]=station_cube.334.0`は11行目（common::check_image_refに
+    // 新規配線したline引数、ImageRefRuleから`dat.line_of(&key_used)`を渡す）。
+    let dir = testdata_dir();
+    let path = dir.join("tunnel_image_coordinate_out_of_bounds.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    let diags = rules::check_tunnel(&dat, &dir);
+    let d = diags
+        .iter()
+        .find(|d| d.code == dat_linter::codes::DiagnosticCode::ImageCoordinateOutOfBounds)
+        .expect("image-coordinate-out-of-boundsが検出されるべき");
+    let loc = d.location.as_ref().expect("locationが付与されているべき");
+    assert_eq!(loc.line, 11);
+    assert_eq!(loc.key, "frontimage[n][0]");
+}

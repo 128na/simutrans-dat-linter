@@ -126,6 +126,9 @@ pub const DIR_CODES: [&str; 8] = ["s", "w", "sw", "se", "n", "e", "ne", "nw"];
 pub fn check_waytype_field(dat: &DatFile, key: &str, lang: Language) -> Vec<Diagnostic> {
     let waytype = dat.get_lower(key);
     if waytype.is_empty() {
+        // `key`自体が欠落している（または値が空文字列の）ケース。
+        // `line_of`は欠落キーに対して`None`を返すため、ここでは`.at()`を
+        // 呼ばず`location: None`のまま返す（0行目のような嘘の位置情報は作らない）。
         vec![Diagnostic::error(
             DiagnosticCode::MissingWaytype,
             t!(lang,
@@ -135,7 +138,9 @@ pub fn check_waytype_field(dat: &DatFile, key: &str, lang: Language) -> Vec<Diag
             ),
         )]
     } else if !KNOWN_WAYTYPES.contains(&waytype.as_str()) {
-        vec![Diagnostic::error(
+        // 値は存在するが不正なケース。`key`は必ず存在する（`waytype`が
+        // 非空である以上、パーサに登録済み）ため`line_of`は`Some`を返す。
+        let diag = Diagnostic::error(
             DiagnosticCode::UnknownWaytype,
             t!(lang,
                 ja: "{key}={waytype} は不正な値です（FATAL ERRORになります）",
@@ -143,7 +148,11 @@ pub fn check_waytype_field(dat: &DatFile, key: &str, lang: Language) -> Vec<Diag
                 key = key,
                 waytype = waytype,
             ),
-        )]
+        );
+        vec![match dat.line_of(key) {
+            Some(line) => diag.at(line, key.to_string()),
+            None => diag,
+        }]
     } else {
         vec![Diagnostic::info(
             DiagnosticCode::WaytypeOk,
@@ -196,7 +205,9 @@ pub fn check_clamped_int_field(
         return Vec::new();
     };
     if value < min || value > max {
-        vec![Diagnostic::warning(
+        // `raw`を`dat.get(key)`で取得済み（早期returnを通過している）ため、
+        // `key`は必ずパーサに登録済み。`line_of`は`Some`を返す。
+        let diag = Diagnostic::warning(
             code,
             t!(lang,
                 ja: "{key}={value} は範囲{min}..{max}外です。makeobjはFATALにはしませんが警告を出し、\
@@ -208,7 +219,11 @@ pub fn check_clamped_int_field(
                 min = min,
                 max = max,
             ),
-        )]
+        );
+        vec![match dat.line_of(key) {
+            Some(line) => diag.at(line, key.to_string()),
+            None => diag,
+        }]
     } else {
         Vec::new()
     }
@@ -262,7 +277,7 @@ pub fn check_date_index_overflow_field(
 
     if !(0..=65535).contains(&date_index) {
         let month_display = month.map(|m| m.to_string()).unwrap_or_else(|| "-".into());
-        vec![Diagnostic::warning(
+        let diag = Diagnostic::warning(
             DiagnosticCode::DateIndexOverflow,
             t!(lang,
                 ja: "{year_key}={year}（月={month_display}）から計算される日付インデックスが\
@@ -281,7 +296,14 @@ pub fn check_date_index_overflow_field(
                 month_display = month_display,
                 date_index = date_index,
             ),
-        )]
+        );
+        // `year_key`が実際に指定されていればその行を指す。省略され
+        // `year_default`が使われた場合（`line_of`が`None`）は、0行目のような
+        // 嘘の位置情報を作らず`location: None`のまま返す。
+        vec![match dat.line_of(year_key) {
+            Some(line) => diag.at(line, year_key.to_string()),
+            None => diag,
+        }]
     } else {
         Vec::new()
     }
@@ -400,7 +422,7 @@ pub fn check_embedded_nul_field(dat: &DatFile, key: &str, lang: Language) -> Vec
         return Vec::new();
     };
     let truncated = &value[..nul_pos];
-    vec![Diagnostic::warning(
+    let diag = Diagnostic::warning(
         DiagnosticCode::EmbeddedNulInStringField,
         t!(lang,
             ja: "{key} の値に埋め込みNULバイトが含まれています。\
@@ -415,7 +437,13 @@ pub fn check_embedded_nul_field(dat: &DatFile, key: &str, lang: Language) -> Vec
             rest = &value[nul_pos + 1..],
             truncated = truncated,
         ),
-    )]
+    );
+    // `dat.get(key)`が`Some`を返している（早期returnを通過済み）ため、`key`は
+    // 必ずパーサに登録済みで`line_of`は`Some`を返す。
+    vec![match dat.line_of(key) {
+        Some(line) => diag.at(line, key.to_string()),
+        None => diag,
+    }]
 }
 
 /// `name`/`copyright`という2つの文字列フィールドに対する共有ルール。
@@ -436,7 +464,7 @@ impl Rule for NameAndCopyrightStringFieldRule {
         if let Some(name) = dat.get("name")
             && let Some(reason) = forbidden_filename_reason(name, lang)
         {
-            diags.push(Diagnostic::error(
+            let diag = Diagnostic::error(
                 DiagnosticCode::NameForbiddenFilenameCharacter,
                 t!(lang,
                     ja: "name={name} はファイル名として使うと問題があります: {reason}。\
@@ -454,7 +482,13 @@ impl Rule for NameAndCopyrightStringFieldRule {
                     name = name,
                     reason = reason,
                 ),
-            ));
+            );
+            // `dat.get("name")`が`Some`を返している（`if let`で確認済み）ため、
+            // `line_of("name")`は必ず`Some`を返す。
+            diags.push(match dat.line_of("name") {
+                Some(line) => diag.at(line, "name"),
+                None => diag,
+            });
         }
 
         diags.extend(check_embedded_nul_field(dat, "name", lang));
@@ -513,7 +547,7 @@ pub fn check_narrow_int_overflow_field(
     };
 
     if value < min || value > max {
-        vec![Diagnostic::warning(
+        let diag = Diagnostic::warning(
             DiagnosticCode::NarrowIntOverflow,
             t!(lang,
                 ja: "{key}={value} は格納先の{sign}{bit_width}bit整数の範囲({min}..{max})外です。\
@@ -532,7 +566,15 @@ pub fn check_narrow_int_overflow_field(
                 sign = if signed { "signed " } else { "unsigned " },
                 bit_width = bit_width,
             ),
-        )]
+        );
+        // `key`が未指定で`default`が使われた場合（`line_of`が`None`）は
+        // `location: None`のまま返す（`default`は常に範囲内である前提のため、
+        // この分岐に到達するのは`key`が実在し範囲外の値を持つ場合が通常だが、
+        // 呼び出し元の`default`が不正な値の場合の安全側の扱いとして残す）。
+        vec![match dat.line_of(key) {
+            Some(line) => diag.at(line, key.to_string()),
+            None => diag,
+        }]
     } else {
         Vec::new()
     }
@@ -669,6 +711,16 @@ fn resolve_row_col(numkey: &str) -> (i64, Option<i64>) {
 /// `backdiagonal[nw]=-`）で同じ誤検知が再発したことを受け、per-obj-typeの
 /// 場当たり対応ではなくこの関数自体に統一した。呼び出し側の個別ガードは
 /// 冗長になるが害はないため残っていても良いが、新規に追加する必要は無い。
+/// 第2弾（行番号付与の機械的配線）: `line`は、この画像参照の値が読まれた
+/// dat上の実際のキーの行番号（`DatFile::line_of(key)`の戻り値をそのまま
+/// 呼び出し元が渡す）。`check_image_ref`自身は`value: &str`のみを受け取り
+/// `DatFile`を持たない設計のため、行番号は呼び出し元が解決して渡す
+/// （`TileImageRule`のようにfrontimage[5引数形式]/[6引数fallback]のどちらが
+/// 実際にヒットしたかを呼び出し元しか知らないケースがあるため）。
+/// `MissingImageFile`/`ImageSizeNotMultipleOf128`/`ImageCoordinateOutOfBounds`/
+/// `UnreadableImage`という「値は存在するが不正」な診断にのみ`.at(line, context)`を
+/// 付与する。`line`が`None`（呼び出し元がキーの行を特定できない）場合は
+/// `location: None`のまま返す（0行目のような嘘の位置情報は作らない）。
 pub fn check_image_ref(
     value: &str,
     dat_dir: &Path,
@@ -676,6 +728,7 @@ pub fn check_image_ref(
     diags: &mut Vec<Diagnostic>,
     lang: Language,
     tile_size: u32,
+    line: Option<usize>,
 ) {
     let value = strip_zoomable_prefix_and_trim(value);
     if value == "-" {
@@ -704,8 +757,18 @@ pub fn check_image_ref(
         ),
     ));
 
+    // 「値は存在するが不正」という診断（MissingImageFile/
+    // ImageSizeNotMultipleOf128/ImageCoordinateOutOfBounds/UnreadableImage）
+    // にのみ`.at(line, context)`を付与するヘルパー。`line`が`None`
+    // （呼び出し元がこの画像参照のキーの行を特定できない）場合は
+    // `location: None`のまま返す。
+    let at_if_known = |diag: Diagnostic| match line {
+        Some(l) => diag.at(l, context.to_string()),
+        None => diag,
+    };
+
     if !path.is_file() {
-        diags.push(Diagnostic::error(
+        diags.push(at_if_known(Diagnostic::error(
             DiagnosticCode::MissingImageFile,
             t!(lang,
                 ja: "{context}: 参照画像 {filename} が見つかりません ({p})",
@@ -714,7 +777,7 @@ pub fn check_image_ref(
                 filename = filename,
                 p = path.display(),
             ),
-        ));
+        )));
         return;
     }
 
@@ -722,7 +785,7 @@ pub fn check_image_ref(
         Ok(img) => {
             let (w, h) = (img.width(), img.height());
             if w % tile_size != 0 || h % tile_size != 0 {
-                diags.push(Diagnostic::error(
+                diags.push(at_if_known(Diagnostic::error(
                     DiagnosticCode::ImageSizeNotMultipleOf128,
                     t!(lang,
                         ja: "{context}: {filename} のサイズが {w}x{h} です。makeobj は画像タイルサイズ（{tile}）の倍数でないとエラーになります",
@@ -733,7 +796,7 @@ pub fn check_image_ref(
                         h = h,
                         tile = tile_size,
                     ),
-                ));
+                )));
             } else if let Some(numkey) = extract_numkey(value) {
                 // image_writer.cc:390-418: row/colを解決し、実際の画像タイル数
                 // （width/img_size, height/img_size）と比較する。tile_sizeの倍数
@@ -753,7 +816,7 @@ pub fn check_image_ref(
                     ),
                 };
                 if col >= cols || row >= rows {
-                    diags.push(Diagnostic::error(
+                    diags.push(at_if_known(Diagnostic::error(
                         DiagnosticCode::ImageCoordinateOutOfBounds,
                         t!(lang,
                             ja: "{context}: {filename} の指定座標(col={col}, row={row})が\
@@ -772,7 +835,7 @@ pub fn check_image_ref(
                             rows = rows,
                             numkey = numkey,
                         ),
-                    ));
+                    )));
                 } else {
                     diags.push(Diagnostic::info(
                         DiagnosticCode::ImageOk,
@@ -787,7 +850,7 @@ pub fn check_image_ref(
             }
         }
         Err(e) => {
-            diags.push(Diagnostic::error(
+            diags.push(at_if_known(Diagnostic::error(
                 DiagnosticCode::UnreadableImage,
                 t!(lang,
                     ja: "{context}: {filename} を画像として読み込めません ({e})",
@@ -796,7 +859,7 @@ pub fn check_image_ref(
                     filename = filename,
                     e = e,
                 ),
-            ));
+            )));
         }
     }
 }
@@ -835,6 +898,7 @@ impl Rule for AllImagesRule {
                     &mut diags,
                     ctx.language,
                     ctx.tile_size,
+                    dat.line_of(&key),
                 );
             }
             i += 1;
@@ -987,6 +1051,7 @@ impl Rule for CursorIconRule {
                 &mut diags,
                 ctx.language,
                 ctx.tile_size,
+                ctx.dat.line_of("icon"),
             );
         }
         if !cursor.is_empty() {
@@ -997,6 +1062,7 @@ impl Rule for CursorIconRule {
                 &mut diags,
                 ctx.language,
                 ctx.tile_size,
+                ctx.dat.line_of("cursor"),
             );
         }
         diags
@@ -1037,6 +1103,11 @@ impl Rule for TileImageRule {
 
                     let front = dat.get(&front5).or_else(|| dat.get(&front6));
                     let back = dat.get(&back5).or_else(|| dat.get(&back6));
+                    // `front`/`back`の値が5引数キー・6引数fallbackキーの
+                    // どちらから読まれたかを`or_else`の解決順と全く同じ優先順位
+                    // （5引数が存在すればそちら、無ければ6引数）で`line_of`しておく。
+                    let front_line = dat.line_of(&front5).or_else(|| dat.line_of(&front6));
+                    let back_line = dat.line_of(&back5).or_else(|| dat.line_of(&back6));
 
                     if front.is_none() && back.is_none() {
                         diags.push(Diagnostic::error(
@@ -1073,6 +1144,7 @@ impl Rule for TileImageRule {
                                 &mut diags,
                                 ctx.language,
                                 ctx.tile_size,
+                                front_line,
                             );
                         }
                         if let Some(v) = back {
@@ -1083,6 +1155,7 @@ impl Rule for TileImageRule {
                                 &mut diags,
                                 ctx.language,
                                 ctx.tile_size,
+                                back_line,
                             );
                         }
                     }
@@ -1098,7 +1171,7 @@ impl Rule for TileImageRule {
                 if let Some(h_str) = indices.get(3)
                     && h_str.parse::<i64>().unwrap_or(0) > 0
                 {
-                    diags.push(Diagnostic::error(
+                    let diag = Diagnostic::error(
                         DiagnosticCode::FrontimageHeight,
                         t!(ctx.language,
                             ja: "{key} : frontimageの高さ(h)は0のみ有効です\
@@ -1107,7 +1180,11 @@ impl Rule for TileImageRule {
                                  (makeobj logs an error but continues processing)",
                             key = key,
                         ),
-                    ));
+                    );
+                    diags.push(match dat.line_of(key) {
+                        Some(line) => diag.at(line, key.clone()),
+                        None => diag,
+                    });
                 }
             }
         }

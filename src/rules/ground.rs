@@ -172,6 +172,7 @@ impl Rule for SlopeImageRefRule {
                     &mut diags,
                     ctx.language,
                     ctx.tile_size,
+                    dat.line_of(&key),
                 );
                 phase += 1;
                 // 安全弁: dat構文異常でphaseが際限なく増え続ける事態を避ける

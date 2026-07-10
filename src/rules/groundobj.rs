@@ -198,14 +198,19 @@ impl Rule for WaytypeIfPresentValidRule {
                 ),
             )]
         } else if !KNOWN_WAYTYPES.contains(&waytype.as_str()) {
-            vec![Diagnostic::error(
+            let diag = Diagnostic::error(
                 DiagnosticCode::UnknownWaytype,
                 t!(ctx.language,
                     ja: "waytype={waytype} は不正な値です（FATAL ERRORになります）",
                     en: "waytype={waytype} is not a valid value (this becomes a FATAL ERROR)",
                     waytype = waytype,
                 ),
-            )]
+            );
+            // `waytype`が非空である以上、キーは必ずパーサに登録済み。
+            vec![match ctx.dat.line_of("waytype") {
+                Some(line) => diag.at(line, "waytype"),
+                None => diag,
+            }]
         } else {
             vec![Diagnostic::info(
                 DiagnosticCode::WaytypeOk,
@@ -285,7 +290,15 @@ fn check_fixed_images(
             // groundobj_writer.cc:66-69: goto finish_images。このphase以降は走査しない。
             break;
         }
-        check_image_ref(season0, dat_dir, &season0_key, diags, lang, tile_size);
+        check_image_ref(
+            season0,
+            dat_dir,
+            &season0_key,
+            diags,
+            lang,
+            tile_size,
+            dat.line_of(&season0_key),
+        );
 
         for season in 1..seasons {
             let key = format!("image[{phase}][{season}]");
@@ -306,7 +319,15 @@ fn check_fixed_images(
                     ),
                 ));
             } else {
-                check_image_ref(value, dat_dir, &key, diags, lang, tile_size);
+                check_image_ref(
+                    value,
+                    dat_dir,
+                    &key,
+                    diags,
+                    lang,
+                    tile_size,
+                    dat.line_of(&key),
+                );
             }
         }
 
@@ -361,7 +382,15 @@ fn check_moving_images(
                     ),
                 ));
             } else {
-                check_image_ref(value, dat_dir, &key, diags, lang, tile_size);
+                check_image_ref(
+                    value,
+                    dat_dir,
+                    &key,
+                    diags,
+                    lang,
+                    tile_size,
+                    dat.line_of(&key),
+                );
             }
         }
     }

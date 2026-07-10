@@ -132,7 +132,7 @@ impl Rule for EngineTypeRule {
             .unwrap_or("")
             .to_ascii_lowercase();
         if !engine_type.is_empty() && !KNOWN_ENGINE_TYPES.contains(&engine_type.as_str()) {
-            vec![Diagnostic::warning(
+            let diag = Diagnostic::warning(
                 DiagnosticCode::UnknownEngineType,
                 t!(ctx.language,
                     ja: "engine_type={engine_type} は不明な値です。makeobjはfatal/errorを出さず、\
@@ -141,7 +141,12 @@ impl Rule for EngineTypeRule {
                          fatal/error, but silently falls back to diesel",
                     engine_type = engine_type,
                 ),
-            )]
+            );
+            // `engine_type`が非空である以上、キーは必ずパーサに登録済み。
+            vec![match ctx.dat.line_of("engine_type") {
+                Some(line) => diag.at(line, "engine_type"),
+                None => diag,
+            }]
         } else {
             Vec::new()
         }
@@ -299,7 +304,7 @@ impl Rule for FreightImageTypeRule {
 
         let extra_key = format!("freightimagetype[{ft}]");
         if dat.get(&extra_key).map(|v| !v.is_empty()).unwrap_or(false) {
-            diags.push(Diagnostic::warning(
+            let diag = Diagnostic::warning(
                 DiagnosticCode::ExtraFreightimagetype,
                 t!(ctx.language,
                     ja: "{extra_key} は使用範囲(0..{ft})より1つ多いindexです。\
@@ -309,7 +314,12 @@ impl Rule for FreightImageTypeRule {
                     extra_key = extra_key,
                     ft = ft,
                 ),
-            ));
+            );
+            // `extra_key`が非空である以上、キーは必ずパーサに登録済み。
+            diags.push(match dat.line_of(&extra_key) {
+                Some(line) => diag.at(line, extra_key.clone()),
+                None => diag,
+            });
         }
 
         diags
@@ -347,7 +357,7 @@ impl Rule for PowerGearMismatchRule {
             .unwrap_or(100);
         let gear_transformed = (gear_raw * 64) / 100;
         if gear_transformed == 0 {
-            vec![Diagnostic::warning(
+            let diag = Diagnostic::warning(
                 DiagnosticCode::PowerGearMismatch,
                 t!(ctx.language,
                     ja: "power={power} を宣言していますが gear={gear_raw} は変換後 \
@@ -363,7 +373,14 @@ impl Rule for PowerGearMismatchRule {
                     gear_raw = gear_raw,
                     gear_transformed = gear_transformed,
                 ),
-            )]
+            );
+            // gear_transformed==0に到達するのは`gear`が明示的に小さい値
+            // （0または1）で指定されている場合のみ（未指定時のdefault=100なら
+            // (100*64)/100=64で非ゼロになるため）。`gear`キーを指す。
+            vec![match ctx.dat.line_of("gear") {
+                Some(line) => diag.at(line, "gear"),
+                None => diag,
+            }]
         } else {
             Vec::new()
         }
