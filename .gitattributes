@@ -1,0 +1,6 @@
+# testdata/*.dat はfmt/lintの回帰テストが厳密なバイト内容（改行コード含む）を前提にしている。
+# .gitattributesが無いと、checkout環境のgit設定（特にWindowsのcore.autocrlf=true）次第で
+# LFがCRLFへ変換されてしまい、"LF入力"を前提にしたテストがCI環境依存で誤って壊れる
+# （実際にGitHub ActionsのWindowsランナーで発生した）。checkout時の改行コードを常にLFへ固定する。
+testdata/**/*.dat text eol=lf
+testdata/**/*.png binary
