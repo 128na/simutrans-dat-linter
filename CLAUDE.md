@@ -109,5 +109,36 @@ cargo release patch   # あるいは minor / major
 cargo release patch --execute
 ```
 
-`v*`形式のタグが push されると `.github/workflows/release.yml` が Linux/Windows 向けの
-release ビルドを行い、バイナリを添付した GitHub Release を自動作成します。
+`v*`形式のタグが push されると `.github/workflows/release.yml` が Linux/Windows/macOS(aarch64)
+向けの release ビルドを行い、バイナリを添付した GitHub Release を自動作成します。
+
+## VSCode拡張（editors/vscode/）の公開手順
+
+拡張自体の`package.json`の`version`はdat_linter本体のバージョンとは独立管理（`npm version`等で
+手動更新）。公開コマンドは**`vsce`ではなく`@vscode/vsce`を使うこと**（無印`vsce`は2.15.0で
+更新が止まっており非推奨、`@vscode/vsce`へ改名済み。`npx vsce ...`は古い方が解決されるので注意）。
+
+### PAT（Personal Access Token）の発行
+
+Marketplaceの管理画面（`https://marketplace.visualstudio.com/manage/publishers/`）ではなく
+**Azure DevOps**（`https://dev.azure.com/<組織名>`、無ければ適当な名前で組織を作成してよい）
+側でPATを発行する:
+
+1. Marketplaceのpublisher（`128na`）と同じMicrosoftアカウントでdev.azure.comにサインイン
+2. 右上のユーザーアイコン → User settings → Personal access tokens → **+ New Token**
+3. Organization: **「All accessible organizations」を選択**（特定の組織限定だとMarketplace
+   公開に使えない）
+4. Scopes: Custom defined → **Marketplace** カテゴリの **Manage** にチェック
+5. Create → 表示されたトークンをコピー（この画面を閉じると二度と表示されない）
+
+### 公開コマンド
+
+```
+cd editors/vscode
+npx @vscode/vsce login 128na   # 上記PATを貼り付け
+npx @vscode/vsce package        # ローカルVSIX生成（`code --install-extension`で実機確認可能）
+npx @vscode/vsce publish
+```
+
+`publish`後、Marketplace管理画面は一時的に「Verifying」状態になる（Microsoft側の検証待ち、
+通常は数分〜十数分で完了する正常な状態）。「Published」に変わったら公開完了。
