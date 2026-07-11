@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Document Formatting support backed by `dat_linter fmt <path> [--config ...]`: register
+  `vscode.languages.registerDocumentFormattingEditProvider` for `**/*.dat` files, so
+  `editor.formatOnSave` and the `Format Document` command now normalize/reorder `.dat` files.
+  The provider runs `dat_linter fmt` without `-w`/`--write` and applies its stdout as a
+  `TextEdit` to VSCode's own buffer, rather than letting the CLI write the file directly, to
+  avoid a race between the editor and an external process writing the same file. Line endings
+  (CRLF/LF) are preserved because `dat_linter fmt` detects and preserves them itself.
+- Refactored the shared "resolve cwd / `executablePath` / `configPath`, then run `dat_linter`
+  and classify a failure as executable-not-found vs. version-incompatible" logic out of
+  `src/extension.ts` and into a new `src/runner.ts`, so both the lint path (`src/extension.ts`)
+  and the new formatter (`src/formatter.ts`) share it instead of duplicating it.
 - Initial implementation of the `simutrans-dat-linter` VSCode extension, built on top of
   `try-out/vscode-dat-linter-poc` (in the sibling `simutrans_addon` repository) but rewritten
   to consume `dat_linter lint --format json` (dat_linter >= 0.1.2) instead of parsing text output.

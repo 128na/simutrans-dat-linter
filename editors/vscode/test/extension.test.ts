@@ -1,6 +1,10 @@
 import * as assert from "assert";
 import * as path from "path";
 import * as vscode from "vscode";
+import { execFile } from "child_process";
+import { promisify } from "util";
+
+const execFileAsync = promisify(execFile);
 
 // package.json publisher "128na" + name "simutrans-dat-linter"
 const EXTENSION_ID = "128na.simutrans-dat-linter";
@@ -97,5 +101,32 @@ suite("dat_linter VSCode extension integration", () => {
     // dat_linter's JSON output has "line": null for this diagnostic (it's
     // file-wide), so the extension must fall back to line 0.
     assert.strictEqual(missing!.range.start.line, 0);
+  });
+
+  test("Format Document on fmt_example.dat matches `dat_linter fmt` CLI output", async () => {
+    const filePath = path.join(TESTDATA_DIR, "fmt_example.dat");
+    const uri = vscode.Uri.file(filePath);
+    const document = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(document);
+
+    // Note: our provider (src/formatter.ts) returns a single whole-document
+    // TextEdit, but VSCode's "vscode.executeFormatDocumentProvider" command
+    // (and "editor.action.formatDocument") internally diffs that against the
+    // original content and applies a set of minimal, non-overlapping edits
+    // instead — so we drive the real formatting command and read back the
+    // resulting document text, rather than asserting on edit shape/count.
+    await vscode.commands.executeCommand("editor.action.formatDocument");
+
+    // Independently invoke the same `dat_linter fmt` CLI command the extension
+    // runs, to get the ground-truth expected output without going through the
+    // extension's own code.
+    const { stdout: expected } = await execFileAsync("dat_linter", [
+      "fmt",
+      filePath,
+      "--config",
+      FIXTURE_CONFIG,
+    ]);
+
+    assert.strictEqual(document.getText(), expected);
   });
 });

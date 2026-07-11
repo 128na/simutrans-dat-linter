@@ -1,10 +1,16 @@
 # Simutrans dat_linter (VSCode 拡張)
 
-Simutrans アドオンの `.dat` を静的検証する Rust 製 CLI [`dat_linter`](https://github.com/128na/simutrans-dat-linter)
-の診断結果を、VSCode の Problems パネルへ統合する拡張機能です。
+Simutrans アドオンの `.dat` を静的検証・整形する Rust 製 CLI
+[`dat_linter`](https://github.com/128na/simutrans-dat-linter) の結果を、VSCode の Problems パネルと
+Document Formatting に統合する拡張機能です。
 
 `.dat` ファイルを開く・保存するたびに `dat_linter lint --format json` をバックグラウンドで実行し、
 結果をエディタ上に波線・Problems パネルの一覧として表示します。
+
+また `dat_linter fmt` を使った Document Formatting（正規化・キー並び替え）にも対応しています。
+VSCode の `editor.formatOnSave` を `true` にしておけば保存時に自動整形されますし、
+コマンドパレットから `Format Document` を実行すれば手動整形もできます。改行コード（CRLF/LF）は
+入力ファイルのものがそのまま保持されます。
 
 ## 前提条件
 
@@ -22,15 +28,22 @@ Simutrans アドオンの `.dat` を静的検証する Rust 製 CLI [`dat_linter
 | 設定キー | 既定値 | 説明 |
 | --- | --- | --- |
 | `simutransDatLinter.executablePath` | `"dat_linter"` | `dat_linter` 実行ファイルのパス。既定では PATH 上のものを使用します。 |
-| `simutransDatLinter.configPath` | `""`（未指定） | `--config` に渡す `dat_linter.toml` の明示パス。**未指定の場合、`dat_linter` 自身がワークスペースフォルダのルート直下の `dat_linter.toml` を自動探索し、見つからなければそこへ自動生成します。** ルール設定を制御したい場合や、意図しない `dat_linter.toml` 生成を避けたい場合は明示的に指定してください。 |
+| `simutransDatLinter.configPath` | `""`（未指定） | `--config` に渡す `dat_linter.toml` の明示パス。**未指定の場合、`dat_linter` 自身がワークスペースフォルダのルート直下の `dat_linter.toml` を自動探索し、見つからなければそこへ自動生成します。** ルール設定を制御したい場合や、意図しない `dat_linter.toml` 生成を避けたい場合は明示的に指定してください。lint・フォーマッタの両方がこの設定を共有します。 |
+
+`fmt` のキー並び替え（reorder）専用の設定項目はこの拡張には存在しません。無効化したい場合は
+`dat_linter.toml` 側の `[rules] exclude` に `"fmt-reorder-applied"` を追加してください
+（`dat_linter` 本体の README・`dat_linter list` 参照）。
 
 ## 既知の制限
 
 - 一部の診断（obj全体に関わる問題など、特定の行に紐づけられないもの）には行番号が付与されません。
   この拡張はそのような診断をファイル先頭（0行目）に表示します。ファイルが長い場合、該当箇所を
   目視で探す必要があります。
-- 単一の `.dat` ファイルを開いたときのみ検証します（ディレクトリ一括 lint や `analyze`（連結制約解析）
-  など、CLI が持つ他のコマンドはこの拡張からは呼び出されません）。
+- 単一の `.dat` ファイルを開いたときのみ検証・整形します（ディレクトリ一括 lint/fmt や `analyze`
+  （連結制約解析）など、CLI が持つ他のコマンドはこの拡張からは呼び出されません）。
+- フォーマッタは `dat_linter fmt <path> [--config ...]`（`-w`/`--write` なし）の標準出力で
+  ドキュメント全体を置き換えます。ファイルへの直接書き込みは行わないため、実際にディスクへ
+  反映するには VSCode 側で保存（`editor.formatOnSave` または手動保存）が必要です。
 
 ## 開発者向けメモ
 
@@ -51,6 +64,18 @@ Simutrans アドオンの `.dat` を静的検証する Rust 製 CLI [`dat_linter
   診断本体が stderr、末尾のサマリ行のみ stdout という構成だったため、両ストリームを連結して
   パースしていた。JSON 対応版ではその必要はなく、stdout のみをパースする。
 - **バージョン互換性の検出はヒューリスティック。** `dat_linter` 実行が失敗した際、
-  「実行ファイルが見つからない」のか「古いバージョンで `--format` 自体を認識しない」のかを
+  「実行ファイルが見つからない」のか「古いバージョンで引数を認識しない」のかを
   stderr の文言（clap のエラーメッセージ）から推測して分かりやすいメッセージを出しているが、
-  完全な判定ではない（`src/extension.ts` の `describeFailure` 参照）。
+  完全な判定ではない（`src/runner.ts` の `describeFailure` 参照。lint/fmt 双方の呼び出しが
+  この共通ヘルパーを使い、コマンドごとの stderr パターン・メッセージだけを個別に渡す）。
+- **cwd/config 解決ロジックの共有元は `src/runner.ts`。** `resolveExecutionContext` が
+  workspace folder root（無ければ linted file のあるディレクトリ）と
+  `simutransDatLinter.executablePath`/`configPath` 設定を解決する。`src/extension.ts`（lint）と
+  `src/formatter.ts`（fmt）の両方がこれを使うため、cwd/config 周りの挙動を変える場合はここ1箇所を
+  直せば両方に反映される。
+- **フォーマッタの統合テストは "vscode.executeFormatDocumentProvider" の生の結果を直接は使えない。**
+  このコマンドは provider が返した TextEdit を、VSCode 側で元の内容との最小差分へ変換してから返す
+  （このプロバイダは常にドキュメント全体を置き換える単一の TextEdit を返すが、コマンド経由で受け取る
+  頃には複数の小さな TextEdit に分割されている）。そのため `test/extension.test.ts` のフォーマッタ
+  テストは、TextEdit の形状を検証するのではなく `editor.action.formatDocument` を実行してから
+  `document.getText()` で最終的な中身を読み取り、CLI を直接実行して得た期待値と比較している。
