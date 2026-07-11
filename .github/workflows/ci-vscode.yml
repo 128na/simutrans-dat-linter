@@ -49,7 +49,7 @@ jobs:
       # re-downloads as needed, so a stale hit only costs a wasted restore,
       # never a wrong/broken install.
       - name: Cache VSCode test download
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: editors/vscode/.vscode-test
           key: vscode-test-${{ runner.os }}-${{ hashFiles('editors/vscode/package-lock.json') }}
