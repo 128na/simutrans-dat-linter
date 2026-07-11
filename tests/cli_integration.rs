@@ -22,7 +22,7 @@ fn bin() -> Command {
 
 #[test]
 fn lint_help_arg_text_is_english_by_default() {
-    let output = bin().args(["lint", "-h"]).output().expect("起動に失敗");
+    let output = run_in_clean_dir(&["lint", "-h"], "lint_help_en");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("A single file, directory, or glob pattern"),
@@ -36,7 +36,7 @@ fn lint_help_arg_text_is_english_by_default() {
 
 #[test]
 fn fmt_help_arg_text_is_english_by_default() {
-    let output = bin().args(["fmt", "-h"]).output().expect("起動に失敗");
+    let output = run_in_clean_dir(&["fmt", "-h"], "fmt_help_en");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("Disable reordering"),
@@ -50,7 +50,7 @@ fn fmt_help_arg_text_is_english_by_default() {
 
 #[test]
 fn analyze_help_arg_text_is_english_by_default() {
-    let output = bin().args(["analyze", "-h"]).output().expect("起動に失敗");
+    let output = run_in_clean_dir(&["analyze", "-h"], "analyze_help_en");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("Directory to analyze"),
@@ -72,6 +72,22 @@ fn run_with_ja_config(args: &[&str], tmp_subdir: &str) -> std::process::Output {
         "[general]\nlanguage = \"ja\"\n",
     )
     .expect("config書き込みに失敗");
+    let output = bin()
+        .args(args)
+        .current_dir(&tmp)
+        .output()
+        .expect("起動に失敗");
+    let _ = std::fs::remove_dir_all(&tmp);
+    output
+}
+
+/// configファイルを一切書き込まない、空の一時ディレクトリをカレントディレクトリに
+/// 指定して実行する。デフォルト(English)挙動を検証するテストが、クレートルートに
+/// 開発者のローカル`dat_linter.toml`（gitignore対象、`language = "ja"`等）が実在する
+/// 環境でも安定して通ることを保証するために使う。
+fn run_in_clean_dir(args: &[&str], tmp_subdir: &str) -> std::process::Output {
+    let tmp = std::env::temp_dir().join(format!("dat_linter_cli_test_{tmp_subdir}"));
+    let _ = std::fs::create_dir_all(&tmp);
     let output = bin()
         .args(args)
         .current_dir(&tmp)
@@ -306,10 +322,7 @@ fn analyze_without_config_shows_dangling_constraint_by_default() {
 
 #[test]
 fn describe_known_code_shows_why_and_how_to_fix() {
-    let output = bin()
-        .args(["describe", "obsolete-type"])
-        .output()
-        .expect("起動に失敗");
+    let output = run_in_clean_dir(&["describe", "obsolete-type"], "describe_known_code");
     assert!(output.status.success(), "既知のcodeはexit成功であるべき");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -360,7 +373,7 @@ fn describe_switches_to_japanese_via_config() {
 
 #[test]
 fn describe_help_arg_text_is_english_by_default() {
-    let output = bin().args(["describe", "-h"]).output().expect("起動に失敗");
+    let output = run_in_clean_dir(&["describe", "-h"], "describe_help_en");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("Show the description"),
@@ -702,7 +715,7 @@ fn fmt_without_config_in_clean_directory_does_not_create_config_file() {
 
 #[test]
 fn init_help_arg_text_is_english_by_default() {
-    let output = bin().args(["init", "-h"]).output().expect("起動に失敗");
+    let output = run_in_clean_dir(&["init", "-h"], "init_help_en");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("Generate dat_linter.toml in the current directory"),

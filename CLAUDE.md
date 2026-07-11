@@ -59,6 +59,17 @@ src/
     order.rs                  obj種別ごとの並び順定義
 ```
 
+## テストを書く際の注意点
+
+`tests/cli_integration.rs`で`dat_linter`バイナリを起動するテストは、**必ず`current_dir`を
+明示的に指定すること**（`bin()`をそのまま`.output()`しない）。指定しないと、テストプロセスの
+実cwd（クレートルート）を見に行ってしまい、開発者がローカルで手動テスト用に置いている
+`dat_linter.toml`（`.gitignore`対象で`git status`には出ないが実在しうる、`language = "ja"`等）を
+拾って挙動が変わる。実際にこのセッション中、意図しない`dat_linter.toml`の生成・混入が複数回
+発生し、5件（後に洗い出しでもう1件追加）のテストがローカル環境依存で壊れる不具合を引き起こした。
+既存のヘルパー: config込みの挙動を検証したいときは`run_with_ja_config`、config無し（デフォルト）
+の挙動を検証したいときは`run_in_clean_dir`を使うこと。
+
 ## 開発コマンド
 
 ```
