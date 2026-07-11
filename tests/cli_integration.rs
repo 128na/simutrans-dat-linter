@@ -282,8 +282,9 @@ fn analyze_without_config_shows_dangling_constraint_by_default() {
     // 第10弾（項目4）で診断本文はstderrへ移動したため、ここではstderrを確認する。
     let tmp = std::env::temp_dir().join("dat_linter_cli_test_analyze_default");
     let _ = std::fs::create_dir_all(&tmp);
-    // 明示的にdat_linter.tomlを置かない（自動生成されるデフォルトは
-    // include/exclude空=all許可のため、このテストの意図には影響しない）。
+    // 明示的にdat_linter.tomlを置かない（見つからない場合のデフォルトは
+    // include/exclude空=all許可のため、このテストの意図には影響しない。
+    // 生成もされないため後始末のremove_fileは実質no-opだが、念のため残す）。
     let dir = testdata_dir().join("couplings_dangling");
 
     let output = bin()
@@ -572,5 +573,149 @@ fn fmt_lf_input_stdout_has_no_crlf() {
         !output.stdout.windows(2).any(|w| w == b"\r\n"),
         "LF入力の標準出力にCRLFが混入するべきではない: {:?}",
         String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+// --- `dat_linter init`: dat_linter.toml の明示的な生成 --------------------------
+//
+// かつて`lint`/`fmt`は`--config`未指定かつカレントディレクトリに`dat_linter.toml`が
+// 無い場合、暗黙的にカレントディレクトリへ自動生成していた。この暗黙の副作用が
+// 意図しないディレクトリへの誤生成・テスト汚染の原因になったため廃止し、生成は
+// この明示的な`init`サブコマンドに一本化した。以下はその新しい挙動の直接検証。
+
+/// クリーンな一時ディレクトリを1つ作り、そのパスを返す。呼び出し側で
+/// `let _ = std::fs::remove_dir_all(&tmp);` により後始末すること。
+fn make_clean_tmp_dir(tmp_subdir: &str) -> PathBuf {
+    let tmp = std::env::temp_dir().join(format!("dat_linter_cli_test_{tmp_subdir}"));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("一時ディレクトリの作成に失敗");
+    tmp
+}
+
+#[test]
+fn init_creates_config_file_with_expected_content_in_clean_directory() {
+    let tmp = make_clean_tmp_dir("init_clean");
+
+    let output = bin()
+        .args(["init"])
+        .current_dir(&tmp)
+        .output()
+        .expect("起動に失敗");
+
+    let config_path = tmp.join("dat_linter.toml");
+    let created = config_path.is_file();
+    let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    assert!(
+        output.status.success(),
+        "クリーンなディレクトリでのinitは成功するべき: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(created, "dat_linter.toml が生成されているべき");
+    assert!(
+        content.contains("[general]"),
+        "生成内容に[general]セクションが含まれるべき: {content}"
+    );
+    assert!(
+        content.contains("[rules]"),
+        "生成内容に[rules]セクションが含まれるべき: {content}"
+    );
+    assert!(
+        content.contains("language = \"en\""),
+        "生成内容のデフォルト言語はenであるべき: {content}"
+    );
+}
+
+#[test]
+fn init_does_not_overwrite_existing_config_file() {
+    let tmp = make_clean_tmp_dir("init_existing");
+    let config_path = tmp.join("dat_linter.toml");
+    let original_content = "# custom content\n[general]\nlanguage = \"ja\"\n";
+    std::fs::write(&config_path, original_content).expect("既存configの書き込みに失敗");
+
+    let output = bin()
+        .args(["init"])
+        .current_dir(&tmp)
+        .output()
+        .expect("起動に失敗");
+
+    let content_after = std::fs::read_to_string(&config_path).unwrap();
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    assert!(
+        !output.status.success(),
+        "既にdat_linter.tomlが存在する場合、initは失敗終了するべき"
+    );
+    assert_eq!(
+        content_after, original_content,
+        "既存のdat_linter.tomlは上書きされず内容が保持されるべき"
+    );
+}
+
+// --- 回帰テスト: lint/fmtは設定ファイルが無くても自動生成しない ------------------
+//
+// これが今回の変更の本質的な目的（暗黙の自動生成の廃止）を直接検証する
+// 最重要テスト。
+
+#[test]
+fn lint_without_config_in_clean_directory_does_not_create_config_file() {
+    let tmp = make_clean_tmp_dir("lint_no_autogen");
+    let path = testdata_dir().join("citycar_bad_image_size.dat");
+
+    let _output = bin()
+        .args(["lint", path.to_str().unwrap()])
+        .current_dir(&tmp)
+        .output()
+        .expect("起動に失敗");
+
+    let config_generated = tmp.join("dat_linter.toml").is_file();
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    assert!(
+        !config_generated,
+        "dat_linter.tomlが存在しないディレクトリでlintを実行しても、\
+         暗黙にdat_linter.tomlが生成されるべきではない（initサブコマンドでのみ生成する）"
+    );
+}
+
+#[test]
+fn fmt_without_config_in_clean_directory_does_not_create_config_file() {
+    let tmp = make_clean_tmp_dir("fmt_no_autogen");
+    let path = testdata_dir().join("fmt_example.dat");
+
+    let _output = bin()
+        .args(["fmt", path.to_str().unwrap(), "--no-reorder"])
+        .current_dir(&tmp)
+        .output()
+        .expect("起動に失敗");
+
+    let config_generated = tmp.join("dat_linter.toml").is_file();
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    assert!(
+        !config_generated,
+        "dat_linter.tomlが存在しないディレクトリでfmtを実行しても、\
+         暗黙にdat_linter.tomlが生成されるべきではない（initサブコマンドでのみ生成する）"
+    );
+}
+
+#[test]
+fn init_help_arg_text_is_english_by_default() {
+    let output = bin().args(["init", "-h"]).output().expect("起動に失敗");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Generate dat_linter.toml in the current directory"),
+        "デフォルト(English)でinitのaboutが翻訳されているべき: {stdout}"
+    );
+}
+
+#[test]
+fn init_help_arg_text_switches_to_japanese_via_config() {
+    let output = run_with_ja_config(&["init", "-h"], "init_help_ja");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("カレントディレクトリに dat_linter.toml を生成する"),
+        "config経由でinitのaboutが日本語に切り替わるべき: {stdout}"
     );
 }

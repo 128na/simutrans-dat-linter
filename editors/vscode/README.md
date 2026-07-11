@@ -28,7 +28,7 @@ VSCode の `editor.formatOnSave` を `true` にしておけば保存時に自動
 | 設定キー | 既定値 | 説明 |
 | --- | --- | --- |
 | `simutransDatLinter.executablePath` | `"dat_linter"` | `dat_linter` 実行ファイルのパス。既定では PATH 上のものを使用します。 |
-| `simutransDatLinter.configPath` | `""`（未指定） | `--config` に渡す `dat_linter.toml` の明示パス。**未指定の場合、`dat_linter` 自身がワークスペースフォルダのルート直下の `dat_linter.toml` を自動探索し、見つからなければそこへ自動生成します。** ルール設定を制御したい場合や、意図しない `dat_linter.toml` 生成を避けたい場合は明示的に指定してください。lint・フォーマッタの両方がこの設定を共有します。 |
+| `simutransDatLinter.configPath` | `""`（未指定） | `--config` に渡す `dat_linter.toml` の明示パス。**未指定の場合、`dat_linter` 自身がワークスペースフォルダのルート直下の `dat_linter.toml` を自動探索します。見つからない場合は自動生成せず、全ルール有効・`language=en` のデフォルト設定のまま動作します。** そのディレクトリに雛形を作りたい場合はターミナルから `dat_linter init` を実行してください。ルール設定を制御したい場合は `configPath` を明示的に指定するか、ワークスペースフォルダのルートで `dat_linter init` を実行してください。lint・フォーマッタの両方がこの設定を共有します。 |
 
 `fmt` のキー並び替え（reorder）専用の設定項目はこの拡張には存在しません。無効化したい場合は
 `dat_linter.toml` 側の `[rules] exclude` に `"fmt-reorder-applied"` を追加してください
@@ -49,12 +49,13 @@ VSCode の `editor.formatOnSave` を `true` にしておけば保存時に自動
 
 エンドユーザー向けの内容ではなく、この拡張自体を開発・改修する際に踏みやすい罠のメモです。
 
-- **`dat_linter.toml` 自動生成の罠。** `configPath` を指定しない状態で拡張やテストを動かすと、
-  `dat_linter` がカレントディレクトリ（この拡張では workspace folder root、フォールバックで
-  linted file のあるディレクトリ）に `dat_linter.toml` を自動生成してしまう。動作確認・自動テストの
-  際は必ず明示的な `--config`（`simutransDatLinter.configPath` 経由）を指定し、意図しない場所に
-  設定ファイルが生成されないようにすること。本リポジトリ直下や `testdata/` 配下に誤って生成して
-  しまった場合は `git status` で新規ファイルであることを確認してから削除する。
+- **`dat_linter.toml` の自動探索（自動生成はしない）。** `configPath` を指定しない状態で拡張や
+  テストを動かすと、`dat_linter` はカレントディレクトリ（この拡張では workspace folder root、
+  フォールバックで linted file のあるディレクトリ）の `dat_linter.toml` を自動探索する。見つからなくても
+  そこへ自動生成することはなく、全ルール有効・`language=en` のデフォルト設定にフォールバックするだけ
+  （`dat_linter`本体側でこの暗黙生成は廃止済み。生成は明示的な`dat_linter init`サブコマンドに一本化
+  されている）。動作確認・自動テストで特定のルール設定を効かせたい場合は、明示的な `--config`
+  （`simutransDatLinter.configPath` 経由）を指定すること。
 - **`fixtures/dat_linter.toml` という名前は使えない。** リポジトリ直下の `.gitignore` に
   `/dat_linter.toml`（ルート直下限定）というルールがあるためこのディレクトリの直下では問題ないが、
   念のため PoC を踏襲し `fixtures/test-lint-config.toml` という名前にしている。

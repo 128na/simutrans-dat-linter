@@ -20,7 +20,9 @@ fn main() -> ExitCode {
     // 1. 設定ファイル（言語含む）を、clapによる本来の引数解釈より先に読み込む。
     //    `--help`/`-h`はclapが`get_matches()`内で検出し即座に終了するため、
     //    ヘルプ表示にも翻訳後の言語を反映するにはこの順序が必須。
-    //    設定ファイル自動生成（初回起動時）もこのタイミングで発生する。
+    //    設定ファイルが見つからない場合はここでは何も生成せず、デフォルト設定
+    //    （全ルール有効・`language=en`）にフォールバックする（生成は明示的な
+    //    `dat_linter init`サブコマンドでのみ行う）。
     let explicit_config_path = peek_config_arg();
     let config = match LintConfig::load_or_default(explicit_config_path.as_deref()) {
         Ok(c) => c,
@@ -50,5 +52,6 @@ fn main() -> ExitCode {
         Command::Analyze(args) => commands::analyze::run_analyze(&args, language),
         Command::List(args) => commands::list::run_list(&args, language),
         Command::Describe(args) => commands::describe::run_describe(&args, language),
+        Command::Init(args) => commands::init::run_init(&args, language),
     }
 }

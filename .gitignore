@@ -1,7 +1,7 @@
 /target
 
-# ローカルでdat_linterを直接実行（cargo run/target/*/dat_linter.exe）した際に
-# リポジトリ直下へ自動生成される設定ファイル（config.rsのgenerate_default_config_file）。
+# ローカルで`dat_linter init`（cargo run/target/*/dat_linter.exe）をリポジトリ直下で
+# 実行した際に生成される設定ファイル（config.rsのgenerate_default_config_file）。
 # 開発用の作業ディレクトリでの実行時に生成されうる副産物であり、リポジトリの
 # 成果物ではないため管理対象外にする。
 /dat_linter.toml

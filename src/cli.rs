@@ -52,6 +52,8 @@ pub enum Command {
     List(ListArgs),
     /// 指定したcodeの説明（なぜNGか・どう直すか）を表示する
     Describe(DescribeArgs),
+    /// カレントディレクトリに dat_linter.toml を生成する
+    Init(InitArgs),
 }
 
 /// `lint`の長い説明（22obj種別の一覧を含む）。翻訳対象外、常に日本語のまま
@@ -73,6 +75,8 @@ const LIST_ABOUT_EN: &str =
 const DESCRIBE_ABOUT_JA: &str = "指定したcodeの説明（なぜNGか・どう直すか）を表示する";
 const DESCRIBE_ABOUT_EN: &str =
     "Show the description (why it's flagged, how to fix it) for the given code";
+const INIT_ABOUT_JA: &str = "カレントディレクトリに dat_linter.toml を生成する";
+const INIT_ABOUT_EN: &str = "Generate dat_linter.toml in the current directory";
 
 /// 各引数の短い`help`（JA/EN）。第9弾（項目1）: 第2弾では「サブコマンドの
 /// aboutの一行説明のみ翻訳対象」と決めていたが、これは`lint`/`fmt`/`analyze`
@@ -228,6 +232,13 @@ pub fn apply_language_to_help(cmd: clap::Command, lang: Language) -> clap::Comma
             };
             c.about(about).mut_arg("code", |a| a.help(code_help))
         })
+        .mut_subcommand("init", |c| {
+            let about = match lang {
+                Language::Japanese => INIT_ABOUT_JA,
+                Language::English => INIT_ABOUT_EN,
+            };
+            c.about(about)
+        })
 }
 
 #[derive(clap::Args)]
@@ -366,6 +377,15 @@ pub struct DescribeArgs {
     #[arg(long)]
     pub config: Option<PathBuf>,
 }
+
+/// `dat_linter init`の引数。カレントディレクトリに`dat_linter.toml`を
+/// 生成するだけのコマンドで、既にファイルが存在する場合は上書きせず
+/// エラー終了する（`git init`等の慣習に合わせた安全側の挙動）。
+/// 生成先を変える`--config`等は現状持たない（他サブコマンドの`--config`は
+/// 「どの設定を読むか」の指定だが、`init`はそもそも何も読まず新規作成のみを
+/// 行うため意味が異なる。必要になれば別途検討する）。
+#[derive(clap::Args)]
+pub struct InitArgs {}
 
 /// `--config <path>`の値だけを事前に取り出す簡易スキャン。
 ///

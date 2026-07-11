@@ -42,7 +42,7 @@
         "simutransDatLinter.configPath": {
           "type": "string",
           "default": "",
-          "description": "Explicit path to a dat_linter.toml config file, passed via --config. Empty = let dat_linter resolve its own default (NOTE: this can auto-generate dat_linter.toml in the workspace folder root on first run)."
+          "description": "Explicit path to a dat_linter.toml config file, passed via --config. Empty = let dat_linter auto-discover dat_linter.toml in the workspace folder root (falls back to all-rules-enabled defaults if not found; dat_linter no longer auto-generates it -- run `dat_linter init` there to create one)."
         }
       }
     }

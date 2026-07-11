@@ -8,9 +8,10 @@ import * as path from "path";
  * and which directory to run it from.
  *
  * Shared by both the `lint` and `fmt` code paths (see extension.ts and
- * formatter.ts) so the cwd/config resolution logic — and its "auto-generates
- * dat_linter.toml in cwd when --config is omitted" caveat — only lives in
- * one place.
+ * formatter.ts) so the cwd/config resolution logic only lives in one place.
+ * When `configPath` is unset, `dat_linter` auto-discovers `dat_linter.toml`
+ * in cwd but no longer auto-generates it if missing (run `dat_linter init`
+ * there to create one) -- it falls back to all-rules-enabled defaults.
  */
 export interface DatLinterExecutionContext {
   executablePath: string;

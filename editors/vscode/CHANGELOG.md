@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Documentation updates only (no behavior change in this extension): `dat_linter` itself no
+  longer auto-generates `dat_linter.toml` when `configPath` is unset and no config file is found
+  in cwd -- it now falls back to all-rules-enabled defaults instead, and file generation is
+  opt-in via the new `dat_linter init` subcommand. Updated `README.md`, `package.json`'s
+  `simutransDatLinter.configPath` description, and the `src/runner.ts` doc comment to reflect
+  this. The extension's own cwd/config resolution logic (`resolveExecutionContext` in
+  `src/runner.ts`) is unchanged.
+
 ### Added
 
 - Document Formatting support backed by `dat_linter fmt <path> [--config ...]`: register

@@ -31,6 +31,7 @@ dat_linter lint addons/vehicle.dat
 ## 主要コマンド
 
 ```
+dat_linter init                        # dat_linter.toml をカレントディレクトリに生成
 dat_linter fmt   <file|dir|glob> -w    # 整形して書き戻す
 dat_linter lint  <file|dir|glob>       # 静的検証
 dat_linter analyze <vehicle_dat_dir>   # 車両連結制約の解析
@@ -40,7 +41,14 @@ dat_linter analyze <vehicle_dat_dir>   # 車両連結制約の解析
 
 ## 設定ファイル
 
-ルールの有効/無効・出力言語は `dat_linter.toml` で設定します（無ければ初回実行時に自動生成）。
+ルールの有効/無効・出力言語は `dat_linter.toml` で設定します。無ければ全ルール有効・`language=en`の
+デフォルト設定で動作しますが、暗黙の自動生成はしません。カレントディレクトリに雛形を作りたい場合は
+明示的に `dat_linter init` を実行してください（既に `dat_linter.toml` が存在する場合は上書きせず
+失敗終了します）。
+
+```
+dat_linter init
+```
 
 ```toml
 [rules]
