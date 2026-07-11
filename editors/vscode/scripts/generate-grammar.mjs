@@ -36,11 +36,18 @@ function loadKeysData() {
       encoding: "utf8",
     });
   } catch (err) {
-    fail(
-      `failed to run "${DAT_LINTER_BIN} keys --format json". Make sure dat_linter is installed ` +
-        `and on PATH, or set the DAT_LINTER_BIN environment variable to its full path.\n` +
-        `Underlying error: ${err.message}`
-    );
+    if (err.code === "ENOENT") {
+      fail(
+        `"${DAT_LINTER_BIN}" executable was not found on PATH. Make sure dat_linter is installed ` +
+          `and on PATH, or set the DAT_LINTER_BIN environment variable to its full path.`
+      );
+    } else {
+      fail(
+        `failed to run "${DAT_LINTER_BIN} keys --format json". It might be that the installed ` +
+          `dat_linter version is too old and does not support the "keys" command or "--format json" ` +
+          `option.\nUnderlying error: ${err.message}`
+      );
+    }
   }
 
   let data;
@@ -63,7 +70,12 @@ function collectKeys(data) {
       keySet.add(key);
     }
   }
-  return [...keySet].sort();
+  // Longest-first so a prefix key (e.g. "image") can't shadow a longer key
+  // that starts with it (e.g. "imageup") in the alternation regex — the
+  // regex engine takes the first alternative that matches, so a shorter
+  // prefix listed earlier would swallow only its own characters and leave
+  // the rest of a longer key unscoped.
+  return [...keySet].sort((a, b) => b.length - a.length || a.localeCompare(b));
 }
 
 function buildGrammar(keys, waytypes, directions) {
