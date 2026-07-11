@@ -43,4 +43,4 @@
 - 2026-07-11: dat_linter（Rust本体）の3件（`--format text`後方互換性・`keys --format json`のキー内容・
   テストのcwd分離ガイドライン遵守）に対応済み（[PR #6](https://github.com/128na/simutrans-dat-linter/pull/6)）。
 - 2026-07-11: VSCode拡張側の5件（lintのバッファ参照統一・cwd戦略の自動テスト経路・バージョン非互換検知ヒューリスティックの単体テスト・
-  一時ファイルのエラー時クリーンアップテスト・`package.json` contributesの実機登録検証）に対応済み（`fix/vscode-assurance-audit-hardening`ブランチ、PR番号は追ってMain側が追記）。
+  一時ファイルのエラー時クリーンアップテスト・`package.json` contributesの実機登録検証）に対応済み（[PR #7](https://github.com/128na/simutrans-dat-linter/pull/7)）。
