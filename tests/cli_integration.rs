@@ -764,12 +764,12 @@ fn lint_text_format_duplicate_key_matches_exact_golden_output() {
     let expected_stdout = format!("{p}: 0 error(s) / 1 warning(s)\n", p = path.display());
 
     assert_eq!(
-        String::from_utf8_lossy(&output.stderr),
+        String::from_utf8_lossy(&output.stderr).replace("\r\n", "\n"),
         expected_stderr,
         "duplicate_key.datのstderr全文が期待した診断行と厳密一致するべき"
     );
     assert_eq!(
-        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
         expected_stdout,
         "duplicate_key.datのstdout全文が期待したサマリ行と厳密一致するべき"
     );
@@ -795,12 +795,12 @@ fn lint_text_format_missing_waytype_matches_exact_golden_output() {
     let expected_stdout = format!("{p}: 1 error(s) / 0 warning(s)\n", p = path.display());
 
     assert_eq!(
-        String::from_utf8_lossy(&output.stderr),
+        String::from_utf8_lossy(&output.stderr).replace("\r\n", "\n"),
         expected_stderr,
         "broken_missing_waytype.datのstderr全文が期待した診断行と厳密一致するべき"
     );
     assert_eq!(
-        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
         expected_stdout,
         "broken_missing_waytype.datのstdout全文が期待したサマリ行と厳密一致するべき"
     );
