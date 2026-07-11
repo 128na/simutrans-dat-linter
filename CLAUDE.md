@@ -88,6 +88,12 @@ cargo fmt --all -- --check
 
 CI は Linux / Windows の両方でビルド・テストします。
 
+## 変更の取り込み方針
+
+mainへの直接pushではなく、**作業ブランチを切ってPRを作成するスタイル**を基本とする
+（2026-07時点の方針転換。直接push運用で気づかれずCIが壊れた実例があったため、PR経由で
+マージ前にCIチェックを可視化する）。`editors/vscode/`側の変更も同様。
+
 ## リリース手順
 
 バージョン管理・タグ打ちには [cargo-release](https://github.com/crate-ci/cargo-release) を使います
