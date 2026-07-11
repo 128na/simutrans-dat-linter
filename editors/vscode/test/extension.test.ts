@@ -50,8 +50,9 @@ suite("dat_linter VSCode extension integration", () => {
     assert.ok(ext, `extension ${EXTENSION_ID} not found - is it registered under that id?`);
     await ext!.activate();
 
-    // Point the extension at a throwaway config so dat_linter never falls back to
-    // auto-generating dat_linter.toml next to the (read-only, ref-only) testdata files.
+    // Point the extension at a throwaway config so dat_linter's rule include/exclude
+    // and language settings are deterministic for this test run (dat_linter no longer
+    // auto-generates a dat_linter.toml on its own; see `dat_linter init`).
     const config = vscode.workspace.getConfiguration("simutransDatLinter");
     await config.update(
       "configPath",
