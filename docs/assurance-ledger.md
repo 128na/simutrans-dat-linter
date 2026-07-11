@@ -41,5 +41,4 @@
 
 - 2026-07-11: 初回監査実施。以降の対応はこの表のStatus変化で追跡する（🔴/🟡 → 🟢 へ変わった項目に完了日・PR番号を追記していく）。
 - 2026-07-11: dat_linter（Rust本体）の3件（`--format text`後方互換性・`keys --format json`のキー内容・
-  テストのcwd分離ガイドライン遵守）に対応済み。対応履歴の詳細は`tests/cli_integration.rs`のコミット参照。
-  （PR番号は後で追記）
+  テストのcwd分離ガイドライン遵守）に対応済み（[PR #6](https://github.com/128na/simutrans-dat-linter/pull/6)）。
