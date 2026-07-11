@@ -1,0 +1,50 @@
+># Simple obj=building example, used as a grammar snapshot fixture
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.simutrans-dat comment.line.simutrans-dat
+>obj=building
+#^^^ source.simutrans-dat storage.type.defined-keys.simutrans-dat
+#   ^ source.simutrans-dat keyword.operator.equal.simutrans-dat
+#    ^^^^^^^^ source.simutrans-dat
+>name=my_building
+#^^^^ source.simutrans-dat storage.type.defined-keys.simutrans-dat
+#    ^ source.simutrans-dat keyword.operator.equal.simutrans-dat
+#     ^^^^^^^^^^^ source.simutrans-dat
+>copyright=128na
+#^^^^^^^^^ source.simutrans-dat storage.type.defined-keys.simutrans-dat
+#         ^ source.simutrans-dat keyword.operator.equal.simutrans-dat
+#          ^^^^^ source.simutrans-dat
+>waytype=track
+#^^^^^^^ source.simutrans-dat storage.type.defined-keys.simutrans-dat
+#       ^ source.simutrans-dat keyword.operator.equal.simutrans-dat
+#        ^^^^^ source.simutrans-dat storage.type.waytypes.simutrans-dat
+>------------
+#^^^^^^^^^^^^ source.simutrans-dat comment.line.simutrans-dat
+>cursor=icon.0.0
+#^^^^^^ source.simutrans-dat storage.type.defined-keys.simutrans-dat
+#      ^ source.simutrans-dat keyword.operator.equal.simutrans-dat
+#       ^^^^ source.simutrans-dat
+#           ^ source.simutrans-dat
+#            ^ source.simutrans-dat constant.numeric.simutrans-dat
+#             ^ source.simutrans-dat
+#              ^ source.simutrans-dat constant.numeric.simutrans-dat
+>icon=icon.0.0
+#^^^^ source.simutrans-dat storage.type.defined-keys.simutrans-dat
+#    ^ source.simutrans-dat keyword.operator.equal.simutrans-dat
+#     ^^^^ source.simutrans-dat
+#         ^ source.simutrans-dat
+#          ^ source.simutrans-dat constant.numeric.simutrans-dat
+#           ^ source.simutrans-dat
+#            ^ source.simutrans-dat constant.numeric.simutrans-dat
+>BackImage[0][0][0][0][0]=image.0.0
+#^^^^^^^^^ source.simutrans-dat storage.type.defined-keys.simutrans-dat
+#         ^^^ source.simutrans-dat variable.parameter.direction-and-number.simutrans-dat
+#            ^^^ source.simutrans-dat variable.parameter.direction-and-number.simutrans-dat
+#               ^^^ source.simutrans-dat variable.parameter.direction-and-number.simutrans-dat
+#                  ^^^ source.simutrans-dat variable.parameter.direction-and-number.simutrans-dat
+#                     ^^^ source.simutrans-dat variable.parameter.direction-and-number.simutrans-dat
+#                        ^ source.simutrans-dat keyword.operator.equal.simutrans-dat
+#                         ^^^^^ source.simutrans-dat
+#                              ^ source.simutrans-dat
+#                               ^ source.simutrans-dat constant.numeric.simutrans-dat
+#                                ^ source.simutrans-dat
+#                                 ^ source.simutrans-dat constant.numeric.simutrans-dat
+>

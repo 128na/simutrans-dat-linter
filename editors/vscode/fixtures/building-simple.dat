@@ -1,0 +1,9 @@
+# Simple obj=building example, used as a grammar snapshot fixture
+obj=building
+name=my_building
+copyright=128na
+waytype=track
+------------
+cursor=icon.0.0
+icon=icon.0.0
+BackImage[0][0][0][0][0]=image.0.0

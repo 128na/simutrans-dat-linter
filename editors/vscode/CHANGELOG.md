@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Syntax highlighting for `.dat` files: registers a new `simutrans-dat` language
+  (`language-configuration.json` + `syntaxes/simutrans-dat.tmLanguage.json`, scope
+  `source.simutrans-dat`). The grammar's key list and waytype/direction value lists are
+  generated mechanically from `dat_linter keys --format json` by the new
+  `scripts/generate-grammar.mjs` (`npm run generate:grammar`), so they can't drift from what
+  dat_linter itself considers valid. Value highlighting for `type`/`location`/`climate` is out
+  of scope for now (dat_linter doesn't expose structured data for those yet). CI regenerates the
+  grammar and fails on any diff against the committed file, so a stale grammar can't be merged.
+- Snippets for `.dat` files (`snippets/snippets.json`, 50 snippets covering every obj type),
+  ported from the author's earlier CC0-licensed `128na/simutrans-vscode-extention`. Verified
+  against `dat_linter lint` via the new `scripts/lint-snippets.mjs` (`npm run test:snippets`),
+  which resolves each snippet's tab stops to placeholder text and fails on any `error`-severity
+  diagnostic other than `missing-image-file` (snippets intentionally reference example filenames
+  that don't exist on disk). Fixed several snippets that failed this check when ported over:
+  missing/obsolete `waytype`, an obsolete `extension_building` key, missing `cursor`/`icon` on
+  the HQ building snippet, an unspecified factory `mapcolor`, and a crossing snippet whose two
+  `waytype[N]` defaults resolved to the same value.
+- `vscode-tmgrammar-test` devDependency plus grammar snapshot fixtures under `fixtures/*.dat`
+  (`npm run test:grammar`, backed by `vscode-tmgrammar-snap`), committed as `.snap` files and
+  run in CI as a separate step from the existing `npm test` (mocha/`@vscode/test-cli`) suite.
+- README.md: new "旧拡張(`128na/simutrans-vscode-extention`)からの移行" section explaining that
+  running both extensions at once can make `.dat` highlighting unstable (both contribute a
+  language/grammar for the same extension), and recommending uninstalling the old one; lint/
+  format remain unaffected either way since they're language-ID-independent.
+
 ### Changed
 
 - Documentation updates only (no behavior change in this extension): `dat_linter` itself no
