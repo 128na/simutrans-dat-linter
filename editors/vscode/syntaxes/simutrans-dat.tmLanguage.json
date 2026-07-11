@@ -1,0 +1,157 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "simutrans-dat",
+  "scopeName": "source.simutrans-dat",
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#lines"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        {
+          "name": "comment.line.simutrans-dat",
+          "match": "^#.*"
+        },
+        {
+          "name": "comment.line.simutrans-dat",
+          "match": "^-+$"
+        }
+      ]
+    },
+    "lines": {
+      "patterns": [
+        {
+          "match": "^([^=]+)(=> |=)?((\\d+)|([A-Za-z,_]+)|(.+))?$",
+          "captures": {
+            "1": {
+              "patterns": [
+                {
+                  "include": "#defined_keys"
+                },
+                {
+                  "include": "#direction_and_number"
+                }
+              ]
+            },
+            "2": {
+              "patterns": [
+                {
+                  "include": "#equal"
+                }
+              ]
+            },
+            "4": {
+              "patterns": [
+                {
+                  "include": "#numeric"
+                }
+              ]
+            },
+            "5": {
+              "patterns": [
+                {
+                  "include": "#defined_values"
+                }
+              ]
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#general_value"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "repository": {
+        "numeric": {
+          "patterns": [
+            {
+              "name": "constant.numeric.simutrans-dat",
+              "match": "-?\\d+"
+            }
+          ]
+        },
+        "defined_keys": {
+          "patterns": [
+            {
+              "name": "storage.type.defined-keys.simutrans-dat",
+              "match": "^(?i:allow_underground|animation_time|animation_time_closed|animation_time_open|axle_load|backdiagonal|backimage|backimage2|backimageup|backimageup2|backpillar|backpillar2|backramp|backramp2|backstart|backstart2|capacity|catg|chance|climates|clip_below|closedimage|constraint|copyright|cost|cursor|diagonal|dims|distributionweight|draw_as_ding|electricity_amount|electricity_boost|electricity_demand|emptyimage|enables_pax|enables_post|enables_ware|end_of_choose|engine_type|expand_minimum|expand_probability|expand_range|expand_times|extension_building|fields|fixed_cost|free_route|freight|freightimage|freightimagetype|front_closedimage|front_openimage|frontdiagonal|frontimage|frontimage2|frontimageup|frontimageup2|frontpillar|frontpillar2|frontramp|frontramp2|frontstart|frontstart2|gear|has_snow|icon|image|imageup|inputcapacity|inputfactor|inputgood|inputsupplier|intro_month|intro_year|is_longblocksignal|is_presignal|is_prioritysignal|is_private|is_signal|length|level|loading_time|location|mail_boost|mail_demand|maintenance|mapcolor|max_fields|max_height|max_lenght|max_length|max_weight|metric|min_fields|min_speed|name|needs_ground|no_foreground|noconstruction|noinfo|obj|offset|offset_left|openimage|outputcapacity|outputfactor|outputgood|own_waytype|passenger_boost|passenger_demand|pax_level|payload|pillar_asymmetric|pillar_distance|power|preservation_month|preservation_year|probability_to_spawn|production_per_field|productivity|range|retire_month|retire_year|runningcost|seasons|single_way|smoke|smokelifetime|smokeoffset|smoketile|smokeuplift|sound|sound_interval|sound_name|sound_nr|spawn_weight|speed|speed_bonus|start_fields|station_capacity|station_maintenance|station_price|steps_per_frame|storage_capacity|system_type|topspeed|trees_on_top|type|value|waytype|weight|weight_per_unit)"
+            }
+          ]
+        },
+        "defined_values": {
+          "patterns": [
+            {
+              "name": "storage.type.waytypes.simutrans-dat",
+              "match": "\\b(?i:none|road|track|electrified_track|maglev_track|monorail_track|narrowgauge_track|water|air|schiene_tram|tram_track|power|decoration)$"
+            },
+            {
+              "name": "storage.type.directions.simutrans-dat",
+              "match": "\\b(?i:s|w|sw|se|n|e|ne|nw)$"
+            }
+          ]
+        },
+        "general_value": {
+          "patterns": [
+            {
+              "match": "[.,](-?\\d+)|((-?\\d+),)+?(-?\\d+)",
+              "captures": {
+                "1": {
+                  "patterns": [
+                    {
+                      "include": "#numeric"
+                    }
+                  ]
+                },
+                "2": {
+                  "patterns": [
+                    {
+                      "include": "#numeric"
+                    }
+                  ]
+                },
+                "3": {
+                  "patterns": [
+                    {
+                      "include": "#numeric"
+                    }
+                  ]
+                },
+                "4": {
+                  "patterns": [
+                    {
+                      "include": "#numeric"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "direction_and_number": {
+          "patterns": [
+            {
+              "name": "variable.parameter.direction-and-number.simutrans-dat",
+              "match": "\\[(?i:s|w|sw|se|n|e|ne|nw|-|\\d+)\\]"
+            }
+          ]
+        },
+        "equal": {
+          "patterns": [
+            {
+              "name": "keyword.operator.equal.simutrans-dat",
+              "match": "=> |="
+            }
+          ]
+        }
+      }
+    }
+  }
+}

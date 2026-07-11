@@ -27,6 +27,13 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: "20.x"
+      # Regenerates syntaxes/simutrans-dat.tmLanguage.json from `dat_linter keys --format json`
+      # and fails if the committed file has drifted from what dat_linter currently reports.
+      - name: Generate grammar and check it's up to date
+        working-directory: editors/vscode
+        run: |
+          node scripts/generate-grammar.mjs
+          git diff --exit-code -- syntaxes/simutrans-dat.tmLanguage.json
       - name: Install xvfb
         run: sudo apt-get update && sudo apt-get install -y xvfb
       - name: Install dependencies
@@ -38,3 +45,9 @@ jobs:
       - name: Test
         working-directory: editors/vscode
         run: xvfb-run -a npm test
+      - name: Lint snippets against dat_linter
+        working-directory: editors/vscode
+        run: npm run test:snippets
+      - name: Grammar snapshot test
+        working-directory: editors/vscode
+        run: npm run test:grammar

@@ -1,0 +1,8 @@
+obj=vehicle
+name=test_vehicle
+waytype=track
+speed=100
+Constraint[Prev][0]=
+emptyImage[s]=image.0.0
+emptyImage[n]=image.0.0
+emptyImage[ne]=image.0.0

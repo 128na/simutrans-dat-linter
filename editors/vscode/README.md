@@ -12,6 +12,12 @@ VSCode の `editor.formatOnSave` を `true` にしておけば保存時に自動
 コマンドパレットから `Format Document` を実行すれば手動整形もできます。改行コード（CRLF/LF）は
 入力ファイルのものがそのまま保持されます。
 
+加えて `.dat` 用のシンタックスハイライト（`syntaxes/simutrans-dat.tmLanguage.json`）と
+スニペット（`snippets/snippets.json`）も提供します。どちらも `dat_linter keys --format json`
+が返す obj種別ごとのキー一覧・waytype/direction値一覧から機械的に生成・検証しており、
+`dat_linter` 本体が把握しているキーとグラマーが乖離しないようにしています
+（詳細は「開発者向けメモ」参照）。
+
 ## 前提条件
 
 この拡張は `dat_linter` 本体を同梱しません。事前に別途インストールし、PATH に通しておく必要があります。
@@ -44,6 +50,19 @@ VSCode の `editor.formatOnSave` を `true` にしておけば保存時に自動
 - フォーマッタは `dat_linter fmt <path> [--config ...]`（`-w`/`--write` なし）の標準出力で
   ドキュメント全体を置き換えます。ファイルへの直接書き込みは行わないため、実際にディスクへ
   反映するには VSCode 側で保存（`editor.formatOnSave` または手動保存）が必要です。
+
+## 旧拡張(`128na/simutrans-vscode-extention`)からの移行
+
+作者（128na）が以前公開していた別のVSCode拡張
+[`128na/simutrans-vscode-extention`](https://github.com/128na/simutrans-vscode-extention)（CC0）にも、
+`.dat` 向けのシンタックスハイライト・スニペットが含まれています。両拡張がともに `.dat` に対して
+言語定義・グラマーを提供するため、**両方を同時にインストールしていると、どちらの言語ID/グラマーが
+実際に使われるかVSCode側の解決順に依存し、ハイライト表示が不安定になることがあります**。
+
+同一 publisher（128na）による後継として、この拡張の採用後は旧拡張のアンインストールを推奨します。
+lint（Problems パネル表示）・Document Formatting の機能は言語ID に依存しない実装
+（`{pattern: "**/*.dat"}` によるファイル名ベースのセレクタ）のため、旧拡張を入れたままにするか
+どうかに関わらず、これらの機能自体は影響を受けません。
 
 ## 開発者向けメモ
 
@@ -80,3 +99,24 @@ VSCode の `editor.formatOnSave` を `true` にしておけば保存時に自動
   頃には複数の小さな TextEdit に分割されている）。そのため `test/extension.test.ts` のフォーマッタ
   テストは、TextEdit の形状を検証するのではなく `editor.action.formatDocument` を実行してから
   `document.getText()` で最終的な中身を読み取り、CLI を直接実行して得た期待値と比較している。
+- **`syntaxes/simutrans-dat.tmLanguage.json` は手で編集しない。** `scripts/generate-grammar.mjs`
+  （`npm run generate:grammar`）が `dat_linter keys --format json` の出力から機械的に生成する。
+  Rustツールチェーンを持たない開発者でも `npm install` だけで動く状態を保つため、`compile`/`pretest`
+  からは意図的に呼び出していない。生成物自体はリポジトリにコミットする対象（`vsce package`・F5起動を
+  Rustツールチェーン無しで動かすため）なので、`dat_linter` 側でキー・waytype・direction一覧が変わったら
+  手動で `npm run generate:grammar` を再実行してコミットすること。CI（`ci-vscode.yml`）は
+  再生成した結果と `git diff --exit-code` で比較し、コミット漏れを検知する。
+- **グラマーの値ハイライトは waytype/direction のみ。** `type`名・`location`・`climate`等の値一覧は
+  `dat_linter keys --format json` にまだ構造化データが無いため、意図的にスコープ外にしている
+  （該当する値は `#general_value` にフォールバックし、ハイライトされない）。
+- **`npm run test:snippets`（`scripts/lint-snippets.mjs`）はタブストップを機械的に埋めてから lint する。**
+  `${1:default}`/`$1`/`${1|a,b|}` を実際の値に置換した `.dat` を一時ディレクトリに書き出し、
+  `dat_linter lint --format json --config fixtures/test-lint-config.toml` を実行する。
+  `missing-image-file` はスニペットが実在しないサンプル画像名（`image.0.0` 等）を参照するため
+  意図的に無視するが、それ以外の `error` severity（`missing-waytype`/`factory-missing-mapcolor`/
+  `crossing-identical-waytypes` 等）はスニペット内容そのものの不備なので、検出されたら
+  `snippets/snippets.json` 側を直して解消すること（無視して黙らせない）。
+- **`npm run test:grammar`（`vscode-tmgrammar-snap`）の glob は二重引用符で渡す。** 単一引用符
+  `'fixtures/*.dat'` は bash/zsh では機能するが、npm scripts は Windows では `cmd.exe` 経由で
+  実行されるため単一引用符が剥がれずリテラルの `'...'` ごとツールに渡ってしまい
+  `No testcases found` になる。二重引用符 `"fixtures/*.dat"` はどちらの環境でも正しく剥がれる。

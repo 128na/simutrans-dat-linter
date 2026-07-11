@@ -46,13 +46,41 @@
           "description": "Explicit path to a dat_linter.toml config file, passed via --config. Empty = let dat_linter auto-discover dat_linter.toml in the workspace folder root (falls back to all-rules-enabled defaults if not found; dat_linter no longer auto-generates it -- run `dat_linter init` there to create one)."
         }
       }
-    }
+    },
+    "languages": [
+      {
+        "id": "simutrans-dat",
+        "aliases": [
+          "Simutrans dat"
+        ],
+        "extensions": [
+          ".dat"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "simutrans-dat",
+        "scopeName": "source.simutrans-dat",
+        "path": "./syntaxes/simutrans-dat.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "simutrans-dat",
+        "path": "./snippets/snippets.json"
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile",
-    "test": "npm run pretest && vscode-test"
+    "test": "npm run pretest && vscode-test",
+    "generate:grammar": "node scripts/generate-grammar.mjs",
+    "test:snippets": "node scripts/lint-snippets.mjs",
+    "test:grammar": "vscode-tmgrammar-snap \"fixtures/*.dat\" -s source.simutrans-dat -g syntaxes/simutrans-dat.tmLanguage.json"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.9",
@@ -60,6 +88,7 @@
     "@types/vscode": "^1.85.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.0.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vscode-tmgrammar-test": "^0.1.3"
   }
 }

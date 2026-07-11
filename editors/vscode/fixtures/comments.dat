@@ -1,0 +1,6 @@
+# A leading comment line
+# Another comment line explaining the block below
+------
+obj=misc
+name=Construction
+image[0]=image.0.0

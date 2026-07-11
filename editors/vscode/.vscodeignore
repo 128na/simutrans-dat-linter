@@ -5,6 +5,7 @@ src/**
 test/**
 out/test/**
 fixtures/**
+scripts/**
 tsconfig.json
 package-lock.json
 .gitignore

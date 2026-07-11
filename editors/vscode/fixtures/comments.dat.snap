@@ -1,0 +1,24 @@
+># A leading comment line
+#^^^^^^^^^^^^^^^^^^^^^^^^ source.simutrans-dat comment.line.simutrans-dat
+># Another comment line explaining the block below
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.simutrans-dat comment.line.simutrans-dat
+>------
+#^^^^^^ source.simutrans-dat comment.line.simutrans-dat
+>obj=misc
+#^^^ source.simutrans-dat storage.type.defined-keys.simutrans-dat
+#   ^ source.simutrans-dat keyword.operator.equal.simutrans-dat
+#    ^^^^ source.simutrans-dat
+>name=Construction
+#^^^^ source.simutrans-dat storage.type.defined-keys.simutrans-dat
+#    ^ source.simutrans-dat keyword.operator.equal.simutrans-dat
+#     ^^^^^^^^^^^^ source.simutrans-dat
+>image[0]=image.0.0
+#^^^^^ source.simutrans-dat storage.type.defined-keys.simutrans-dat
+#     ^^^ source.simutrans-dat variable.parameter.direction-and-number.simutrans-dat
+#        ^ source.simutrans-dat keyword.operator.equal.simutrans-dat
+#         ^^^^^ source.simutrans-dat
+#              ^ source.simutrans-dat
+#               ^ source.simutrans-dat constant.numeric.simutrans-dat
+#                ^ source.simutrans-dat
+#                 ^ source.simutrans-dat constant.numeric.simutrans-dat
+>
