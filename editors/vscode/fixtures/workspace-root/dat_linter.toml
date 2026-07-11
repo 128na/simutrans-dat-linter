@@ -1,0 +1,13 @@
+# Dedicated fixture config for test/workspace/workspace-cwd.test.ts.
+#
+# This is deliberately NOT the same content as ../test-lint-config.toml (which
+# has an empty [rules] exclude) -- the whole point of this file is to prove
+# that dat_linter actually picked *this* config up via cwd auto-discovery
+# (workspace folder root), rather than falling back to file's-own-directory
+# resolution or some other config. See test/workspace/workspace-cwd.test.ts.
+[general]
+language = "en"
+
+[rules]
+include = []
+exclude = ["duplicate-key"]
