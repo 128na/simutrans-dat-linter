@@ -120,6 +120,16 @@ fn fmt_one_file(
         }
     };
 
+    // 改行コードの検出（本体の整形処理を呼ぶ**前**、生テキストに対して行う）。
+    // `parse_entries`は`line.trim_end_matches('\r')`で`\r`を都度除去するため、
+    // 一度パースへ通すと入力がCRLFだったという情報自体が失われる。ここで検出結果を
+    // `is_crlf`として持っておき、整形済み文字列（内部的には常にLF区切り）に対して
+    // 出力直前（stdout/`--write`の両方）にのみ適用する。パース・整形ロジック自体
+    // （`parse_entries`/`format_preserve_order`/`format_reordered`）はLF前提のまま
+    // 変更しない。ファイル内で改行コードが混在する異常系までは厳密に扱わない
+    // （`\r\n`が1つでもあればCRLFとみなす単純な全体判定）。
+    let is_crlf = text.contains("\r\n");
+
     let parsed = formatter::parse_entries(&text, language);
     let filtered_parse_warnings: Vec<_> = parsed
         .warnings
@@ -156,6 +166,13 @@ fn fmt_one_file(
         out
     } else {
         formatter::format_preserve_order(&parsed.entries)
+    };
+    // 入力がCRLFだった場合のみ、整形済み文字列（LF区切り）をCRLFへ変換してから
+    // 出力する。LF入力の場合はここを通らずそのままLF出力になる。
+    let formatted = if is_crlf {
+        formatted.replace('\n', "\r\n")
+    } else {
+        formatted
     };
 
     if write {

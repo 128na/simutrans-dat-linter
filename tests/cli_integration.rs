@@ -459,3 +459,118 @@ fn cell_size_field_overrides_config_default_when_no_cli_flag() {
         "cell_size=64指定時はデフォルト(128)ではなく64を基準に検証されるべき: {stderr}"
     );
 }
+
+// --- `fmt`: 改行コード(CRLF/LF)の保持 ------------------------------------------
+//
+// `fmt`は入力の改行コードに関わらず常にLFで出力してしまうバグがあった
+// （`formatter::format_preserve_order`/`format_reordered`は内部的に常に`\n`で
+// 行を組み立てるため）。テスト用のCRLF入力は`testdata/*.dat`としてgitに
+// コミットしない（gitの`autocrlf`設定次第でcheckout時に改行コードが書き換わる
+// リスクがあるため）。代わりに`std::env::temp_dir()`配下へ`\r\n`を明示的に
+// 含むバイト列を都度書き出し、テスト終了時に削除する。
+
+/// CRLFを明示的に含む一時`.dat`ファイルを作成し、そのパスを返す。
+fn write_crlf_dat(tmp_subdir: &str) -> PathBuf {
+    let tmp = std::env::temp_dir().join(format!("dat_linter_cli_test_{tmp_subdir}"));
+    let _ = std::fs::create_dir_all(&tmp);
+    let path = tmp.join("crlf_test.dat");
+    let content = "Obj=building\r\nname=crlf_test\r\ntype=extension\r\nwaytype=track\r\nenables_pax=1\r\nDims=1,1,4\r\ncursor=icon.0.0\r\nicon=icon.0.0\r\n";
+    std::fs::write(&path, content).expect("CRLFテスト用ファイルの書き込みに失敗");
+    path
+}
+
+/// `bytes`中に「直前が`\r`でない`\n`」（＝CRLFでない裸のLF）が1つでも
+/// 含まれていれば`true`を返す。
+fn has_bare_lf(bytes: &[u8]) -> bool {
+    bytes
+        .iter()
+        .enumerate()
+        .any(|(i, &b)| b == b'\n' && (i == 0 || bytes[i - 1] != b'\r'))
+}
+
+#[test]
+fn fmt_preserve_order_stdout_keeps_crlf_line_endings() {
+    let path = write_crlf_dat("fmt_crlf_preserve_stdout");
+    let output = bin()
+        .args(["fmt", path.to_str().unwrap(), "--no-reorder"])
+        .output()
+        .expect("起動に失敗");
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+
+    assert!(
+        output.stdout.windows(2).any(|w| w == b"\r\n"),
+        "--no-reorder時、CRLF入力の標準出力はCRLFを保持するべき: {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        !has_bare_lf(&output.stdout),
+        "CRLF入力の標準出力にLF単独の改行が混在するべきではない: {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
+fn fmt_reorder_stdout_keeps_crlf_line_endings() {
+    let path = write_crlf_dat("fmt_crlf_reorder_stdout");
+    let output = bin()
+        .args(["fmt", path.to_str().unwrap()])
+        .output()
+        .expect("起動に失敗");
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+
+    assert!(
+        output.stdout.windows(2).any(|w| w == b"\r\n"),
+        "--reorder(デフォルト)時も、CRLF入力の標準出力はCRLFを保持するべき: {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        !has_bare_lf(&output.stdout),
+        "--reorder時もCRLF入力の標準出力にLF単独の改行が混在するべきではない: {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
+fn fmt_write_keeps_crlf_line_endings() {
+    let path = write_crlf_dat("fmt_crlf_write");
+    let output = bin()
+        .args(["fmt", path.to_str().unwrap(), "--write"])
+        .output()
+        .expect("起動に失敗");
+    assert!(
+        output.status.success(),
+        "--write は成功するべき: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let written = std::fs::read(&path).expect("書き込み結果の読み込みに失敗");
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+
+    assert!(
+        written.windows(2).any(|w| w == b"\r\n"),
+        "--write でファイルへ書き戻された内容もCRLFを保持するべき: {:?}",
+        String::from_utf8_lossy(&written)
+    );
+    assert!(
+        !has_bare_lf(&written),
+        "--write でファイルへ書き戻された内容にLF単独の改行が混在するべきではない: {:?}",
+        String::from_utf8_lossy(&written)
+    );
+}
+
+/// 既存のLF前提testdata（`fmt_example.dat`）に対する挙動が、この改行コード
+/// 保持実装の前後で変わらないこと（LF入力はLF出力のまま）の対照実験。
+#[test]
+fn fmt_lf_input_stdout_has_no_crlf() {
+    let path = testdata_dir().join("fmt_example.dat");
+    let output = bin()
+        .args(["fmt", path.to_str().unwrap(), "--no-reorder"])
+        .output()
+        .expect("起動に失敗");
+
+    assert!(
+        !output.stdout.windows(2).any(|w| w == b"\r\n"),
+        "LF入力の標準出力にCRLFが混入するべきではない: {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
