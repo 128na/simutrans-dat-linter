@@ -52,6 +52,9 @@ pub enum Command {
     List(ListArgs),
     /// 指定したcodeの説明（なぜNGか・どう直すか）を表示する
     Describe(DescribeArgs),
+    /// obj種別ごとに有効なキー一覧を表示する（VSCode拡張のシンタックスハイライト・
+    /// スニペット機能のデータソース）
+    Keys(KeysArgs),
     /// カレントディレクトリに dat_linter.toml を生成する
     Init(InitArgs),
 }
@@ -75,6 +78,8 @@ const LIST_ABOUT_EN: &str =
 const DESCRIBE_ABOUT_JA: &str = "指定したcodeの説明（なぜNGか・どう直すか）を表示する";
 const DESCRIBE_ABOUT_EN: &str =
     "Show the description (why it's flagged, how to fix it) for the given code";
+const KEYS_ABOUT_JA: &str = "obj種別ごとに有効なキー一覧を表示する（VSCode拡張のシンタックスハイライト・スニペット機能のデータソース）";
+const KEYS_ABOUT_EN: &str = "List the valid keys for each obj type (data source for the VSCode extension's syntax highlighting and snippets)";
 const INIT_ABOUT_JA: &str = "カレントディレクトリに dat_linter.toml を生成する";
 const INIT_ABOUT_EN: &str = "Generate dat_linter.toml in the current directory";
 
@@ -115,6 +120,8 @@ const DESCRIBE_CODE_HELP_JA: &str =
     "説明を表示するcode（例 obsolete-type）。一覧は`dat_linter list`で確認できる";
 const DESCRIBE_CODE_HELP_EN: &str =
     "The code to describe (e.g. obsolete-type). See `dat_linter list` for the full list";
+const KEYS_FORMAT_HELP_JA: &str = "出力形式。textは人間可読な一覧表示、jsonはobj種別ごとのキー一覧・既知の値一覧をまとめて1回だけstdoutへ構造化出力する";
+const KEYS_FORMAT_HELP_EN: &str = "Output format. text is a human-readable listing; json emits the per-obj-type key lists and known value lists as a single structured payload to stdout only";
 
 /// `Cli::command()`が返す`clap::Command`の短い`about`を言語に応じて上書きする。
 /// `long_about`（22obj種別一覧を含む長文）には触れない（翻訳対象外のため常に日本語）。
@@ -231,6 +238,17 @@ pub fn apply_language_to_help(cmd: clap::Command, lang: Language) -> clap::Comma
                 Language::English => DESCRIBE_CODE_HELP_EN,
             };
             c.about(about).mut_arg("code", |a| a.help(code_help))
+        })
+        .mut_subcommand("keys", |c| {
+            let about = match lang {
+                Language::Japanese => KEYS_ABOUT_JA,
+                Language::English => KEYS_ABOUT_EN,
+            };
+            let format_help = match lang {
+                Language::Japanese => KEYS_FORMAT_HELP_JA,
+                Language::English => KEYS_FORMAT_HELP_EN,
+            };
+            c.about(about).mut_arg("format", |a| a.help(format_help))
         })
         .mut_subcommand("init", |c| {
             let about = match lang {
@@ -376,6 +394,28 @@ pub struct DescribeArgs {
     /// `dat_linter.toml`を自動探索する。
     #[arg(long)]
     pub config: Option<PathBuf>,
+}
+
+/// obj種別ごとに有効なキー一覧（`rules::keys::keys_for`が唯一の正）を表示する
+/// `keys`サブコマンドの引数。VSCode拡張がシンタックスハイライト・スニペットの
+/// データソースとして`--format json`を機械的に消費することを想定している
+/// （`lint --format json`と同じ設計）。
+#[derive(clap::Args)]
+pub struct KeysArgs {
+    /// 出力形式。省略時は`text`（人間可読な一覧表示）。
+    #[arg(long, value_enum, default_value_t = KeysFormat::Text)]
+    pub format: KeysFormat,
+}
+
+/// `keys --format`が選べる出力形式。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, Default)]
+pub enum KeysFormat {
+    /// obj種別ごとの人間可読な一覧表示。デフォルト。
+    #[default]
+    Text,
+    /// `{ "obj_types": [...], "known_values": {...} }`を1回の
+    /// `serde_json::to_string`でstdoutへ出力する（stderrへは何も出さない）。
+    Json,
 }
 
 /// `dat_linter init`の引数。カレントディレクトリに`dat_linter.toml`を

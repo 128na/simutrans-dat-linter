@@ -10,5 +10,6 @@ pub mod common;
 pub mod describe;
 pub mod fmt;
 pub mod init;
+pub mod keys;
 pub mod lint;
 pub mod list;

@@ -52,6 +52,7 @@ fn main() -> ExitCode {
         Command::Analyze(args) => commands::analyze::run_analyze(&args, language),
         Command::List(args) => commands::list::run_list(&args, language),
         Command::Describe(args) => commands::describe::run_describe(&args, language),
+        Command::Keys(args) => commands::keys::run_keys(&args, language),
         Command::Init(args) => commands::init::run_init(&args, language),
     }
 }
