@@ -21,6 +21,12 @@ jobs:
             target: x86_64-pc-windows-msvc
             artifact_name: dat_linter.exe
             asset_name: dat_linter-x86_64-pc-windows-msvc.exe
+          # macos-latest runners are Apple Silicon (arm64), so this target
+          # matches the host natively -- no cross-compilation toolchain needed.
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: dat_linter
+            asset_name: dat_linter-aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
