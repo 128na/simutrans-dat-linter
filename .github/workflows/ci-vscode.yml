@@ -27,6 +27,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: "20.x"
+          cache: "npm"
+          cache-dependency-path: editors/vscode/package-lock.json
       # Regenerates syntaxes/simutrans-dat.tmLanguage.json from `dat_linter keys --format json`
       # and fails if the committed file has drifted from what dat_linter currently reports.
       - name: Generate grammar and check it's up to date
@@ -39,6 +41,20 @@ jobs:
       - name: Install dependencies
         working-directory: editors/vscode
         run: npm ci
+      # @vscode/test-electron downloads a full VSCode build (~290MB) on every
+      # run unless cached -- see editors/vscode/README.md's dev notes. The
+      # cache key isn't tied to a specific VSCode version (none is pinned in
+      # .vscode-test.mjs, so it always resolves "stable"); @vscode/test-cli
+      # itself detects a version mismatch against a stale cache and
+      # re-downloads as needed, so a stale hit only costs a wasted restore,
+      # never a wrong/broken install.
+      - name: Cache VSCode test download
+        uses: actions/cache@v4
+        with:
+          path: editors/vscode/.vscode-test
+          key: vscode-test-${{ runner.os }}-${{ hashFiles('editors/vscode/package-lock.json') }}
+          restore-keys: |
+            vscode-test-${{ runner.os }}-
       - name: Compile
         working-directory: editors/vscode
         run: npm run compile
