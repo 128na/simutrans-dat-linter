@@ -17,6 +17,7 @@ pub mod field;
 pub mod good;
 pub mod ground;
 pub mod groundobj;
+pub mod keys;
 pub mod menu;
 pub mod misc;
 pub mod pedestrian;

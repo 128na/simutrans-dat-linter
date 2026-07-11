@@ -12,6 +12,7 @@
 use dat_linter::formatter::order::order_for;
 use dat_linter::parser::DatFile;
 use dat_linter::registry::{ObjType, RuleSet, SUPPORTED_OBJ_TYPES};
+use dat_linter::rules::keys::keys_for;
 use std::collections::BTreeMap;
 
 /// キーが一切無い最小の`DatFile`。`RuleSet::for_obj_type`はディスパッチの
@@ -111,4 +112,40 @@ fn supported_obj_types_matches_obj_type_enum() {
         from_list, from_enum,
         "SUPPORTED_OBJ_TYPES と ObjType の変換結果の集合が一致しません"
     );
+}
+
+/// `rules::keys::keys_for`（VSCode拡張のシンタックスハイライト・スニペット機能の
+/// データソース）が、全`SUPPORTED_OBJ_TYPES`について空でない・`"obj"`・`"name"`と
+/// `"copyright"`を含む・重複が無いことを検証する。`keys_for`自体のmatchは
+/// ワイルドカードなしの網羅matchでコンパイル時に強制されるが、各obj種別の
+/// 定数（`BUILDING_KEYS`等）の中身がこの3条件を満たすことまではコンパイラが
+/// 保証しないため、このテストで確認する。
+#[test]
+fn keys_for_all_obj_types_are_well_formed() {
+    for &obj in SUPPORTED_OBJ_TYPES {
+        let obj_type =
+            ObjType::from_str(obj).expect("SUPPORTED_OBJ_TYPESはObjTypeに変換できるはず");
+        let keys = keys_for(obj_type);
+
+        assert!(!keys.is_empty(), "obj={obj} の keys_for が空です");
+        assert!(
+            keys.contains(&"obj"),
+            "obj={obj} の keys_for に \"obj\" が含まれていません"
+        );
+        assert!(
+            keys.contains(&"name"),
+            "obj={obj} の keys_for に \"name\" が含まれていません"
+        );
+        assert!(
+            keys.contains(&"copyright"),
+            "obj={obj} の keys_for に \"copyright\" が含まれていません"
+        );
+
+        let unique: std::collections::BTreeSet<&str> = keys.iter().copied().collect();
+        assert_eq!(
+            unique.len(),
+            keys.len(),
+            "obj={obj} の keys_for に重複したキーがあります: {keys:?}"
+        );
+    }
 }

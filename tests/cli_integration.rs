@@ -732,3 +732,39 @@ fn init_help_arg_text_switches_to_japanese_via_config() {
         "config経由でinitのaboutが日本語に切り替わるべき: {stdout}"
     );
 }
+
+// --- keys --format json: VSCode拡張のシンタックスハイライト・スニペット向け --------
+
+#[test]
+fn keys_format_json_emits_valid_json_with_expected_shape() {
+    let output = run_in_clean_dir(&["keys", "--format", "json"], "keys_json");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let value: serde_json::Value =
+        serde_json::from_str(&stdout).expect("keys --format json の出力が有効なJSONではありません");
+
+    let obj_types = value["obj_types"]
+        .as_array()
+        .expect("obj_types が配列ではありません");
+    assert_eq!(
+        obj_types.len(),
+        22,
+        "obj_types の件数が22（SUPPORTED_OBJ_TYPESの総数）と一致しません: {obj_types:?}"
+    );
+
+    let waytype_values = value["known_values"]["waytype"]
+        .as_array()
+        .expect("known_values.waytype が配列ではありません");
+    assert!(
+        waytype_values.iter().any(|v| v.as_str() == Some("road")),
+        "known_values.waytype に \"road\" が含まれていません: {waytype_values:?}"
+    );
+
+    let direction_values = value["known_values"]["direction"]
+        .as_array()
+        .expect("known_values.direction が配列ではありません");
+    assert_eq!(
+        direction_values.len(),
+        8,
+        "known_values.direction の件数が8方向と一致しません: {direction_values:?}"
+    );
+}
