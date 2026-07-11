@@ -115,7 +115,7 @@ fn supported_obj_types_matches_obj_type_enum() {
 }
 
 /// `rules::keys::keys_for`（VSCode拡張のシンタックスハイライト・スニペット機能の
-/// データソース）が、全`SUPPORTED_OBJ_TYPES`について空でない・`"name"`と
+/// データソース）が、全`SUPPORTED_OBJ_TYPES`について空でない・`"obj"`・`"name"`と
 /// `"copyright"`を含む・重複が無いことを検証する。`keys_for`自体のmatchは
 /// ワイルドカードなしの網羅matchでコンパイル時に強制されるが、各obj種別の
 /// 定数（`BUILDING_KEYS`等）の中身がこの3条件を満たすことまではコンパイラが
@@ -128,6 +128,10 @@ fn keys_for_all_obj_types_are_well_formed() {
         let keys = keys_for(obj_type);
 
         assert!(!keys.is_empty(), "obj={obj} の keys_for が空です");
+        assert!(
+            keys.contains(&"obj"),
+            "obj={obj} の keys_for に \"obj\" が含まれていません"
+        );
         assert!(
             keys.contains(&"name"),
             "obj={obj} の keys_for に \"name\" が含まれていません"

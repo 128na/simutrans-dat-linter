@@ -34,10 +34,11 @@
 
 use crate::registry::ObjType;
 
-/// 全22obj種別で共有される2フィールド（`obj_writer_t::write_name_and_copyright`が
+/// 全22obj種別で共有される3フィールド（`obj`はobj種別を宣言する必須キーで
+/// 全`.dat`定義の先頭に必要、`name`/`copyright`は`obj_writer_t::write_name_and_copyright`が
 /// factory以外の21種で直接呼ばれ、factoryはbuilding経由で間接的に対象になる。
 /// 実質22種全てが対象。`rules/common.rs`の`NameAndCopyrightStringFieldRule`参照）。
-const COMMON_KEYS: &[&str] = &["name", "copyright"];
+const COMMON_KEYS: &[&str] = &["obj", "name", "copyright"];
 
 /// `formatter/order.rs`の`BUILDING_NAMED`/`BUILDING_CURSOR_ICON`/Bracket
 /// （`frontimage[`/`backimage[`）から導出。
