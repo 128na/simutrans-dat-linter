@@ -1,16 +1,17 @@
 import * as vscode from "vscode";
-import * as fs from "fs/promises";
 import * as os from "os";
-import * as path from "path";
-import { resolveExecutionContext, runDatLinter, VersionIncompatibilityHint } from "./runner";
+import { resolveExecutionContext, runDatLinter, VersionIncompatibilityHint, withTempDatFile } from "./runner";
 
 /**
  * `dat_linter fmt` ran but rejected the `fmt` subcommand or the `--config`
  * flag this extension passes — heuristically detected from clap's error
  * phrasing (see runner.ts `describeFailure` / cli.rs), the signature of a
  * dat_linter build too old to support this extension's formatter.
+ *
+ * Exported so `test/runner.test.ts` can exercise the regex directly as a
+ * pure function, without needing a real dat_linter binary.
  */
-const FMT_VERSION_HINT: VersionIncompatibilityHint = {
+export const FMT_VERSION_HINT: VersionIncompatibilityHint = {
   test: (stderr: string): boolean => /unrecognized subcommand|unexpected argument|unrecognized/i.test(stderr),
   message:
     "dat_linter did not accept the fmt subcommand or its arguments. Your dat_linter version may be " +
@@ -46,20 +47,19 @@ export async function provideDocumentFormattingEdits(
 ): Promise<vscode.TextEdit[] | undefined> {
   const { executablePath, configPath, cwd } = resolveExecutionContext(document);
 
-  const tempFilePath = path.join(
-    os.tmpdir(),
-    `dat-linter-fmt-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.dat`
-  );
-
   try {
-    await fs.writeFile(tempFilePath, document.getText(), "utf8");
-
-    const args = ["fmt", tempFilePath];
-    if (configPath) {
-      args.push("--config", configPath);
-    }
-
-    const stdout = await runDatLinter(executablePath, args, cwd, FMT_VERSION_HINT);
+    const stdout = await withTempDatFile(
+      document.getText(),
+      os.tmpdir(),
+      "dat-linter-fmt",
+      async (tempFilePath) => {
+        const args = ["fmt", tempFilePath];
+        if (configPath) {
+          args.push("--config", configPath);
+        }
+        return runDatLinter(executablePath, args, cwd, FMT_VERSION_HINT);
+      }
+    );
     const fullRange = new vscode.Range(
       document.positionAt(0),
       document.positionAt(document.getText().length)
@@ -69,14 +69,6 @@ export async function provideDocumentFormattingEdits(
     const message = err instanceof Error ? err.message : String(err);
     void vscode.window.showErrorMessage(`dat_linter fmt: ${message}`);
     return undefined;
-  } finally {
-    // Best-effort cleanup: failing to delete the temp file isn't worth
-    // surfacing as an error to the user.
-    try {
-      await fs.unlink(tempFilePath);
-    } catch {
-      // ignore
-    }
   }
 }
 

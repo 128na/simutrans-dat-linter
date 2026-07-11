@@ -227,4 +227,80 @@ suite("dat_linter VSCode extension integration", () => {
       await fs.unlink(scratchFilePath).catch(() => undefined);
     }
   });
+
+  test("Format Document cleans up its temp file even when dat_linter fails to run", async function () {
+    // Regression test for the try/finally cleanup in
+    // withTempDatFile (src/runner.ts), used by provideDocumentFormattingEdits
+    // (src/formatter.ts). Points simutransDatLinter.executablePath at a path
+    // that cannot possibly exist, so the underlying execFile call fails with
+    // ENOENT and the formatter's try block throws before ever reaching its
+    // normal return path -- exactly the case the finally block exists for.
+    this.timeout(20000);
+
+    const config = vscode.workspace.getConfiguration("simutransDatLinter");
+    const originalExecutablePath = config.get<string>("executablePath");
+    await config.update(
+      "executablePath",
+      "dat_linter_does_not_exist_xyz",
+      vscode.ConfigurationTarget.Global
+    );
+
+    try {
+      const filePath = path.join(TESTDATA_DIR, "fmt_example.dat");
+      const uri = vscode.Uri.file(filePath);
+      const document = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(document);
+
+      const listTempFmtFiles = async (): Promise<string[]> =>
+        (await fs.readdir(os.tmpdir())).filter((name) => name.startsWith("dat-linter-fmt-"));
+
+      const before = await listTempFmtFiles();
+
+      // The provider is expected to fail (executable not found), show an
+      // error message, and return undefined -- not throw synchronously.
+      await vscode.commands.executeCommand("editor.action.formatDocument");
+
+      // The provider's rejection handling (and the temp file's cleanup in
+      // withTempDatFile's finally) happens asynchronously relative to the
+      // formatDocument command resolving, so poll briefly rather than
+      // asserting immediately.
+      const deadline = Date.now() + 5000;
+      let leftover: string[] = [];
+      for (;;) {
+        const after = await listTempFmtFiles();
+        leftover = after.filter((name) => !before.includes(name));
+        if (leftover.length === 0 || Date.now() > deadline) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+
+      assert.deepStrictEqual(
+        leftover,
+        [],
+        `expected no leftover dat-linter-fmt-* temp files in ${os.tmpdir()}, found: ${JSON.stringify(leftover)}`
+      );
+    } finally {
+      await config.update(
+        "executablePath",
+        originalExecutablePath,
+        vscode.ConfigurationTarget.Global
+      );
+    }
+  });
+
+  test("contributes: 'simutrans-dat' language is registered", async () => {
+    const languages = await vscode.languages.getLanguages();
+    assert.ok(
+      languages.includes("simutrans-dat"),
+      `expected "simutrans-dat" to be a registered language id, got: ${JSON.stringify(languages)}`
+    );
+  });
+
+  test("contributes: opening a .dat file sets its languageId to 'simutrans-dat'", async () => {
+    const filePath = path.join(TESTDATA_DIR, "duplicate_key.dat");
+    const uri = vscode.Uri.file(filePath);
+    const document = await vscode.workspace.openTextDocument(uri);
+    assert.strictEqual(document.languageId, "simutrans-dat");
+  });
 });

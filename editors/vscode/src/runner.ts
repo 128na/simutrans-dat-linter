@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { execFile, ExecFileException } from "child_process";
+import * as fs from "fs/promises";
 import * as path from "path";
 
 /**
@@ -38,6 +39,52 @@ export function resolveExecutionContext(document: vscode.TextDocument): DatLinte
   const configPath = config.get<string>("configPath", "");
 
   return { executablePath, configPath, cwd };
+}
+
+/**
+ * Writes `content` to a throwaway temp `.dat` file inside `dir`, invokes `fn`
+ * with that file's path, and unconditionally deletes the file afterward
+ * (best-effort -- a failed cleanup isn't surfaced as an error).
+ *
+ * Shared by both the `lint` (extension.ts) and `fmt` (formatter.ts) code
+ * paths, which both need to run `dat_linter` against the *buffer* content
+ * (`document.getText()`) rather than whatever is currently saved on disk --
+ * see formatter.ts's `provideDocumentFormattingEdits` doc comment for why
+ * that distinction matters.
+ *
+ * The two callers deliberately use different `dir`/`namePrefix` values and
+ * are NOT unified further:
+ *   - `fmt` has no cross-file path resolution concerns, so its temp file
+ *     lives in `os.tmpdir()` (prefix `"dat-linter-fmt"`, matching the
+ *     pre-existing naming this extension's tests already assert on).
+ *   - `lint` resolves `icon=`/`frontimage[...]=` image references relative
+ *     to `dat_dir`, which dat_linter (`src/commands/lint.rs`) derives from
+ *     the *parent directory of the path it was given* -- so lint's temp file
+ *     must live next to the original document (not in `os.tmpdir()`), or
+ *     every image reference would suddenly resolve against the wrong
+ *     directory and start failing with `missing-image-file`.
+ */
+export async function withTempDatFile<T>(
+  content: string,
+  dir: string,
+  namePrefix: string,
+  fn: (tempFilePath: string) => Promise<T>
+): Promise<T> {
+  const tempFilePath = path.join(
+    dir,
+    `${namePrefix}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.dat`
+  );
+
+  await fs.writeFile(tempFilePath, content, "utf8");
+  try {
+    return await fn(tempFilePath);
+  } finally {
+    try {
+      await fs.unlink(tempFilePath);
+    } catch {
+      // ignore
+    }
+  }
 }
 
 /**
