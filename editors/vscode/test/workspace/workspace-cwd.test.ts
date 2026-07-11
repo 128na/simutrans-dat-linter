@@ -47,6 +47,8 @@ const SAMPLE_DAT = path.join(WORKSPACE_ROOT_FIXTURE, "nested", "sample.dat");
  * resolution branch, not a tautology.
  */
 suite("dat_linter VSCode extension: workspace folder root cwd auto-discovery", () => {
+  let originalConfigPath: string | undefined;
+
   suiteSetup(async function () {
     this.timeout(30000);
     const ext = vscode.extensions.getExtension(EXTENSION_ID);
@@ -78,6 +80,7 @@ suite("dat_linter VSCode extension: workspace folder root cwd auto-discovery", (
     // run back-to-back via `npm test`. Leaving it unset is the whole point
     // of this test: it forces resolveExecutionContext's cwd to be what
     // actually determines which dat_linter.toml (if any) gets picked up.
+    originalConfigPath = vscode.workspace.getConfiguration("simutransDatLinter").get<string>("configPath");
     await vscode.workspace
       .getConfiguration("simutransDatLinter")
       .update("configPath", "", vscode.ConfigurationTarget.Global);
@@ -90,6 +93,17 @@ suite("dat_linter VSCode extension: workspace folder root cwd auto-discovery", (
       "",
       "expected simutransDatLinter.configPath to be unset for this test"
     );
+  });
+
+  suiteTeardown(async () => {
+    // Restore whatever configPath was set before this suite forced it to ""
+    // at Global scope, so this suite doesn't leak a changed setting into
+    // whichever test configuration/session runs next (see the suiteSetup
+    // comment above for why this write happens at Global scope in the first
+    // place).
+    await vscode.workspace
+      .getConfiguration("simutransDatLinter")
+      .update("configPath", originalConfigPath, vscode.ConfigurationTarget.Global);
   });
 
   /**

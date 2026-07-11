@@ -86,19 +86,39 @@ async function lintDocument(document: vscode.TextDocument): Promise<void> {
   const filePath = document.uri.fsPath;
   const { executablePath, configPath, cwd } = resolveExecutionContext(document);
 
+  const lintArgsFor = (path: string): string[] => {
+    const args = ["lint", path, "--format", "json"];
+    if (configPath) {
+      args.push("--config", configPath);
+    }
+    return args;
+  };
+
   try {
-    const stdout = await withTempDatFile(
-      document.getText(),
-      path.dirname(filePath),
-      `${path.basename(filePath)}.dat-linter-tmp`,
-      async (tempFilePath) => {
-        const args = ["lint", tempFilePath, "--format", "json"];
-        if (configPath) {
-          args.push("--config", configPath);
-        }
-        return runDatLinter(executablePath, args, cwd, LINT_FORMAT_JSON_VERSION_HINT);
+    let stdout: string;
+    try {
+      stdout = await withTempDatFile(
+        document.getText(),
+        path.dirname(filePath),
+        `${path.basename(filePath)}.dat-linter-tmp`,
+        (tempFilePath) => runDatLinter(executablePath, lintArgsFor(tempFilePath), cwd, LINT_FORMAT_JSON_VERSION_HINT)
+      );
+    } catch (err) {
+      // If writing the temp file itself failed (e.g. the document's directory
+      // is read-only), fall back to linting the on-disk path directly rather
+      // than giving up entirely -- this reintroduces the stale-disk-content
+      // caveat this function otherwise avoids, but only for the rare case
+      // where the buffer-accurate path isn't available at all, which is
+      // strictly better than lint silently stopping working in that
+      // directory. A failure from `runDatLinter` itself (dat_linter ran but
+      // failed) is a plain `Error` with no `.code`, so re-throw those as-is.
+      const code = (err as NodeJS.ErrnoException)?.code;
+      if (code === "EACCES" || code === "EROFS" || code === "EPERM") {
+        stdout = await runDatLinter(executablePath, lintArgsFor(filePath), cwd, LINT_FORMAT_JSON_VERSION_HINT);
+      } else {
+        throw err;
       }
-    );
+    }
     const parsed = parseDatLinterJson(stdout);
     const diagnostics = toVscodeDiagnostics(parsed, document);
     diagnosticCollection.set(document.uri, diagnostics);
