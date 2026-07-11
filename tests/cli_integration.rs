@@ -218,7 +218,7 @@ fn analyze_excludes_configured_code() {
 
 #[test]
 fn list_shows_codes_from_all_sources_by_default() {
-    let output = bin().args(["list"]).output().expect("起動に失敗");
+    let output = run_in_clean_dir(&["list"], "list_all_sources");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("missing-cursor-icon"),
@@ -236,10 +236,7 @@ fn list_shows_codes_from_all_sources_by_default() {
 
 #[test]
 fn list_source_fmt_shows_only_fmt_codes() {
-    let output = bin()
-        .args(["list", "--source", "fmt"])
-        .output()
-        .expect("起動に失敗");
+    let output = run_in_clean_dir(&["list", "--source", "fmt"], "list_source_fmt");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("fmt-malformed-line"),
@@ -341,10 +338,10 @@ fn describe_known_code_shows_why_and_how_to_fix() {
 
 #[test]
 fn describe_unknown_code_fails_with_list_hint() {
-    let output = bin()
-        .args(["describe", "this-code-does-not-exist"])
-        .output()
-        .expect("起動に失敗");
+    let output = run_in_clean_dir(
+        &["describe", "this-code-does-not-exist"],
+        "describe_unknown_code",
+    );
     assert!(!output.status.success(), "不明なcodeはexit失敗であるべき");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -389,7 +386,7 @@ fn describe_help_arg_text_is_english_by_default() {
 
 #[test]
 fn lint_help_arg_text_mentions_tile_size() {
-    let output = bin().args(["lint", "-h"]).output().expect("起動に失敗");
+    let output = run_in_clean_dir(&["lint", "-h"], "lint_help_tile_size");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("--tile-size"),
@@ -404,10 +401,10 @@ fn lint_help_arg_text_mentions_tile_size() {
 #[test]
 fn default_tile_size_rejects_64x64_image() {
     let path = testdata_dir().join("citycar_bad_image_size.dat");
-    let output = bin()
-        .args(["lint", path.to_str().unwrap()])
-        .output()
-        .expect("起動に失敗");
+    let output = run_in_clean_dir(
+        &["lint", path.to_str().unwrap()],
+        "default_tile_size_rejects_64x64",
+    );
     assert!(
         !output.status.success(),
         "デフォルト(128)では64x64画像はエラーになるべき"
@@ -422,10 +419,10 @@ fn default_tile_size_rejects_64x64_image() {
 #[test]
 fn tile_size_flag_overrides_default_and_accepts_64x64_image() {
     let path = testdata_dir().join("citycar_bad_image_size.dat");
-    let output = bin()
-        .args(["lint", path.to_str().unwrap(), "--tile-size", "64"])
-        .output()
-        .expect("起動に失敗");
+    let output = run_in_clean_dir(
+        &["lint", path.to_str().unwrap(), "--tile-size", "64"],
+        "tile_size_flag_overrides_default",
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         !stderr.contains("image-size-not-multiple-of-128"),
@@ -463,10 +460,10 @@ fn tile_size_flag_overrides_config_default() {
 #[test]
 fn cell_size_field_overrides_config_default_when_no_cli_flag() {
     let path = testdata_dir().join("citycar_cell_size_override.dat");
-    let output = bin()
-        .args(["lint", path.to_str().unwrap()])
-        .output()
-        .expect("起動に失敗");
+    let output = run_in_clean_dir(
+        &["lint", path.to_str().unwrap()],
+        "cell_size_field_overrides_config_default",
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         !stderr.contains("image-size-not-multiple-of-128"),
@@ -505,8 +502,12 @@ fn has_bare_lf(bytes: &[u8]) -> bool {
 #[test]
 fn fmt_preserve_order_stdout_keeps_crlf_line_endings() {
     let path = write_crlf_dat("fmt_crlf_preserve_stdout");
+    // `path`の親ディレクトリは`write_crlf_dat`が新規作成した専用の一時ディレクトリ
+    // であり、`crlf_test.dat`以外のファイル（dat_linter.toml等）は存在しないため、
+    // ここをそのままcurrent_dirに指定すればcwd分離ガイドラインを満たせる。
     let output = bin()
         .args(["fmt", path.to_str().unwrap(), "--no-reorder"])
+        .current_dir(path.parent().unwrap())
         .output()
         .expect("起動に失敗");
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
@@ -528,6 +529,7 @@ fn fmt_reorder_stdout_keeps_crlf_line_endings() {
     let path = write_crlf_dat("fmt_crlf_reorder_stdout");
     let output = bin()
         .args(["fmt", path.to_str().unwrap()])
+        .current_dir(path.parent().unwrap())
         .output()
         .expect("起動に失敗");
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
@@ -549,6 +551,7 @@ fn fmt_write_keeps_crlf_line_endings() {
     let path = write_crlf_dat("fmt_crlf_write");
     let output = bin()
         .args(["fmt", path.to_str().unwrap(), "--write"])
+        .current_dir(path.parent().unwrap())
         .output()
         .expect("起動に失敗");
     assert!(
@@ -577,10 +580,10 @@ fn fmt_write_keeps_crlf_line_endings() {
 #[test]
 fn fmt_lf_input_stdout_has_no_crlf() {
     let path = testdata_dir().join("fmt_example.dat");
-    let output = bin()
-        .args(["fmt", path.to_str().unwrap(), "--no-reorder"])
-        .output()
-        .expect("起動に失敗");
+    let output = run_in_clean_dir(
+        &["fmt", path.to_str().unwrap(), "--no-reorder"],
+        "fmt_lf_input_no_crlf",
+    );
 
     assert!(
         !output.stdout.windows(2).any(|w| w == b"\r\n"),
@@ -733,6 +736,76 @@ fn init_help_arg_text_switches_to_japanese_via_config() {
     );
 }
 
+// --- `--format text`（デフォルト出力）の後方互換性: golden test ------------------
+//
+// Assurance Auditで指摘された欠落。既存テストは全て`contains`による部分文字列
+// チェックのみで、`--format json`追加前後で出力全体（診断行1行＋サマリ行）が
+// 変わっていないことを厳密に固定するテストが無かった。ここでは代表的な2ケースに
+// ついて、stdout/stderrの全文を`assert_eq!`で厳密比較し、将来の意図しない
+// フォーマット変更を検知できるようにする。
+
+#[test]
+fn lint_text_format_duplicate_key_matches_exact_golden_output() {
+    let path = testdata_dir().join("duplicate_key.dat");
+    let output = run_in_clean_dir(
+        &["lint", path.to_str().unwrap()],
+        "lint_golden_duplicate_key",
+    );
+
+    assert!(
+        !output.status.success(),
+        "warningが1件あるためexit failureであるべき"
+    );
+
+    let expected_stderr = format!(
+        "{p}: [warn] duplicate-key (line 3): Key \"name\" is defined more than once (the value on line 2 is used, and line 3 is ignored). makeobj's tabfileobj_t::put() does not overwrite existing keys (first-write-wins, tabfile.h:45)\n",
+        p = path.display()
+    );
+    let expected_stdout = format!("{p}: 0 error(s) / 1 warning(s)\n", p = path.display());
+
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr).replace("\r\n", "\n"),
+        expected_stderr,
+        "duplicate_key.datのstderr全文が期待した診断行と厳密一致するべき"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
+        expected_stdout,
+        "duplicate_key.datのstdout全文が期待したサマリ行と厳密一致するべき"
+    );
+}
+
+#[test]
+fn lint_text_format_missing_waytype_matches_exact_golden_output() {
+    let path = testdata_dir().join("broken_missing_waytype.dat");
+    let output = run_in_clean_dir(
+        &["lint", path.to_str().unwrap()],
+        "lint_golden_missing_waytype",
+    );
+
+    assert!(
+        !output.status.success(),
+        "errorが1件あるためexit failureであるべき"
+    );
+
+    let expected_stderr = format!(
+        "{p}: [error] missing-waytype: waytype is required when type=stop (omitting it makes makeobj FATAL ERROR)\n",
+        p = path.display()
+    );
+    let expected_stdout = format!("{p}: 1 error(s) / 0 warning(s)\n", p = path.display());
+
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr).replace("\r\n", "\n"),
+        expected_stderr,
+        "broken_missing_waytype.datのstderr全文が期待した診断行と厳密一致するべき"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
+        expected_stdout,
+        "broken_missing_waytype.datのstdout全文が期待したサマリ行と厳密一致するべき"
+    );
+}
+
 // --- keys --format json: VSCode拡張のシンタックスハイライト・スニペット向け --------
 
 #[test]
@@ -767,4 +840,36 @@ fn keys_format_json_emits_valid_json_with_expected_shape() {
         8,
         "known_values.direction の件数が8方向と一致しません: {direction_values:?}"
     );
+
+    // Assurance Auditで指摘された欠落: 件数チェックのみで各obj種別のkeys配列の
+    // 中身（"obj"が含まれるか等）を検証していなかった。ここではbuilding種別を
+    // 対象に、COMMON_KEYS（obj/name/copyright、src/rules/keys.rs）とbuilding固有
+    // キーであるwaytypeが実際に含まれることを確認する。
+    let building = obj_types
+        .iter()
+        .find(|o| o["obj_type"].as_str() == Some("building"))
+        .unwrap_or_else(|| panic!("obj_type==\"building\"の要素が見つかりません: {obj_types:?}"));
+    let building_keys: Vec<&str> = building["keys"]
+        .as_array()
+        .expect("building.keys が配列ではありません")
+        .iter()
+        .map(|v| v.as_str().expect("keys の要素が文字列ではありません"))
+        .collect();
+    for expected_key in ["obj", "name", "copyright", "waytype"] {
+        assert!(
+            building_keys.contains(&expected_key),
+            "building.keys に \"{expected_key}\" が含まれていません: {building_keys:?}"
+        );
+    }
+
+    // 全obj種別についてkeys配列が空でないこと（COMMON_KEYSだけでも最低3件は
+    // 含まれるはずであり、実質的に「keysが取得できていない」バグを検知する）。
+    for entry in obj_types {
+        let keys = entry["keys"].as_array().expect("keys が配列ではありません");
+        assert!(
+            !keys.is_empty(),
+            "obj_type={:?} のkeysが空配列であるべきではありません",
+            entry["obj_type"]
+        );
+    }
 }
