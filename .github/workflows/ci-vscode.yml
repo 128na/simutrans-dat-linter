@@ -6,15 +6,23 @@ on:
     paths: ["editors/vscode/**"]
   pull_request:
     paths: ["editors/vscode/**"]
+  workflow_dispatch: {}
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: editors/vscode
     steps:
       - uses: actions/checkout@v7
+      # The extension shells out to the `dat_linter` binary itself (it does not bundle it —
+      # see editors/vscode/README.md), so its integration tests need a built binary on PATH.
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Build dat_linter
+        run: cargo build --release
+      - name: Add dat_linter to PATH
+        run: echo "${{ github.workspace }}/target/release" >> "$GITHUB_PATH"
       - name: Install Node.js
         uses: actions/setup-node@v5
         with:
@@ -22,8 +30,11 @@ jobs:
       - name: Install xvfb
         run: sudo apt-get update && sudo apt-get install -y xvfb
       - name: Install dependencies
+        working-directory: editors/vscode
         run: npm ci
       - name: Compile
+        working-directory: editors/vscode
         run: npm run compile
       - name: Test
+        working-directory: editors/vscode
         run: xvfb-run -a npm test
