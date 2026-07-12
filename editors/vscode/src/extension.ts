@@ -7,7 +7,36 @@ import { registerDatCompletionItemProvider } from "./completion";
 
 let diagnosticCollection: vscode.DiagnosticCollection;
 
+/**
+ * Gate on `vscode.workspace.isTrusted`, factored out as a pure boolean
+ * function so test/runner.test.ts can exercise the decision directly. The
+ * real guard is `package.json`'s `capabilities.untrustedWorkspaces.supported:
+ * false`, which stops VSCode from calling `activate()` at all in an
+ * untrusted workspace -- this is defense in depth in case that declaration
+ * is ever removed or VSCode's enforcement changes, since `lintDocument` /
+ * the formatter / completion all shell out to a user-configurable
+ * executable path and are unsafe to run against an untrusted workspace's
+ * `.vscode/settings.json`.
+ */
+export function shouldActivateInWorkspace(isTrusted: boolean): boolean {
+  return isTrusted;
+}
+
 export function activate(context: vscode.ExtensionContext): void {
+  if (!shouldActivateInWorkspace(vscode.workspace.isTrusted)) {
+    // Don't register any diagnostics/formatting/completion providers, and
+    // don't run dat_linter at all, until the workspace is trusted. Offer to
+    // pick things up once trust is granted without requiring a full restart.
+    context.subscriptions.push(
+      vscode.workspace.onDidGrantWorkspaceTrust(() => {
+        void vscode.window.showInformationMessage(
+          "Simutrans dat_linter: this workspace is now trusted. Reload the window to enable linting, formatting, and completion."
+        );
+      })
+    );
+    return;
+  }
+
   diagnosticCollection = vscode.languages.createDiagnosticCollection("dat-linter");
   context.subscriptions.push(diagnosticCollection);
 

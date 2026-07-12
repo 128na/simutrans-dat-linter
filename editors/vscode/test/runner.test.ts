@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import { ExecFileException } from "child_process";
 import { describeFailure } from "../src/runner";
-import { LINT_FORMAT_JSON_VERSION_HINT } from "../src/extension";
+import { LINT_FORMAT_JSON_VERSION_HINT, shouldActivateInWorkspace } from "../src/extension";
 import { FMT_VERSION_HINT } from "../src/formatter";
 
 // Pure-function tests: no dat_linter binary, no extension activation, no
@@ -88,6 +88,16 @@ suite("extension.ts: LINT_FORMAT_JSON_VERSION_HINT.test (pure regex)", () => {
       LINT_FORMAT_JSON_VERSION_HINT.test("error: file not found: vehicle.dat"),
       false
     );
+  });
+});
+
+suite("extension.ts: shouldActivateInWorkspace (pure function)", () => {
+  test("returns true for a trusted workspace", () => {
+    assert.strictEqual(shouldActivateInWorkspace(true), true);
+  });
+
+  test("returns false for an untrusted workspace", () => {
+    assert.strictEqual(shouldActivateInWorkspace(false), false);
   });
 });
 
