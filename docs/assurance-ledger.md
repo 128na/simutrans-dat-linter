@@ -11,7 +11,7 @@
 - **Status**: 🔴 Missing Control/Test（無防備または未検証） / 🟡 Structural Weakness
   （守りはあるが構造的な弱点が残る） / 🟢 OK（実効的に守られている）
 
-最終更新: 2026-07-11（初回作成、Assurance Auditスキルによる監査結果を反映）
+最終更新: 2026-07-13（Phase 11全体コードレビュー＋Phase 12修正反映）
 
 ## dat_linter（Rust本体）
 
@@ -23,6 +23,27 @@
 | タイルサイズ5段階優先順位の全組み合わせ | Preventive | ペアワイズのみ、3者競合・overrides vs cell_size直接対決は無し | 部分的 | 🟡 |
 | `keys --format json`の各obj種別キー内容（`"obj"`含む） | Preventive | `keys_format_json_emits_valid_json_with_expected_shape`にbuilding種別の`keys`内容検証（obj/name/copyright/waytype）と全obj種別のkeys非空チェックを追加 | Strong | 🟢 |
 | テストのcwd分離ガイドライン遵守 | Preventive | 残り11件全てを`run_in_clean_dir`（またはCRLFフィクスチャ専用の一時ディレクトリ）経由に統一 | Strong | 🟢 |
+| `keys --format json`の`known_values.waytype`/`direction`後方互換性維持 | Preventive | JSONスキーマを`BTreeMap`から明示的構造体へ変更しつつ既存2フィールドの形は維持、`per_obj_type`は同階層への追加のみ | Strong | 🟢 |
+| BOM付き`.dat`ファイルで`obj`キー照合が誤って全滅しない | Preventive | `parser.rs`のBOM除去回帰テスト（`bom_utf8.dat`） | Strong | 🟢 |
+| `=`の無い不正な行の検知（`MalformedLine`診断） | Detective | `parser.rs`/`malformed_line.dat`・末尾/冒頭の不正行を取りこぼさないエッジケーステスト | Strong | 🟢 |
+| `<...>`算術評価の演算子優先順位（`% > / > * > - > +`）再現 | Preventive | `param_expansion.rs`の優先順位依存ケーステスト（`$0+$1*2`） | Strong | 🟢 |
+| roadsignのis_signal系フラグ判定（C++の素の真偽判定と一致） | Preventive | `roadsign_signal_negative_one.dat` | Strong | 🟢 |
+| couplings制約スキャンの空値終端一致（`str.empty()`相当） | Preventive | `couplings_empty_constraint/EmptyNextConstraint.dat` | Strong | 🟢 |
+| building `extension_building`の`>0`判定一致 | Preventive | `extension_building=0/positive`各fixture | Strong | 🟢 |
+| `Dims=`のsint16切り詰め再現（`DimsRule`） | Preventive | `building_dims_sint16_truncation.dat` | Strong | 🟢 |
+| `obj=symbol`/`obj=misc`の`name=`既知値検証（`UnknownSkinNameRule`） | Preventive | `symbol`/`misc_lint.rs`のunknown-name/fakultative-name各テスト | Strong | 🟢 |
+| `AllImagesRule`の`"-"`判定一貫性（`image[0]=-`と`> -`で同一挙動） | Preventive | cursor/symbol/menu/miscのdash-sentinel回帰テスト | Strong | 🟢 |
+| vehicle gear/powerのuint16/uint32切り詰め・パース失敗の誤未指定化防止 | Preventive | `vehicle_gear_parse_failure.dat`等 | Strong | 🟢 |
+| factory mapcolorのstrtoul相当パース（16進/8進対応） | Preventive | `factory_mapcolor_hex.dat` | Strong | 🟢 |
+| factory `probability_to_spawn`のfields存在ガード | Preventive | `factory_probability_to_spawn_no_fields.dat` | Strong | 🟢 |
+| crossing/groundobj speedのuint16切り詰め再現 | Preventive | `crossing_speed_truncates_to_zero.dat`等 | Strong | 🟢 |
+| tree seasonsのuint8切り詰め再現 | Preventive | `tree_seasons_zero.dat`/`tree_seasons_overflow.dat` | Strong | 🟢 |
+| pedestrian steps_per_frameのnarrow-int-overflow検知 | Preventive | `pedestrian_steps_per_frame_overflow.dat` | Strong | 🟢 |
+| building levelの引き算アンダーフローpanic防止 | Preventive | `building_level_extreme_negative_overflow.dat`（`level=i64::MIN`でpanicしないことを確認） | Strong | 🟢 |
+| strtol/strtoul相当パースの共通化・オーバーフロー飽和挙動 | Preventive | `common.rs`単体テスト12件（hex/octal/符号/飽和/no-digits） | Strong | 🟢 |
+| ディレクトリsymlink循環時に無限再帰・スタックオーバーフローしない | Preventive | 自己参照/祖先ディレクトリsymlinkのfs_walk単体テスト（Windows/Unix両対応、作成失敗時はスキップ） | Strong | 🟢 |
+| 読み取り不可なサブディレクトリを「サイレント成功」扱いにしない | Detective | Unix版（`chmod 000`）のみ実装済み。Windows側は`icacls`再現がCI環境ごとに不安定なため見送り | Weak | 🟡 |
+| `fmt -w`がファイルsymlink経由でリンク先を書き換えない | Preventive | `fmt_write_refuses_to_write_through_file_symlink`（`tests/cli_integration.rs`） | Strong | 🟢 |
 
 ## VSCode拡張（editors/vscode）
 
@@ -36,6 +57,12 @@
 | スニペットのlint陳腐化検証 | Detective、CI組込済み | `lint-snippets.mjs`、実バイナリへの直接assert | Strong | 🟢 |
 | グラマー生成のCI drift検知 | Detective、CI組込済み | `git diff --exit-code`、実バイナリ出力とコミット済みファイルを直接比較 | Strong | 🟢 |
 | `package.json` contributes（language/grammar/snippets）の実機登録検証 | Detective | `test/extension.test.ts`に2件追加: `vscode.languages.getLanguages()`に`"simutrans-dat"`が含まれること、`.dat`ファイルを開いた際に`document.languageId`が`"simutrans-dat"`になることをassert（grammar/snippetsは既存の`test:grammar`/`test:snippets`が別途カバー） | Strong | 🟢 |
+| 空/空白のみのバッファでlintを実行しない（誤った"obj=未対応"表示防止） | Preventive | `test/extension.test.ts`の空ファイル/全消去テスト2件 | Strong | 🟢 |
+| `known_values.per_obj_type`（type/location/climates/skin名）のシンタックスハイライト反映 | Detective、CI drift検知組込済み | `test/grammar`の3つのfixture・`generate:grammar`再実行でdrift無し確認 | Strong | 🟢 |
+| 入力補完のobj種別判定（`-`区切りレコード境界を跨がない） | Preventive | `test/completion.test.ts`の`findObjTypeAtLine`複数レコードテスト12件 | Strong | 🟢 |
+| Workspace Trust未対応（未信頼ワークスペースでの任意コード実行リスク） | Preventive（`package.json`の`capabilities.untrustedWorkspaces.supported:false`＋`activate()`内多層防御ガード） | `shouldActivateInWorkspace`単体テスト | Strong | 🟢 |
+| `KeysDataCache.load()`の非同期呼び出しレース（古い設定変更の結果が新しい結果を上書き） | Preventive（世代カウンタ） | `test/completion.test.ts`のレース再現テスト（遅い方が先に発行され後から解決するケース3パターン） | Strong | 🟢 |
+| `lintDocument`の非同期呼び出しレース（古いバッファの診断が新しいバッファの診断を上書き） | Preventive（`LintGenerationTracker`世代カウンタ） | `test/runner.test.ts`は世代管理のpure logicのみ検証。実dat_linterプロセスの完了順序を確定的に操作する統合テストは無し | Weak | 🟡 |
 
 ## 対応履歴
 
@@ -44,3 +71,13 @@
   テストのcwd分離ガイドライン遵守）に対応済み（[PR #6](https://github.com/128na/simutrans-dat-linter/pull/6)）。
 - 2026-07-11: VSCode拡張側の5件（lintのバッファ参照統一・cwd戦略の自動テスト経路・バージョン非互換検知ヒューリスティックの単体テスト・
   一時ファイルのエラー時クリーンアップテスト・`package.json` contributesの実機登録検証）に対応済み（[PR #7](https://github.com/128na/simutrans-dat-linter/pull/7)）。
+- 2026-07-12: 旧拡張からのフィードバック反映（値レジストリ拡充・シンタックスハイライト拡充・入力補完・空バッファlintスキップ）を
+  [PR #10](https://github.com/128na/simutrans-dat-linter/pull/10)〜[#13](https://github.com/128na/simutrans-dat-linter/pull/13)で対応。
+  台帳への反映が漏れていたのをPhase 11監査で発見・本更新で追記。
+- 2026-07-13: Phase 11（`/review`による全体コードレビュー）で見つかった実バグ・セキュリティ課題を
+  [PR #14](https://github.com/128na/simutrans-dat-linter/pull/14)〜[#19](https://github.com/128na/simutrans-dat-linter/pull/19)で対応
+  （BOM誤検知・演算子優先順位・roadsign/couplingsの判定不一致・building/Dims/skin名検証・
+  vehicle/factory/crossing/groundobj/tree/pedestrianの整数切り詰め・fs_walkのsymlink対策・
+  VSCode拡張のWorkspace Trust未対応とrace condition）。
+  残存する🟡2件（読み取り不可ディレクトリのWindows版テスト・lintDocumentレースの統合テスト）は
+  実装は完了しているがテスト手段の制約により見送り、フォローアップ課題として残す。
