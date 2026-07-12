@@ -102,7 +102,7 @@
 //!   bridgeの`ClampedRangeRule`に相当する根拠が無いため見送り（citycar/way/
 //!   tunnel/roadsign/good/way-object/groundobj/treeの同種フィールドが
 //!   見送られたのと同じ理由）。
-//! - `steps_per_frame`が0または負の値を指定した場合の警告:
+//! - `steps_per_frame`が0または負の値を指定した場合（**下限側**）の警告:
 //!   `max(obj.get_int("steps_per_frame", 1), 1)`はC++標準の`max()`による
 //!   インラインの下限クランプであり、`tabfileobj_t::get_int_clamped()`が
 //!   内部で呼ぶ`dbg->warning(...)`のようなメッセージ出力を一切伴わない。
@@ -112,7 +112,13 @@
 //!   クランプはその基準を満たさない、根拠の弱いパターンである。またこの
 //!   フィールドは`is_animated`が真の場合にしか評価されず、pak128の実例は
 //!   全て静止画像（`is_animated`が偽）でありこのフィールド自体を使っていない
-//!   ため、実務上の影響も限定的と判断し見送った。
+//!   ため、実務上の影響も限定的と判断し見送った。**このREJECTEDは`max()`による
+//!   下限クランプ（0や負値の扱い）についてのみで、`steps_per_frame`が
+//!   `node.write_uint16`（pedestrian_writer.cc:83）へ無条件代入される際の
+//!   **上限側**のuint16オーバーフロー（`get_int`が返す値がuint16の範囲
+//!   (0..65535)を超える場合の2の補数切り詰め）は全く別の懸念であり、この
+//!   REJECTED判断とは矛盾しない。`distributionweight`/`offset`と同じ理由で
+//!   `NarrowIntFieldsRule`に含めている（第22弾で追加）。
 //! - 8方向`image[<dir>]`（静止分岐）の一部欠落検証（vehicleの
 //!   `incomplete-8-direction-images`相当）: citycarと全く同じ理由。
 //!   `for (i = 0; i < 8; i++)`ループ（pedestrian_writer.cc:55-59）には
@@ -332,6 +338,17 @@ impl Rule for DateIndexOverflowRule {
 /// フォールバック）で読まれた後、`node.write_uint16`へ無条件に代入される。
 /// 根拠・設計は`common::check_narrow_int_overflow_field`のdocコメント参照
 /// （`DateIndexOverflowRule`と同種の静的解析ルール）。
+///
+/// `steps_per_frame`（`uint16 steps_per_frame = is_animated ? max(obj.get_int(
+/// "steps_per_frame", 1), 1) : 0;`、pedestrian_writer.cc:62）も同じく
+/// `node.write_uint16`へ無条件代入される（pedestrian_writer.cc:83）。下限は
+/// `max(...)`によるインラインクランプ（メッセージ出力を伴わない、モジュール
+/// 冒頭のREJECTED参照）のため`ClampedRangeRule`相当のルールは見送っているが、
+/// **上限側**（`get_int`が返す値がuint16の範囲(0..65535)を超える場合の
+/// 2の補数切り詰め）はこの下限クランプの話とは独立した別の懸念であり、
+/// `distributionweight`/`offset`と全く同じ理由でここに含める（第22弾で追加。
+/// 同じ関数内の2フィールドには適用されていたのに`steps_per_frame`だけ
+/// 抜けていた）。
 struct NarrowIntFieldsRule;
 impl Rule for NarrowIntFieldsRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
@@ -349,6 +366,14 @@ impl Rule for NarrowIntFieldsRule {
             dat,
             "offset",
             20,
+            16,
+            false,
+            ctx.language,
+        ));
+        diags.extend(check_narrow_int_overflow_field(
+            dat,
+            "steps_per_frame",
+            1,
             16,
             false,
             ctx.language,

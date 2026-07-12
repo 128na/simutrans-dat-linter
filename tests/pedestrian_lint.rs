@@ -142,6 +142,18 @@ fn narrow_int_overflow_is_detected() {
 }
 
 #[test]
+fn steps_per_frame_narrow_int_overflow_is_detected() {
+    // steps_per_frame=100000はuint16の範囲(0..65535)外。pedestrian_writer.cc:83の
+    // write_uint16へ静かに切り詰められる不具合。distributionweight/offsetには
+    // 既にcheck_narrow_int_overflow_fieldが適用されていたが、steps_per_frameだけ
+    // 抜けていた（下限クランプに関するREJECTED判断とは独立の懸念）。
+    assert!(has_warning(
+        &check("pedestrian_steps_per_frame_overflow.dat"),
+        "narrow-int-overflow"
+    ));
+}
+
+#[test]
 fn missing_image_file_diagnostic_has_correct_line_number() {
     // 第2弾（行番号付与の機械的配線）: `pedestrian_missing_image_file.dat`の
     // `image[w]=nonexistent_pedestrian.png.0.0`は7行目（common::check_image_refに
