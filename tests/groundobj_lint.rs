@@ -80,6 +80,54 @@ fn missing_waytype_and_images_is_not_an_error() {
 }
 
 #[test]
+fn speed_truncated_to_zero_uses_fixed_branch() {
+    // speed=65536はuint16へ切り詰めると65536 mod 65536=0になり、
+    // groundobj_writer.cc:39の`uint16 const speed = obj.get_int("speed", 0);`が
+    // 実際には固定物分岐（speed==0）に入る。以前の実装はi64の生値（非ゼロ）で
+    // 分岐を選んでいたため、誤って移動物分岐（8方向必須）に入り、image[0][0]
+    // しか定義していないこのfixtureで8件の偽陽性missing-season-imageを
+    // 出していた。
+    let diags = check("groundobj_speed_truncates_to_fixed.dat");
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|(s, _)| *s == Severity::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "uint16切り詰め後に0になるspeed=65536は固定物分岐に入り、image[0][0]のみで\
+         足りるはず: {errors:?}"
+    );
+}
+
+#[test]
+fn speed_hex_prefix_selects_moving_branch_and_is_accepted() {
+    // groundobj_writer.cc:39の`uint16 const speed = obj.get_int("speed", 0);`は
+    // strtol相当の基数自動判定を行うため、`speed=0xA`（10進10、非ゼロ）のような
+    // 16進表記も正しく解釈され、移動物分岐（8方向必須）が選ばれる。以前の実装は
+    // `.parse::<i64>()`（10進数限定）を使っており、`0xA`はパース失敗して
+    // `.unwrap_or(0)`によりspeed=0（固定物分岐）へ誤ってフォールバックしていた
+    // （第23弾、gemini-code-assistのレビュー指摘）。固定物分岐に誤って入ると
+    // `image[0][0]`が無いため`no-images`（info）が出るが、正しく移動物分岐が
+    // 選ばれれば8方向の画像は全て揃っているため`no-images`は出ないはず。
+    let diags = check("groundobj_speed_hex_moving.dat");
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|(s, _)| *s == Severity::Error)
+        .collect();
+    let warnings: Vec<_> = diags
+        .iter()
+        .filter(|(s, _)| *s == Severity::Warning)
+        .collect();
+    assert!(errors.is_empty(), "予期しない error: {errors:?}");
+    assert!(warnings.is_empty(), "予期しない warning: {warnings:?}");
+    assert!(
+        !has(&diags, Severity::Info, "no-images"),
+        "speed=0xAは非ゼロとして解釈され移動物分岐が選ばれるべきで、\
+         固定物分岐のno-images infoは出ないはず: {diags:?}"
+    );
+}
+
+#[test]
 fn missing_season_image_is_detected() {
     assert!(has_error(
         &check("groundobj_missing_season_image.dat"),

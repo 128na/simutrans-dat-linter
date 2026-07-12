@@ -148,7 +148,10 @@
 //!   `cursorskin_writer_t`も呼ばれない。他obj種別と異なり、そもそも対象フィールドが
 //!   存在しない）。
 
-use super::common::{KNOWN_WAYTYPES, NameAndCopyrightStringFieldRule, check_image_ref};
+use super::common::{
+    KNOWN_WAYTYPES, NameAndCopyrightStringFieldRule, check_image_ref, parse_strtol_like,
+    truncate_to_unsigned,
+};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::{Language, t};
@@ -232,13 +235,29 @@ impl Rule for WaytypeIfPresentValidRule {
 ///   （"Season image for season %i missing (expected %s)!"）。
 ///
 /// `number_of_seasons`は`get_int("seasons", 1)`（無条件フォールバック、既定値1）。
+///
+/// 第22弾: 分岐選択に使う`speed`は`groundobj_writer.cc:39`の
+/// `uint16 const speed = obj.get_int("speed", 0);`が示す通り、**uint16へ
+/// 切り詰められた後の値**で`speed==0`かどうかが判定される。以前の実装は`i64`に
+/// パースした生値をそのまま使っており、例えば`speed=65536`
+/// （uint16切り詰め後は65536 mod 65536=0）は「移動物（speed!=0）」分岐に
+/// 誤って入り、実際には固定物として扱われる（image[0][0]等のみで足りる）にも
+/// かかわらず8方向×season分の画像を要求する大量のfalse positiveを生んでいた。
+/// `common::truncate_to_unsigned`でuint16切り詰め後の値を使うよう修正した。
+///
+/// 第23弾: `speed`のパースを`.trim().parse::<i64>()`（10進数のみ）から
+/// `common::parse_strtol_like`（実際の`get_int()`が使う`strtol(value, NULL, 0)`と
+/// 同じ基数自動判定）に置き換えた（gemini-code-assistのレビュー指摘）。
+/// `speed=0x10`のような16進表記が以前はパース失敗として扱われ、意図せず
+/// speed=0（固定物分岐）へ誤ってフォールバックしていた。
 struct SeasonImageRule;
 impl Rule for SeasonImageRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
         let dat = ctx.dat;
         let mut diags = Vec::new();
 
-        let speed: i64 = dat.get("speed").unwrap_or("").trim().parse().unwrap_or(0);
+        let speed_raw: i64 = dat.get("speed").and_then(parse_strtol_like).unwrap_or(0);
+        let speed = truncate_to_unsigned(speed_raw, 16);
         let seasons: i64 = dat
             .get("seasons")
             .unwrap_or("")

@@ -80,6 +80,26 @@ fn missing_speed_is_detected() {
 }
 
 #[test]
+fn speed_truncated_to_zero_is_detected_as_missing_speed() {
+    // speed[0]=65536はuint16へ切り詰めると65536 mod 65536=0になり、
+    // crossing_writer.cc:87-92の`const uint16 speed0 = obj.get_int(...)`が
+    // 実際に0として扱われるため`A maxspeed MUST be given for both ways!`で
+    // FATALになる。以前の実装はi64の生値（非ゼロ）で判定していたため、この
+    // ケースをcrossing-missing-speedとして検出できず、単なるnarrow-int-overflow
+    // Warningとしてしか報告していなかった。
+    let diags = check("crossing_speed_truncates_to_zero.dat");
+    assert!(
+        has_error(&diags, "crossing-missing-speed"),
+        "uint16切り詰め後に0になるspeed[0]=65536はcrossing-missing-speedとして\
+         検出されるべき: {diags:?}"
+    );
+    assert!(
+        has(&diags, Severity::Warning, "narrow-int-overflow"),
+        "speed[0]=65536自体は範囲外の生値としてnarrow-int-overflowも出るはず: {diags:?}"
+    );
+}
+
+#[test]
 fn missing_openimage_is_detected() {
     assert!(has_error(
         &check("crossing_missing_openimage.dat"),
@@ -168,6 +188,27 @@ fn ribi_parameter_expansion_resolves_openimage_and_avoids_false_positive() {
         "ribiパラメータ展開後は openimage[ns][0]/openimage[ew][0] が存在するはずで、\
          crossing-missing-openimage 等のerrorは出ないべき: {errors:?}"
     );
+}
+
+#[test]
+fn speed_hex_prefix_is_accepted() {
+    // crossing_writer.cc:87-88の`obj.get_int("speed[N]", 0)`はstrtol相当の
+    // 基数自動判定を行うため、`speed[0]=0x50`（10進80）のような16進表記も
+    // 正しく解釈される。以前の実装は`.parse::<i64>()`（10進数限定）を使っており、
+    // 16進表記はパース失敗して`.unwrap_or(0)`によりspeed=0に誤ってフォールバック
+    // し、crossing-missing-speedを偽陽性で報告していた（第23弾、
+    // gemini-code-assistのレビュー指摘）。
+    let diags = check("crossing_speed_hex.dat");
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|(s, _)| *s == Severity::Error)
+        .collect();
+    let warnings: Vec<_> = diags
+        .iter()
+        .filter(|(s, _)| *s == Severity::Warning)
+        .collect();
+    assert!(errors.is_empty(), "予期しない error: {errors:?}");
+    assert!(warnings.is_empty(), "予期しない warning: {warnings:?}");
 }
 
 #[test]

@@ -103,7 +103,7 @@
 
 use super::common::{
     KNOWN_WAYTYPES, NameAndCopyrightStringFieldRule, check_date_index_overflow_field,
-    check_image_ref, check_narrow_int_overflow_field,
+    check_image_ref, check_narrow_int_overflow_field, parse_strtol_like, truncate_to_unsigned,
 };
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
@@ -244,22 +244,40 @@ impl Rule for IdenticalWaytypesRule {
     }
 }
 
-/// crossing_writer.cc:87-92: speed[0]/speed[1]（いずれもget_int(key, 0)）の
-/// どちらか一方でも0（未指定含む）だと dbg->fatal("Crossing", "A maxspeed MUST be
-/// given for both ways!")。
+/// crossing_writer.cc:87-92: `const uint16 speed0 = obj.get_int("speed[0]",
+/// 0);`のように、`speed[0]`/`speed[1]`はどちらも**uint16へ切り詰められた後の値**が
+/// `speed0==0 || speed1==0`の判定に使われる（`get_int()`自体はチェック無しの
+/// `int`を返すが、代入先の`const uint16`型への暗黙変換が先に起きてから比較される）。
+/// どちらか一方でも0（未指定・切り詰め後に0になったケースの両方を含む）だと
+/// `dbg->fatal("Crossing", "A maxspeed MUST be given for both ways!")`。
+///
+/// 第22弾: 以前の実装は`i64`にパースした生値をそのまま0判定に使っており、
+/// 例えば`speed[0]=65536`（uint16へ切り詰めると65536 mod 65536=0）は「非ゼロ」と
+/// 誤判定されFATAL相当の欠陥を見逃していた（`SpeedNarrowIntRule`が単なる
+/// overflow Warningとして報告するだけで、実際にmakeobjがFATALにする
+/// `crossing-missing-speed`は出ていなかった）。`common::truncate_to_unsigned`で
+/// uint16切り詰め後の値を使うよう修正した。
+///
+/// 第23弾: `.parse::<i64>()`（10進数のみ）を`common::parse_strtol_like`
+/// （実際の`get_int()`が使う`strtol(value, NULL, 0)`と同じ基数自動判定）に
+/// 置き換えた（gemini-code-assistのレビュー指摘）。`speed[0]=0x10`のような
+/// 16進表記が以前はパース失敗として扱われ、意図せずspeed=0（未指定扱い）に
+/// フォールバックして`crossing-missing-speed`を偽陽性で報告していた。
 struct SpeedRequiredRule;
 impl Rule for SpeedRequiredRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        let speed0 = ctx
+        let speed0_raw = ctx
             .dat
             .get("speed[0]")
-            .and_then(|v| v.trim().parse::<i64>().ok())
+            .and_then(parse_strtol_like)
             .unwrap_or(0);
-        let speed1 = ctx
+        let speed1_raw = ctx
             .dat
             .get("speed[1]")
-            .and_then(|v| v.trim().parse::<i64>().ok())
+            .and_then(parse_strtol_like)
             .unwrap_or(0);
+        let speed0 = truncate_to_unsigned(speed0_raw, 16);
+        let speed1 = truncate_to_unsigned(speed1_raw, 16);
         if speed0 == 0 || speed1 == 0 {
             vec![Diagnostic::error(
                 DiagnosticCode::CrossingMissingSpeed,

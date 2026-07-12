@@ -688,6 +688,157 @@ pub fn check_narrow_int_overflow_field(
     }
 }
 
+/// `strtol`/`strtoul`（`<stdlib.h>`、C標準）の`base=0`自動判定を再現する下請け
+/// 関数。符号（`+`/`-`）・基数接頭辞（`0x`/`0X`→16進、単なる先頭`0`→8進、
+/// それ以外→10進）を判定し、その基数で妥当な数字だけを先頭から連続して
+/// 切り出す（`strtol`と同じく、最初の無効な文字に当たった時点で以降は無視する。
+/// 値全体を消費する必要はない）。
+///
+/// `"0x"`/`"0X"`の直後に有効な16進数字が1つも続かない場合（例: `"0x"`単体、
+/// `"0xg"`）は、実際の`strtol`と同じく16進接頭辞自体を採用せず、先頭の`'0'`
+/// 1文字だけを有効な数字として扱う（値は常に0になるため、この場合の基数は
+/// 10進・8進のどちらでも結果は変わらない。`"x"`以降は無視される）。
+///
+/// 戻り値は`(negative, radix, digits)`。`digits`が空文字列なら「有効な数字が
+/// 1つも無い」ことを示す。実際の`strtol`/`strtoul`はこの場合0を返す仕様だが、
+/// `parse_strtol_like`/`parse_strtoul_like`はこのケースを`None`として表現する
+/// （「未指定」と「値はあるがパース不能」を呼び出し元が区別できるようにする、
+/// 本プロジェクトでの意図的な設計選択。各呼び出し元は用途に応じて
+/// `.unwrap_or(0)`（実際のstrtol挙動そのもの）または`.unwrap_or(<get_intの
+/// デフォルト値>)`（「未指定」時のデフォルトへフォールバック）のどちらを使うかを
+/// 選ぶ）。
+fn strtol_prefix(raw: &str) -> (bool, u32, &str) {
+    let trimmed = raw.trim_start();
+    let (negative, rest) = if let Some(r) = trimmed.strip_prefix('-') {
+        (true, r)
+    } else if let Some(r) = trimmed.strip_prefix('+') {
+        (false, r)
+    } else {
+        (false, trimmed)
+    };
+    let (radix, digits_source): (u32, &str) =
+        if let Some(hex) = rest.strip_prefix("0x").or_else(|| rest.strip_prefix("0X")) {
+            if hex.chars().next().is_some_and(|c| c.is_ascii_hexdigit()) {
+                (16, hex)
+            } else {
+                // "0x"の直後に有効な16進数字が続かない: 実際のstrtolと同じく
+                // 16進接頭辞を採用せず、先頭の'0'だけを（値は常に0になるため
+                // 基数は何でもよい）有効な数字として扱う。
+                (10, &rest[..1])
+            }
+        } else if rest.len() > 1 && rest.starts_with('0') {
+            (8, &rest[1..])
+        } else {
+            (10, rest)
+        };
+    let valid_len = digits_source
+        .chars()
+        .take_while(|c| c.is_digit(radix))
+        .count();
+    (negative, radix, &digits_source[..valid_len])
+}
+
+/// `digits`（`strtol_prefix`が切り出した、符号を含まない基数`radix`の妥当な
+/// 数字列）を多倍長（`u128`）で評価する。`.dat`ファイルの数値フィールドが
+/// u128の範囲（約38桁の10進数）を超えることは実用上想定されないが、万一超えても
+/// `saturating_mul`/`saturating_add`で`u128::MAX`に飽和するだけでpanicはしない
+/// （呼び出し元がさらにu64/i64の範囲へ飽和させるため、u128側で既に頭打ちに
+/// なっていても最終結果は変わらない）。
+fn parse_magnitude(digits: &str, radix: u32) -> Option<u128> {
+    if digits.is_empty() {
+        return None;
+    }
+    let mut acc: u128 = 0;
+    for c in digits.chars() {
+        let digit = c.to_digit(radix).expect("digits already filtered by radix") as u128;
+        acc = acc.saturating_mul(radix as u128).saturating_add(digit);
+    }
+    Some(acc)
+}
+
+/// C++の`strtol(raw, NULL, 0)`相当。符号・`0x`/`0`接頭辞による基数自動判定を
+/// 行い、有効な数字が1つも無ければ`None`を返す（`None`の意味は`strtol_prefix`の
+/// docコメント参照）。
+///
+/// オーバーフロー時は実際の`strtol`と同じく飽和する: 負号ありで大きさが`2^63`
+/// （`|i64::MIN|`）以上の場合は`i64::MIN`、負号なしで`i64::MAX`（`2^63-1`）を
+/// 超える場合は`i64::MAX`を返す（`errno=ERANGE`相当の状態はこの関数の
+/// シグネチャでは表現しない。makeobj側`tabfileobj_t::get_int()`/`get_int64()`も
+/// `errno`を一切確認せず戻り値をそのまま使うため、この関数の挙動と一致する）。
+///
+/// 第23弾: gemini-code-assistのレビュー指摘を受け、`factory.rs`の
+/// `MapColorRule`専用だった（符号なし版のみの）`parse_strtoul_like`を一般化し、
+/// crossing/groundobj/tree/vehicleの各フィールド（従来は`.parse::<i64>()`で
+/// 10進数のみを受理していたため、`speed[0]=0x10`のような実際のmakeobjが受理する
+/// 16進表記がパース失敗として扱われ、意図しないデフォルト値へのフォールバックを
+/// 引き起こしていた）でも共有する。
+pub fn parse_strtol_like(raw: &str) -> Option<i64> {
+    let (negative, radix, digits) = strtol_prefix(raw);
+    let magnitude = parse_magnitude(digits, radix)?;
+    // |i64::MIN| == 2^63。i64::MINそのものは`-(2^63)`だが、`2^63`はi64の範囲を
+    // 超えるためu128で保持する。
+    const I64_MIN_MAGNITUDE: u128 = 1u128 << 63;
+    if negative {
+        if magnitude >= I64_MIN_MAGNITUDE {
+            Some(i64::MIN)
+        } else {
+            Some(-(magnitude as i64))
+        }
+    } else if magnitude > i64::MAX as u128 {
+        Some(i64::MAX)
+    } else {
+        Some(magnitude as i64)
+    }
+}
+
+/// C++の`strtoul(raw, NULL, 0)`相当。`parse_strtol_like`と同じ基数自動判定・
+/// `None`の意味を持つが、オーバーフロー時の飽和先が`u64::MAX`である点、および
+/// 負号処理が「`u64::MAX`へ飽和した*後*に2の補数でラップアラウンドさせる」
+/// 点が異なる（C標準7.22.1.5: `strtoul`は"if the subject sequence begins with a
+/// minus sign, the value resulting from the conversion is negated (in the
+/// return type)"と規定しており、これはオーバーフロー飽和が起きた後の値に対しても
+/// 適用される。例えば`strtoul("-99999999999999999999", NULL, 0)`は、まず桁溢れで
+/// `ULONG_MAX`に飽和し、その後`u64`の2の補数で符号反転させるため`1`になる
+/// （`u64::MAX.wrapping_neg() == 1`）。これはglibcの実装
+/// （`__strtoul_internal`が`overflow`フラグの立った時点の値をそのまま
+/// 符号反転する）と一致する挙動である）。
+///
+/// 第23弾: `factory.rs`の`MapColorRule`が専有していた実装をここへ一般化した
+/// （経緯は`parse_strtol_like`のdocコメント参照）。以前の`factory.rs`版は
+/// オーバーフロー時に`u64::from_str_radix`の`Err`を`.unwrap_or(0)`していたため、
+/// 実際の`strtoul`の飽和挙動（`ULONG_MAX`）ではなく`0`を返してしまっていた
+/// （gemini-code-assistのレビュー指摘）。本実装は`u128`経由で一度多倍長評価
+/// してから`u64`の範囲でクランプすることでこれを修正する。
+pub fn parse_strtoul_like(raw: &str) -> Option<u64> {
+    let (negative, radix, digits) = strtol_prefix(raw);
+    let magnitude = parse_magnitude(digits, radix)?;
+    let saturated: u64 = if magnitude > u64::MAX as u128 {
+        u64::MAX
+    } else {
+        magnitude as u64
+    };
+    if negative {
+        Some(saturated.wrapping_neg())
+    } else {
+        Some(saturated)
+    }
+}
+
+/// C++の「値の広い整数型から狭い符号なし整数型への暗黙変換」（2の補数によるmod
+/// 2^bit_width、C++標準[conv.integral]により未定義動作ではなく明確に定義された
+/// 挙動）を再現する。`check_narrow_int_overflow_field`は「範囲外なら警告するだけ」
+/// だが、こちらは**切り詰め後の値そのもの**を返す。呼び出し元がその値を使って
+/// 後続の分岐（例: crossingの`speed[N]==0`判定、groundobjの`speed==0`による
+/// 固定物/移動物の分岐選択）を行う必要がある場合に使う（範囲チェックだけでは
+/// 「切り詰め後にたまたま0になり、本来FATALになるべきケースを見逃す」問題を
+/// 解決できないため）。
+///
+/// `i64::rem_euclid`は負数に対しても常に`0..2^bit_width`の非負の結果を返すため、
+/// 符号なし整数への変換（mod 2^N）の定義と一致する。
+pub fn truncate_to_unsigned(value: i64, bit_width: u32) -> i64 {
+    value.rem_euclid(1i64 << bit_width)
+}
+
 /// 画像参照からファイル名を取り出す。`image_writer_t::write_obj`
 /// （image_writer.cc:372-388）は次の2段階でファイル名の幹を取り出し、
 /// 無条件で`".png"`を付与する:
@@ -1488,5 +1639,106 @@ mod tests {
         // "foo.5"（2つ目の'.'が無い）-> col確定せずNone。
         // 呼び出し元（check_image_ref）が実タイル数を使って展開し直す。
         assert_eq!(resolve_row_col("5"), (5, None));
+    }
+
+    // parse_strtol_like / parse_strtoul_like: 第23弾（gemini-code-assistの
+    // レビュー指摘）で追加した、strtol/strtoul(str, NULL, 0)相当の共有ヘルパー
+    // の単体テスト。
+
+    #[test]
+    fn strtol_like_accepts_plain_decimal() {
+        assert_eq!(parse_strtol_like("80"), Some(80));
+        assert_eq!(parse_strtol_like("-80"), Some(-80));
+        assert_eq!(parse_strtol_like("+80"), Some(80));
+        assert_eq!(parse_strtol_like("0"), Some(0));
+    }
+
+    #[test]
+    fn strtol_like_accepts_hex_prefix() {
+        assert_eq!(parse_strtol_like("0x10"), Some(16));
+        assert_eq!(parse_strtol_like("0X10"), Some(16));
+        assert_eq!(parse_strtol_like("-0x10"), Some(-16));
+    }
+
+    #[test]
+    fn strtol_like_accepts_octal_prefix() {
+        assert_eq!(parse_strtol_like("0777"), Some(511));
+        assert_eq!(parse_strtol_like("010"), Some(8));
+    }
+
+    #[test]
+    fn strtol_like_hex_prefix_without_digits_falls_back_to_zero() {
+        // "0x"の直後に有効な16進数字が無い場合、実際のstrtolと同じく16進接頭辞を
+        // 採用せず先頭の'0'だけを数字として扱う（値は0）。
+        assert_eq!(parse_strtol_like("0x"), Some(0));
+        assert_eq!(parse_strtol_like("0xg"), Some(0));
+    }
+
+    #[test]
+    fn strtol_like_stops_at_first_invalid_character() {
+        // strtolは最初の無効な文字で止め、残りは無視する（値全体を消費する
+        // 必要はない）。
+        assert_eq!(parse_strtol_like("4x"), Some(4));
+        assert_eq!(parse_strtol_like("  42abc"), Some(42));
+    }
+
+    #[test]
+    fn strtol_like_no_valid_digits_is_none() {
+        // 実際のstrtolはこの場合0を返すが、本プロジェクトでは「未指定」と
+        // 「値はあるがパース不能」を呼び出し元が区別できるようNoneで表現する
+        // （strtol_prefixのdocコメント参照）。
+        assert_eq!(parse_strtol_like("abc"), None);
+        assert_eq!(parse_strtol_like(""), None);
+        assert_eq!(parse_strtol_like("   "), None);
+        assert_eq!(parse_strtol_like("-"), None);
+    }
+
+    #[test]
+    fn strtol_like_saturates_on_overflow() {
+        assert_eq!(parse_strtol_like("99999999999999999999"), Some(i64::MAX));
+        assert_eq!(parse_strtol_like("-99999999999999999999"), Some(i64::MIN));
+        // 境界値ちょうどは飽和しない。
+        assert_eq!(parse_strtol_like("9223372036854775807"), Some(i64::MAX));
+        assert_eq!(parse_strtol_like("-9223372036854775808"), Some(i64::MIN));
+        // 境界値+1は飽和する。
+        assert_eq!(parse_strtol_like("9223372036854775808"), Some(i64::MAX));
+        assert_eq!(parse_strtol_like("-9223372036854775809"), Some(i64::MIN));
+    }
+
+    #[test]
+    fn strtoul_like_accepts_hex_and_octal_prefix() {
+        assert_eq!(parse_strtoul_like("0x10"), Some(16));
+        assert_eq!(parse_strtoul_like("0777"), Some(511));
+        assert_eq!(parse_strtoul_like("255"), Some(255));
+    }
+
+    #[test]
+    fn strtoul_like_no_valid_digits_is_none() {
+        assert_eq!(parse_strtoul_like("garbage"), None);
+        assert_eq!(parse_strtoul_like(""), None);
+    }
+
+    #[test]
+    fn strtoul_like_saturates_on_overflow() {
+        assert_eq!(
+            parse_strtoul_like("99999999999999999999999"),
+            Some(u64::MAX)
+        );
+        // 境界値ちょうどは飽和しない。
+        assert_eq!(parse_strtoul_like("18446744073709551615"), Some(u64::MAX));
+        // 境界値+1は飽和する。
+        assert_eq!(parse_strtoul_like("18446744073709551616"), Some(u64::MAX));
+    }
+
+    #[test]
+    fn strtoul_like_negative_saturates_then_wraps() {
+        // C標準7.22.1.5: strtoulは負号ありの場合、変換結果を戻り値の型で
+        // 符号反転する。オーバーフローで先にULONG_MAX(u64::MAX)へ飽和してから
+        // 反転するため、u64::MAX.wrapping_neg() == 1 になる（glibcの
+        // __strtoul_internal と同じ挙動）。
+        assert_eq!(parse_strtoul_like("-99999999999999999999999"), Some(1));
+        // オーバーフローしない通常の負号ケースは単純な2の補数ラップアラウンド。
+        assert_eq!(parse_strtoul_like("-1"), Some(u64::MAX));
+        assert_eq!(parse_strtoul_like("-5"), Some(u64::MAX - 4));
     }
 }

@@ -1,0 +1,6 @@
+obj=ground_obj
+name=SpeedTruncatesToFixed
+climates=temperate
+seasons=1
+speed=65536
+image[0][0]=station_cube.png.0.0

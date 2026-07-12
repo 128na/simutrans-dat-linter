@@ -1,0 +1,8 @@
+obj=crossing
+name=SpeedTruncatesToZero
+waytype[0]=road
+waytype[1]=track
+speed[0]=65536
+speed[1]=100
+openimage[ns][0]=station_cube.png.0.0
+openimage[ew][0]=station_cube.png.0.0

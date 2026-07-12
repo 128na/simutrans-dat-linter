@@ -65,6 +65,34 @@ fn missing_mapcolor_is_detected() {
 }
 
 #[test]
+fn mapcolor_hex_prefix_is_accepted() {
+    // 実makeobjの`tabfileobj_t::get_color()`はMAKEOBJビルドで
+    // `(uint8)strtoul(value, NULL, 0)`を使うため、`0x10`のような16進表記も
+    // 受理される（10進数のみを試みる`str::parse::<i64>()`ではパース失敗し、
+    // 誤って未指定(255)扱いになっていた）。
+    assert_no_errors_or_warnings(&check("factory_mapcolor_hex.dat"));
+}
+
+#[test]
+fn probability_to_spawn_without_fields_is_not_checked() {
+    // probability_to_spawnはfactory_field_group_writer_t::write_objの中でのみ
+    // 読まれるが、この関数はfields/fields[0]のいずれかが非空の場合にのみ
+    // 呼ばれる（factory_writer.cc:274-279）。fieldsを一切使わないfactoryでは
+    // probability_to_spawnが大きな値でも実際には無害であり、警告すべきではない。
+    // expand_probabilityはこのガードの対象外のため引き続き検出されるべき。
+    let diags = check("factory_probability_to_spawn_no_fields.dat");
+    let count = diags
+        .iter()
+        .filter(|(s, c)| *s == Severity::Warning && *c == "factory-probability-clamped")
+        .count();
+    assert_eq!(
+        count, 1,
+        "fieldsが無いためprobability_to_spawnは検証されず、expand_probabilityの\
+         1件のみ検出されるべき: {diags:?}"
+    );
+}
+
+#[test]
 fn type_override_is_detected() {
     assert!(has_error(
         &check("factory_type_override.dat"),

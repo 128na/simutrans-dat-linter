@@ -75,6 +75,64 @@ fn missing_season_image_is_detected() {
 }
 
 #[test]
+fn seasons_zero_requires_no_images() {
+    // seasons=0はtree_writer.cc:34の`uint8 const number_of_seasons =
+    // obj.get_int("seasons", 1);`によりuint8へ切り詰められてそのまま0になる
+    // （0 mod 256 = 0）。season方向のループが0..0で空になるため、画像0枚でも
+    // FATALにならない。以前の実装は`.max(1)`で1にクランプしていたため、
+    // image[<age>][0]が無いことを誤ってFATAL相当のerrorとして報告していた。
+    let diags = check("tree_seasons_zero.dat");
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|(s, _)| *s == Severity::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "seasons=0は画像0枚を許容するはず: {errors:?}"
+    );
+}
+
+#[test]
+fn seasons_overflow_wraps_to_uint8() {
+    // seasons=257はuint8へ切り詰めると257 mod 256=1になる
+    // （tree_writer.cc:34）。よって各ageはseason 0のみが必須（5age分で
+    // 計5件のmissing-age-season-image）。以前の実装はクランプ無しで257の
+    // ままだったため、5*257=1285件という大量の偽陽性を出していた。
+    let diags = check("tree_seasons_overflow.dat");
+    let count = diags
+        .iter()
+        .filter(|(s, c)| *s == Severity::Error && *c == "missing-age-season-image")
+        .count();
+    assert_eq!(
+        count, 5,
+        "seasons=257はuint8切り詰めで257 mod 256=1になるため、\
+         age0..4のseason0のみ（5件）が不足として検出されるはず: {diags:?}"
+    );
+}
+
+#[test]
+fn seasons_hex_prefix_is_accepted_and_enforces_second_season() {
+    // tree_writer.cc:34の`uint8 const number_of_seasons = obj.get_int("seasons",
+    // 1);`はstrtol相当の基数自動判定を行うため、`seasons=0x2`（10進2）のような
+    // 16進表記も正しく解釈される。以前の実装は`.parse::<i64>()`（10進数限定）を
+    // 使っており、`0x2`のパースに失敗して`.unwrap_or(1)`によりseasons=1に誤って
+    // フォールバックしていた（第23弾、gemini-code-assistのレビュー指摘）ため、
+    // season 1の画像欠落を検出できなかった。このfixtureはseason 0の画像のみを
+    // 定義しているため、seasons=0x2が正しく2として解釈されればseason 1不足の
+    // missing-age-season-imageが5age分（5件）検出されるはず。
+    let diags = check("tree_seasons_hex.dat");
+    let count = diags
+        .iter()
+        .filter(|(s, c)| *s == Severity::Error && *c == "missing-age-season-image")
+        .count();
+    assert_eq!(
+        count, 5,
+        "seasons=0x2は10進2として解釈されseason1の画像（5age分）が\
+         不足として検出されるはず: {diags:?}"
+    );
+}
+
+#[test]
 fn missing_image_file_is_detected() {
     assert!(has_error(
         &check("tree_missing_image_file.dat"),
