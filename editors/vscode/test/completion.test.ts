@@ -7,6 +7,7 @@ import {
   isDatLinterKeysJson,
   parseDatLinterKeysJson,
   DatLinterKeysJson,
+  KeysDataCache,
 } from "../src/completion";
 
 const EXTENSION_ID = "128na.simutrans-dat-linter";
@@ -359,6 +360,77 @@ suite("completion: createCompletionItemProvider (pure logic, canned keys data)",
       { triggerKind: vscode.CompletionTriggerKind.Invoke, triggerCharacter: undefined }
     );
     assert.strictEqual(items, undefined);
+  });
+});
+
+suite("completion: KeysDataCache.load races (generation guard)", () => {
+  const makeOutputChannel = (): vscode.OutputChannel =>
+    ({ appendLine: () => undefined } as unknown as vscode.OutputChannel);
+
+  const keysJson = (waytype: string): string =>
+    JSON.stringify({
+      obj_types: [],
+      known_values: { waytype: [waytype], direction: [], per_obj_type: [] },
+    });
+
+  test("a slower, earlier load's success does not clobber a faster, later load's success", async () => {
+    const cache = new KeysDataCache();
+    const outputChannel = makeOutputChannel();
+
+    // First load() is issued first but resolves later ("STALE" result);
+    // second load() is issued second but resolves sooner ("FRESH" result).
+    // Without the generation guard, the first call's late resolution would
+    // overwrite the second call's already-applied fresher result.
+    const firstLoad = cache.load("dat_linter", ".", outputChannel, async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return keysJson("STALE");
+    });
+    const secondLoad = cache.load("dat_linter", ".", outputChannel, async () => keysJson("FRESH"));
+
+    await Promise.all([firstLoad, secondLoad]);
+
+    assert.deepStrictEqual(cache.get()?.known_values.waytype, ["FRESH"]);
+  });
+
+  test("a slower, earlier load's failure does not clear a faster, later load's success", async () => {
+    const cache = new KeysDataCache();
+    const outputChannel = makeOutputChannel();
+
+    const firstLoad = cache.load("dat_linter", ".", outputChannel, async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      throw new Error("stale spawn failure");
+    });
+    const secondLoad = cache.load("dat_linter", ".", outputChannel, async () => keysJson("FRESH"));
+
+    await Promise.all([firstLoad, secondLoad]);
+
+    assert.deepStrictEqual(cache.get()?.known_values.waytype, ["FRESH"]);
+  });
+
+  test("a slower, earlier load's success does not resurrect data over a faster, later load's failure", async () => {
+    const cache = new KeysDataCache();
+    const outputChannel = makeOutputChannel();
+
+    const firstLoad = cache.load("dat_linter", ".", outputChannel, async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return keysJson("STALE");
+    });
+    const secondLoad = cache.load("dat_linter", ".", outputChannel, async () => {
+      throw new Error("newer executablePath is broken");
+    });
+
+    await Promise.all([firstLoad, secondLoad]);
+
+    assert.strictEqual(cache.get(), undefined);
+  });
+
+  test("without any race, the only load's result is applied normally", async () => {
+    const cache = new KeysDataCache();
+    const outputChannel = makeOutputChannel();
+
+    await cache.load("dat_linter", ".", outputChannel, async () => keysJson("track"));
+
+    assert.deepStrictEqual(cache.get()?.known_values.waytype, ["track"]);
   });
 });
 

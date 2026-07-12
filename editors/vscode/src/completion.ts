@@ -222,22 +222,56 @@ export function findObjTypeAtLine(lines: readonly string[], cursorLine: number):
  * not something a missing/outdated dat_linter should nag the user about on
  * every file open). The failure reason is still logged to `outputChannel`
  * for troubleshooting.
+ *
+ * Also guards against a race: `load()` can be called again (see
+ * `registerDatCompletionItemProvider`'s `onDidChangeConfiguration` handler)
+ * before a previous, still in-flight call has resolved -- e.g. a user
+ * quickly edits `simutransDatLinter.executablePath` twice (a typo, then a
+ * correction). Without ordering protection, if the *earlier* call's process
+ * happens to resolve *after* the later (correct) call's, its stale result
+ * would overwrite the fresher one, leaving completions permanently broken
+ * despite the setting now being correct. Each `load()` call records a
+ * monotonically increasing generation number at entry and only applies its
+ * result if it's still the most recent call by the time it resolves.
  */
 export class KeysDataCache {
   private data: DatLinterKeysJson | undefined;
+  private generation = 0;
 
   get(): DatLinterKeysJson | undefined {
     return this.data;
   }
 
-  async load(executablePath: string, cwd: string, outputChannel: vscode.OutputChannel): Promise<void> {
+  /**
+   * `fetchKeysJson` is a seam for tests to inject a controllable-timing,
+   * canned result instead of spawning a real dat_linter process (see
+   * test/completion.test.ts's race-condition suite); production callers rely
+   * on the default, which runs the real `dat_linter keys --format json`.
+   */
+  async load(
+    executablePath: string,
+    cwd: string,
+    outputChannel: vscode.OutputChannel,
+    fetchKeysJson: (executablePath: string, cwd: string) => Promise<string> = (exe, dir) =>
+      runDatLinter(exe, ["keys", "--format", "json"], dir)
+  ): Promise<void> {
+    const generation = ++this.generation;
     try {
-      const stdout = await runDatLinter(executablePath, ["keys", "--format", "json"], cwd);
-      this.data = parseDatLinterKeysJson(stdout);
+      const stdout = await fetchKeysJson(executablePath, cwd);
+      const parsed = parseDatLinterKeysJson(stdout);
+      if (generation !== this.generation) {
+        // A newer load() call was issued while this one was in flight;
+        // discard this now-stale result rather than clobbering the newer one.
+        return;
+      }
+      this.data = parsed;
       outputChannel.appendLine(
         `dat_linter: loaded "keys --format json" data (${this.data.obj_types.length} obj types) for completion.`
       );
     } catch (err) {
+      if (generation !== this.generation) {
+        return;
+      }
       this.data = undefined;
       const message = err instanceof Error ? err.message : String(err);
       outputChannel.appendLine(
