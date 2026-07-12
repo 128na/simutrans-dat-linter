@@ -59,6 +59,37 @@ use crate::parser::DatFile;
 use crate::registry::Rule;
 use std::path::Path;
 
+/// `src/simutrans/simskin.cc`の`symbol_objekte`配列（13要素、simskin.cc:117-132）。
+/// `obj=symbol`の`.dat`の`name=`フィールドが一致しうる特殊名で、
+/// `common::FAKULTATIVE_SKIN_NAMES`（`obj=cursor`/`obj=symbol`共有の21件、
+/// `type==cursor || type==symbol`のときのみフォールバック照合される、
+/// simskin.cc:209-213）と合わせて`(symbol, name)`の既知値一覧を構成する
+/// （`rules/keys.rs`の`known_values_per_obj_type`側で結合する）。根拠・照合方式
+/// （ランタイムコードが根拠、大文字小文字を区別するstrcmp照合）は
+/// `common::FAKULTATIVE_SKIN_NAMES`のdocコメント参照。
+///
+/// 旧VSCode拡張の値一覧は`"MessageOption"`（単数形）という綴りを含んでいたが、
+/// simskin.cc:119を確認したところ実際は`"MessageOptions"`（複数形）であり、
+/// `"ColorOptions"`（simskin.cc:120）自体が旧拡張の一覧から丸ごと欠落していた。
+/// また旧拡張は`cursor_objekte`専用の`"Builder"`（`cursor.rs`の
+/// `KNOWN_CURSOR_OWN_NAMES`参照）をsymbolの一覧に誤って含めていた。本プロジェクトは
+/// これらをソースで裏付けが取れた値のみに置き換えている。
+pub const KNOWN_SYMBOL_OWN_NAMES: &[&str] = &[
+    "Seasons",
+    "MessageOptions",
+    "ColorOptions",
+    "Logo",
+    "NewYear",
+    "NewWorld",
+    "Flags",
+    "Message",
+    "Electricity",
+    "InTown",
+    "Passagiere",
+    "Post",
+    "Waren",
+];
+
 /// ルール実装本体は`menu`/`cursor`/`symbol`/`smoke`/`field`/`misc`の6種別で
 /// 共有される`common::AllImagesRule`（skin_writer_t::write_objそのもの、根拠は
 /// 上記コメント参照）。

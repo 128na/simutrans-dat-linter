@@ -12,7 +12,7 @@
 use dat_linter::formatter::order::order_for;
 use dat_linter::parser::DatFile;
 use dat_linter::registry::{ObjType, RuleSet, SUPPORTED_OBJ_TYPES};
-use dat_linter::rules::keys::keys_for;
+use dat_linter::rules::keys::{keys_for, known_values_per_obj_type};
 use std::collections::BTreeMap;
 
 /// キーが一切無い最小の`DatFile`。`RuleSet::for_obj_type`はディスパッチの
@@ -148,4 +148,126 @@ fn keys_for_all_obj_types_are_well_formed() {
             "obj={obj} の keys_for に重複したキーがあります: {keys:?}"
         );
     }
+}
+
+/// 第20弾（`known_values`拡張）: `rules::keys::known_values_per_obj_type`が返す
+/// obj種別・キーごとの既知値一覧について、各エントリの`values`が空でない・
+/// 重複が無いことを確認する。`type`/`location`/`climates`/`name`（skin系）いずれも
+/// 手動キュレーションされた定数（`KNOWN_WAYTYPES`と同じ位置づけ、`rules/keys.rs`の
+/// `known_values_per_obj_type`のdocコメント参照）であり、コンパイラは中身の正しさを
+/// 保証しないため、このテストで空・重複だけは機械的に検出する。
+#[test]
+fn known_values_per_obj_type_entries_are_well_formed() {
+    let entries = known_values_per_obj_type();
+
+    // 期待するobj_type/keyの組が過不足なく列挙されていることも確認する
+    // （うっかり削除・重複追加への回帰検知）。
+    let expected_pairs: std::collections::BTreeSet<(&str, &str)> = [
+        ("building", "type"),
+        ("factory", "location"),
+        ("building", "climates"),
+        ("tree", "climates"),
+        ("ground_obj", "climates"),
+        ("factory", "climates"),
+        ("menu", "name"),
+        ("cursor", "name"),
+        ("symbol", "name"),
+        ("misc", "name"),
+        ("ground", "name"),
+    ]
+    .into_iter()
+    .collect();
+
+    let actual_pairs: std::collections::BTreeSet<(&str, &str)> =
+        entries.iter().map(|e| (e.obj_type, e.key)).collect();
+
+    assert_eq!(
+        actual_pairs, expected_pairs,
+        "known_values_per_obj_type() の(obj_type, key)集合が期待と一致しません"
+    );
+
+    for entry in &entries {
+        assert!(
+            !entry.values.is_empty(),
+            "({}, {}) の values が空です",
+            entry.obj_type,
+            entry.key
+        );
+
+        let unique: std::collections::BTreeSet<&str> = entry.values.iter().copied().collect();
+        assert_eq!(
+            unique.len(),
+            entry.values.len(),
+            "({}, {}) の values に重複があります: {:?}",
+            entry.obj_type,
+            entry.key,
+            entry.values
+        );
+
+        // obj_typeはSUPPORTED_OBJ_TYPESに実在する文字列でなければならない
+        // （typoの検出）。
+        assert!(
+            SUPPORTED_OBJ_TYPES.contains(&entry.obj_type),
+            "obj_type={} がSUPPORTED_OBJ_TYPESに存在しません",
+            entry.obj_type
+        );
+    }
+}
+
+/// `(building, type)`の既知値一覧が、現行有効値（例: "res"）とobsolete値
+/// （例: "station"）の両方を含み、`""`（未指定を表す空文字列プレースホルダ）は
+/// JSON上の値としては無意味なため除外されていることを確認する
+/// （`rules/keys.rs::known_values_per_obj_type`のdocコメント参照）。
+#[test]
+fn building_type_known_values_include_valid_and_obsolete_but_not_empty_string() {
+    let entries = known_values_per_obj_type();
+    let building_type = entries
+        .iter()
+        .find(|e| e.obj_type == "building" && e.key == "type")
+        .expect("(building, type) のエントリが見つかりません");
+
+    assert!(
+        building_type.values.contains(&"res"),
+        "現行有効値\"res\"が含まれていません: {:?}",
+        building_type.values
+    );
+    assert!(
+        building_type.values.contains(&"station"),
+        "obsolete値\"station\"が含まれていません: {:?}",
+        building_type.values
+    );
+    assert!(
+        !building_type.values.contains(&""),
+        "空文字列プレースホルダが値一覧に含まれるべきではありません: {:?}",
+        building_type.values
+    );
+}
+
+/// `(cursor, name)`/`(symbol, name)`は、それぞれ固有の名前一覧と共有の
+/// `FAKULTATIVE_SKIN_NAMES`（21件、`rules/common.rs`）を結合したものであることを
+/// 確認する。両者が結合後の集合として`FAKULTATIVE_SKIN_NAMES`の代表的な値
+/// （"TrainStop"）を含むこと、かつ固有名（cursorの"Builder"、symbolの"Waren"）が
+/// 互いのobj_typeには含まれないことを確認する。
+#[test]
+fn cursor_and_symbol_name_values_share_fakultative_names_but_not_own_names() {
+    let entries = known_values_per_obj_type();
+    let cursor_names = &entries
+        .iter()
+        .find(|e| e.obj_type == "cursor" && e.key == "name")
+        .expect("(cursor, name) のエントリが見つかりません")
+        .values;
+    let symbol_names = &entries
+        .iter()
+        .find(|e| e.obj_type == "symbol" && e.key == "name")
+        .expect("(symbol, name) のエントリが見つかりません")
+        .values;
+
+    assert!(cursor_names.contains(&"TrainStop"));
+    assert!(symbol_names.contains(&"TrainStop"));
+
+    assert!(cursor_names.contains(&"Builder"));
+    assert!(!symbol_names.contains(&"Builder"));
+
+    assert!(symbol_names.contains(&"Waren"));
+    assert!(!cursor_names.contains(&"Waren"));
 }

@@ -19,7 +19,13 @@ use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
 
-const KNOWN_TYPES: &[&str] = &[
+/// `building_writer.cc:119-201`のif-elseチェーン（STRICMP、大文字小文字を区別しない）が
+/// 受理する`type=`の既知値。`""`（未指定）は`*type_name == '\0'`分岐（180行目、`any`と同列）で
+/// 受理されるため値として含めている。
+///
+/// `rules/keys.rs`の`known_values_per_obj_type`が`(building, type)`の既知値一覧として
+/// `OBSOLETE_TYPES`と合わせてそのまま再エクスポートする（重複キュレーションしない）。
+pub const KNOWN_TYPES: &[&str] = &[
     "res",
     "com",
     "ind",
@@ -37,7 +43,12 @@ const KNOWN_TYPES: &[&str] = &[
     "any",
     "",
 ];
-const OBSOLETE_TYPES: &[&str] = &[
+/// `building_writer.cc:184-196`でFATAL ERRORになる、makeobjが認識はするが拒否する
+/// obsolete値（`ObsoleteType`診断参照）。`known_values_per_obj_type`はこの一覧も
+/// `KNOWN_TYPES`と合わせて公開する。シンタックスハイライトの観点では「makeobjが構文として
+/// 認識するキーワード」であることに変わりはなく（`lint`が別途`obsolete-type`エラーとして
+/// 検出する）、値の妥当性判定とは別の関心事のため含める。
+pub const OBSOLETE_TYPES: &[&str] = &[
     "station",
     "railstop",
     "monorailstop",

@@ -9,7 +9,7 @@
 use crate::cli::{KeysArgs, KeysFormat};
 use dat_linter::i18n::{Language, t};
 use dat_linter::registry::{ObjType, SUPPORTED_OBJ_TYPES};
-use dat_linter::rules::keys::{keys_for, known_values};
+use dat_linter::rules::keys::{keys_for, known_values, known_values_per_obj_type};
 use std::process::ExitCode;
 
 pub fn run_keys(args: &KeysArgs, language: Language) -> ExitCode {
@@ -46,23 +46,58 @@ fn run_keys_text(language: Language) -> ExitCode {
     for (key, values) in known_values() {
         println!("{:<12} {}", key, values.join(", "));
     }
+    for entry in known_values_per_obj_type() {
+        println!(
+            "{:<12}.{:<10} {}",
+            entry.obj_type,
+            entry.key,
+            entry.values.join(", ")
+        );
+    }
 
     ExitCode::SUCCESS
 }
 
 /// `--format json`のトップレベル出力スキーマ。
 /// `{ "obj_types": [{ "obj_type": "building", "keys": [...] }, ...],
-///    "known_values": { "waytype": [...], "direction": [...] } }`。
+///    "known_values": { "waytype": [...], "direction": [...],
+///                       "per_obj_type": [{ "obj_type": "building", "key": "type",
+///                                          "values": [...] }, ...] } }`。
+///
+/// **互換性制約**: `known_values.waytype`/`known_values.direction`は既にリリース済みの
+/// VSCode拡張（`editors/vscode/scripts/generate-grammar.mjs`）が依存しているフィールド
+/// なので、以前の`BTreeMap<&str, Vec<&str>>`から`JsonKnownValues`という明示的な構造体へ
+/// 変更した後も、この2フィールドのJSON上の形（トップレベル直下の配列）は変えていない。
+/// `per_obj_type`は同じ`known_values`オブジェクトの下に追加した新フィールドであり、
+/// 既存フィールドの型・位置には影響しない。
 #[derive(serde::Serialize)]
 struct JsonKeysOutput {
     obj_types: Vec<JsonObjTypeKeys>,
-    known_values: std::collections::BTreeMap<&'static str, Vec<&'static str>>,
+    known_values: JsonKnownValues,
 }
 
 #[derive(serde::Serialize)]
 struct JsonObjTypeKeys {
     obj_type: &'static str,
     keys: Vec<&'static str>,
+}
+
+#[derive(serde::Serialize)]
+struct JsonKnownValues {
+    waytype: Vec<&'static str>,
+    direction: Vec<&'static str>,
+    per_obj_type: Vec<JsonObjTypeKnownValues>,
+}
+
+/// `type`/`location`/`climates`/`name`のように、obj種別によって値集合の意味が
+/// 異なるキーのための1エントリ。`dat_linter::rules::keys::ObjTypeKnownValues`の
+/// JSON表現（フィールド名を合わせているだけで、こちらはserdeの`Serialize`実装を
+/// 持たせるためのコマンド層専用の型）。
+#[derive(serde::Serialize)]
+struct JsonObjTypeKnownValues {
+    obj_type: &'static str,
+    key: &'static str,
+    values: Vec<&'static str>,
 }
 
 fn run_keys_json() -> ExitCode {
@@ -79,12 +114,33 @@ fn run_keys_json() -> ExitCode {
         })
         .collect();
 
-    let output = JsonKeysOutput {
-        obj_types,
-        known_values: known_values()
+    let flat_known_values: std::collections::BTreeMap<&'static str, Vec<&'static str>> =
+        known_values()
             .into_iter()
             .map(|(k, v)| (k, v.to_vec()))
+            .collect();
+    let known_values = JsonKnownValues {
+        waytype: flat_known_values
+            .get("waytype")
+            .cloned()
+            .unwrap_or_default(),
+        direction: flat_known_values
+            .get("direction")
+            .cloned()
+            .unwrap_or_default(),
+        per_obj_type: known_values_per_obj_type()
+            .into_iter()
+            .map(|e| JsonObjTypeKnownValues {
+                obj_type: e.obj_type,
+                key: e.key,
+                values: e.values,
+            })
             .collect(),
+    };
+
+    let output = JsonKeysOutput {
+        obj_types,
+        known_values,
     };
 
     match serde_json::to_string(&output) {

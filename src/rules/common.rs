@@ -82,6 +82,82 @@ pub const KNOWN_WAYTYPES: &[&str] = &[
     "decoration",
 ];
 
+/// `get_climate.cc`の`climate_names`配列（8要素、`get_climate_bits()`がSTRICMPで
+/// 受理する`climates=`の既知値）に、同関数が特別扱いする同義語`"sea"`
+/// （get_climate.cc:47-50: `uv16==0 && STRICMP(end,"sea")==0`のとき`water`と全く同じ
+/// bit(`1<<0`)を立てる。`climate_names[0]`自体は`"water"`）を加えたもの。
+/// `get_climate_bits()`は`building_writer.cc:108`（building）・`tree_writer.cc:23`
+/// （tree）・`groundobj_writer.cc:25`（groundobj）の3obj種別から呼ばれ、factoryは
+/// `building_writer_t::write_obj`をそのまま呼ぶため（`factory.rs`参照）間接的に4obj種別
+/// （building/tree/groundobj/factory）で共有される。値が既知8種のいずれにも（"sea"経由も
+/// 含め）一致しない場合はfatal/warningを一切出さず単にそのトークンのbitを立てないだけ
+/// （`uv16`に反映されない）ため、obsolete値という区分は存在しない。
+///
+/// 旧VSCode拡張の値一覧（wikiベースの手動収集）は`"water"`を含んでいなかったが、
+/// `climate_names[0]`が実際には`"water"`である（get_climate.cc:16）ことをソースで
+/// 確認済みのため、本プロジェクトでは省略せず含める。
+pub const KNOWN_CLIMATES: &[&str] = &[
+    "water",
+    "desert",
+    "tropic",
+    "mediterran",
+    "temperate",
+    "tundra",
+    "rocky",
+    "arctic",
+    "sea",
+];
+
+/// `src/simutrans/simskin.cc`の`fakultative_objekte`配列（21要素）。ゲーム実行時の
+/// `skinverwaltung_t::register_desc()`（simskin.cc:195-228）が`obj=cursor`/`obj=symbol`
+/// いずれの`.dat`についても、まず`cursor_objekte`/`symbol_objekte`（各obj種別専用の
+/// 必須名一覧）で一致を試み、一致しなければこの`fakultative_objekte`でも一致を試みる
+/// （209-213行目、`type==cursor || type==symbol`の場合のみ）という、cursor/symbolの
+/// 両obj種別で共有される「あれば使うが無くても動く」名前一覧である。
+///
+/// **makeobjの`descriptor/writer/`（コンパイル時、pak生成）ではなくゲーム本体の
+/// ランタイムコード（`simskin.cc`、pak読み込み時）が根拠**という点で、
+/// `KNOWN_WAYTYPES`等の他の`known_values`定数（いずれも`descriptor/writer/`側の
+/// 静的チェック根拠）とは性質が異なる（factoryの`ProductivityZeroRule`が
+/// `simfab.cc`をランタイム側の根拠にしているのと同じ種類の証跡）。
+///
+/// この一致は`spezial_obj_tpl.h:36-50`の`register_desc<desc_t>`テンプレート関数が
+/// `strcmp`（大文字小文字を**区別する**）で行う。`.dat`の他の多くのフィールド
+/// （`type`/`waytype`/`climates`等）が`STRICMP`（大文字小文字を区別しない）で
+/// 照合されるのとは対照的に、`name=`のこの特殊値照合は**大文字小文字を区別する**
+/// 点に注意（例: `name=trainstop`は`"TrainStop"`と一致しない）。
+///
+/// 一致しない`name=`を持つ`obj=cursor`/`obj=symbol`は、fatal/warningにはならず
+/// 単に特殊な用途に紐づかない（simskin.cc:224-227の`dbg->warning`はcursor/menu以外の
+/// obj種別（誤って別のtypeで登録しようとした場合）にのみ発生する。cursor/symbolは
+/// この分岐（215行目`type==cursor || type==menu`）に該当せず、後述の`register_desc`が
+/// 常に`true`を返すため、単に「特殊名に一致しない普通のcursor/symbol画像」として
+/// 扱われるだけである）。
+pub const FAKULTATIVE_SKIN_NAMES: &[&str] = &[
+    "BigLogo",
+    "Mouse",
+    "TrainStop",
+    "CarStop",
+    "ShipStop",
+    "BusStop",
+    "AirStop",
+    "MonorailStop",
+    "MaglevStop",
+    "NarrowgaugeStop",
+    "TramStop",
+    "networksym",
+    "timelinesym",
+    "fastforwardsym",
+    "pausesym",
+    "station_type",
+    "ToolsBackground",
+    "CompassIso",
+    "CompassMap",
+    "Happy",
+    "Unhappy",
+    "NoRoute",
+];
+
 /// 画像タイルサイズが未指定の場合のフォールバック値（pak128のデフォルト）。
 /// （image_writer.cc:270-275 `block_load()`: `if ((width%img_size!=0)||
 /// (height%img_size!=0)) dbg->error(...)`で読み込み失敗を返し、

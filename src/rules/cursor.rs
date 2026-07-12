@@ -59,6 +59,22 @@ use crate::parser::DatFile;
 use crate::registry::Rule;
 use std::path::Path;
 
+/// `src/simutrans/simskin.cc`の`cursor_objekte`配列（3要素、simskin.cc:165-171）。
+/// `obj=cursor`の`.dat`の`name=`フィールドが一致しうる特殊名で、
+/// `common::FAKULTATIVE_SKIN_NAMES`（`obj=cursor`/`obj=symbol`共有の21件、
+/// `type==cursor || type==symbol`のときのみフォールバック照合される、
+/// simskin.cc:209-213）と合わせて`(cursor, name)`の既知値一覧を構成する
+/// （`rules/keys.rs`の`known_values_per_obj_type`側で結合する）。根拠・照合方式
+/// （ランタイムコードが根拠、大文字小文字を区別するstrcmp照合）は
+/// `common::FAKULTATIVE_SKIN_NAMES`のdocコメント参照。
+///
+/// この3件のうち`"GeneralTools"`は`menu.rs`の`KNOWN_MENU_NAMES`にも同名で登場するが
+/// （`menu_objekte`側は「ツール群アイコンシート」、こちら`cursor_objekte`側は
+/// 「汎用ツール用カーソル」と意味は異なる。simskin.cc:74,168参照）、
+/// `skinverwaltung_t::register_desc()`は`obj=`種別ごとに別々の配列を参照するため
+/// （195-205行目）、同名衝突は問題にならない。
+pub const KNOWN_CURSOR_OWN_NAMES: &[&str] = &["Builder", "GeneralTools", "Marked"];
+
 /// ルール実装本体は`menu`/`cursor`/`symbol`/`smoke`/`field`/`misc`の6種別で
 /// 共有される`common::AllImagesRule`（skin_writer_t::write_objそのもの、根拠は
 /// 上記コメント参照）。

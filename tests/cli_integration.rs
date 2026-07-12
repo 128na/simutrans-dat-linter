@@ -872,4 +872,49 @@ fn keys_format_json_emits_valid_json_with_expected_shape() {
             entry["obj_type"]
         );
     }
+
+    // known_values.per_obj_type: type/location/climates/name（skin系）のように
+    // obj種別ごとに意味の異なるキーの既知値一覧。既存のwaytype/directionフィールドの
+    // 形（配列）を壊していないことも合わせて確認する。
+    let per_obj_type = value["known_values"]["per_obj_type"]
+        .as_array()
+        .expect("known_values.per_obj_type が配列ではありません");
+    assert!(
+        !per_obj_type.is_empty(),
+        "known_values.per_obj_type が空です"
+    );
+
+    let building_type_entry = per_obj_type
+        .iter()
+        .find(|e| e["obj_type"].as_str() == Some("building") && e["key"].as_str() == Some("type"))
+        .unwrap_or_else(|| panic!("(building, type) のエントリが見つかりません: {per_obj_type:?}"));
+    let building_type_values: Vec<&str> = building_type_entry["values"]
+        .as_array()
+        .expect("values が配列ではありません")
+        .iter()
+        .map(|v| v.as_str().expect("values の要素が文字列ではありません"))
+        .collect();
+    assert!(
+        building_type_values.contains(&"res"),
+        "(building, type) に \"res\" が含まれていません: {building_type_values:?}"
+    );
+    assert!(
+        building_type_values.contains(&"station"),
+        "(building, type) にobsolete値 \"station\" が含まれていません: {building_type_values:?}"
+    );
+
+    let ground_name_entry = per_obj_type
+        .iter()
+        .find(|e| e["obj_type"].as_str() == Some("ground") && e["key"].as_str() == Some("name"))
+        .unwrap_or_else(|| panic!("(ground, name) のエントリが見つかりません: {per_obj_type:?}"));
+    let ground_name_values: Vec<&str> = ground_name_entry["values"]
+        .as_array()
+        .expect("values が配列ではありません")
+        .iter()
+        .map(|v| v.as_str().expect("values の要素が文字列ではありません"))
+        .collect();
+    assert!(
+        ground_name_values.contains(&"Shore"),
+        "(ground, name) に \"Shore\" が含まれていません: {ground_name_values:?}"
+    );
 }

@@ -80,6 +80,33 @@ use crate::parser::DatFile;
 use crate::registry::Rule;
 use std::path::Path;
 
+/// `src/simutrans/simskin.cc`の`misc_objekte`配列（5要素、simskin.cc:89-96）。
+/// `obj=misc`の`.dat`の`name=`フィールドが一致しうる特殊名。他の`known_values`定数と
+/// 異なり、makeobjの`descriptor/writer/`（コンパイル時）ではなくゲーム本体の
+/// ランタイムコード（`simskin.cc`、pak読み込み時）が根拠である点、および照合が
+/// `spezial_obj_tpl.h:36-50`の`strcmp`（大文字小文字を**区別する**）で行われる点は
+/// `common::FAKULTATIVE_SKIN_NAMES`のdocコメント参照。
+///
+/// `skinverwaltung_t::successfully_loaded(misc)`（simskin.cc:181-187）は
+/// `misc_objekte+2`（先頭2件`PowerDest`/`PowerSource`を除いた3件）のみを
+/// 「無いとロード失敗として扱う」対象にしているが、これは「無くてもゲームが動く」
+/// というロード必須性の話であり、`name=`として認識される値の集合（5件全て）には
+/// 影響しない。また`TunnelTexture`が見つからない場合は`Sidewalk`の画像を代用する
+/// 互換処理（simskin.cc:184-186）がある。一致しない`name=`はfatal/warningにはならず、
+/// `register_desc()`は"currently no misc objects allowed"のコメント通りcursor/menu以外の
+/// obj種別にのみ`dbg->warning("Spurious object '%s' loaded...")`を出す
+/// （simskin.cc:224-227）。
+///
+/// 旧VSCode拡張の一覧（`PowerSource`/`PowerDest`/`Construction`/`Sidewalk`/
+/// `TunnelTexture`の5件）はこのソースと完全に一致することを確認済み。
+pub const KNOWN_MISC_NAMES: &[&str] = &[
+    "PowerDest",
+    "PowerSource",
+    "Construction",
+    "Sidewalk",
+    "TunnelTexture",
+];
+
 /// ルール実装本体は`menu`/`cursor`/`symbol`/`smoke`/`field`/`misc`の6種別で
 /// 共有される`common::AllImagesRule`（skin_writer_t::write_objそのもの、根拠は
 /// 上記コメント参照）。
