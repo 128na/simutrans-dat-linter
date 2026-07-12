@@ -120,11 +120,11 @@ use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
 
-/// roadsign_writer.cc:19 の`private_sign_directions`配列そのもの。
+/// roadsign_writer.cc:18 の`private_sign_directions`配列そのもの。
 const PRIVATE_DIRECTIONS: &[&str] = &["ns", "ew"];
-/// roadsign_writer.cc:20 の`traffic_light_directions`配列そのもの。
+/// roadsign_writer.cc:19 の`traffic_light_directions`配列そのもの。
 const TRAFFIC_LIGHT_DIRECTIONS: &[&str] = &["n", "s", "w", "e", "nw", "se", "sw", "ne"];
-/// roadsign_writer.cc:21 の`general_sign_directions`配列そのもの。
+/// roadsign_writer.cc:20 の`general_sign_directions`配列そのもの。
 const GENERAL_DIRECTIONS: &[&str] = &["n", "s", "w", "e"];
 
 pub fn all() -> Vec<Box<dyn Rule>> {
@@ -166,6 +166,11 @@ fn is_private_road(dat: &DatFile) -> bool {
     // roadsign_writer.cc:90-113: is_signal/is_presignal/is_prioritysignal/
     // is_longblocksignalのいずれかが立っているとelseブロック（is_private等の判定）
     // 自体に入らないため、PRIVATE_ROADフラグは絶対に立たない。
+    // これらは`obj.get_int(key, 0)`をそのまま`if(...)`へ渡すC++の素の真偽判定
+    // （roadsign_writer.cc:90,96,99,102、0以外なら真。負数も真になる）で判定される
+    // ため、`> 0`ではなく`!= 0`で再現する必要がある（is_signal=-1のようなケースで
+    // ">0"判定だと誤ってelseブロックに入り込み、is_private側の検証に
+    // フォールスルーしてしまう）。
     let is_signal_family = [
         "is_signal",
         "is_presignal",
@@ -173,7 +178,7 @@ fn is_private_road(dat: &DatFile) -> bool {
         "is_longblocksignal",
     ]
     .iter()
-    .any(|k| dat.get(k).unwrap_or("0").trim().parse::<i64>().unwrap_or(0) > 0);
+    .any(|k| dat.get(k).unwrap_or("0").trim().parse::<i64>().unwrap_or(0) != 0);
     if is_signal_family {
         return false;
     }
@@ -321,10 +326,10 @@ impl Rule for DateIndexOverflowRule {
 
 /// `roadsign_writer.cc:85-86`: `min_speed`（`uint16`）・`offset_left`（`sint8`）は
 /// いずれも`obj.get_int(key, def)`（範囲チェック無しの無条件フォールバック）で
-/// 読まれた後、対応する`node.write_uint16`/`write_uint8`（`write_sint8`は内部で
-/// `write_uint8`へキャストする、obj_node.h参照）へ無条件に代入される。根拠・設計は
-/// `common::check_narrow_int_overflow_field`のdocコメント参照
-/// （`DateIndexOverflowRule`と同種の静的解析ルール）。
+/// 読まれた後、対応する`node.write_uint16`/`write_uint8`（`offset_left`は`sint8`型だが
+/// `write_sint8`は呼ばれず、roadsign_writer.cc:123で直接`write_uint8`へ渡される）へ
+/// 無条件に代入される。根拠・設計は`common::check_narrow_int_overflow_field`の
+/// docコメント参照（`DateIndexOverflowRule`と同種の静的解析ルール）。
 struct NarrowIntFieldsRule;
 impl Rule for NarrowIntFieldsRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
