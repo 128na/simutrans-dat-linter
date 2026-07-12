@@ -3,12 +3,16 @@ import * as path from "path";
 import { parseDatLinterJson, toVscodeDiagnostics } from "./parser";
 import { resolveExecutionContext, runDatLinter, VersionIncompatibilityHint, withTempDatFile } from "./runner";
 import { registerDatFormattingEditProvider } from "./formatter";
+import { registerDatCompletionItemProvider } from "./completion";
 
 let diagnosticCollection: vscode.DiagnosticCollection;
 
 export function activate(context: vscode.ExtensionContext): void {
   diagnosticCollection = vscode.languages.createDiagnosticCollection("dat-linter");
   context.subscriptions.push(diagnosticCollection);
+
+  const outputChannel = vscode.window.createOutputChannel("Simutrans dat_linter");
+  context.subscriptions.push(outputChannel);
 
   const maybeLint = (document: vscode.TextDocument) => {
     if (!isDatFile(document)) {
@@ -26,6 +30,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   registerDatFormattingEditProvider(context);
+  registerDatCompletionItemProvider(context, outputChannel);
 
   // Lint any .dat documents that were already open when the extension activated.
   vscode.workspace.textDocuments.forEach(maybeLint);
