@@ -195,6 +195,28 @@ fn parse_records(text: &str) -> Vec<DatFile> {
             duplicates,
             malformed_lines,
         });
+    } else if !malformed_lines.is_empty() {
+        // ファイル末尾が区切り行`-`の後、`=`の無い不正な行だけで終わる場合
+        // （pairsが空のまま）、この時点でmalformed_linesを素通りさせると
+        // どのレコードにも属さないままDatFile化されず、check_malformed_lines
+        // 経由の警告がサイレントに失われる（gemini-code-assist指摘）。
+        // 直前に確定済みのレコードがあれば、その末尾の不正行として追記する。
+        if let Some(last) = records.last_mut() {
+            last.malformed_lines.extend(malformed_lines);
+        } else {
+            // records自体が空（ファイル冒頭からいきなり不正な行のみで始まり、
+            // 区切り行も`obj=`も一度も現れない）場合は、malformed_linesだけを
+            // 持つ空レコードを1件確定させる。commands/lint.rsの
+            // `records.is_empty()`早期リターン経路はこの場合も従来通り
+            // 「obj= は未対応です」を報告して即終了するため出力は変わらないが、
+            // parse_all()自体がmalformed_linesを取りこぼさないようにしておく
+            // （check_malformed_lines等、DatFileを直接扱う他の呼び出し元のため）。
+            records.push(DatFile {
+                pairs,
+                duplicates,
+                malformed_lines,
+            });
+        }
     }
 
     records

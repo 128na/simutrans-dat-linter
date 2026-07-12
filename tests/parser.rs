@@ -128,6 +128,50 @@ fn check_malformed_lines_reports_warning_with_location() {
 }
 
 #[test]
+fn malformed_lines_trailing_after_last_dash_separator_are_not_lost() {
+    // gemini-code-assist指摘: ファイルが区切り行`-`の後、`=`の無い不正な行
+    // だけが続いて終わる場合、pairsが空のままなので最後のDatFileレコードが
+    // 追加されず、不正行に対する警告がサイレントに失われるバグがあった。
+    // 区切り行の直前に確定済みのレコード（StageA）へ、末尾の不正行が
+    // 追記される（取りこぼされない）ことを確認する。
+    let path = testdata_dir().join("trailing_malformed_after_dash.dat");
+    let records = DatFile::parse_all(&path).expect("パースに失敗");
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].get("name"), Some("StageA"));
+    assert_eq!(records[0].malformed_lines.len(), 2);
+    assert_eq!(records[0].malformed_lines[0].line, 8);
+    assert_eq!(
+        records[0].malformed_lines[0].text,
+        "this line has no equals sign"
+    );
+    assert_eq!(records[0].malformed_lines[1].line, 9);
+
+    let diags = rules::check_malformed_lines(&records[0], Language::default());
+    assert_eq!(diags.len(), 2);
+    assert!(diags.iter().all(|d| d.severity == Severity::Warning));
+}
+
+#[test]
+fn malformed_lines_only_file_with_no_record_still_yields_a_record() {
+    // 上記のエッジケース: recordsが一度も確定しない（区切り行も`obj=`も
+    // 一度も現れない）状態で不正な行だけが続いてファイルが終わる場合。
+    // records.last_mut()がNoneになるため、単純に「直前レコードへ追記」する
+    // だけの修正では警告が失われたままになる。parse_all()自身が
+    // malformed_linesだけを持つ空レコードを1件返し、取りこぼさないことを
+    // 確認する。
+    let path = testdata_dir().join("only_malformed_lines.dat");
+    let records = DatFile::parse_all(&path).expect("パースに失敗");
+    assert_eq!(records.len(), 1);
+    assert!(records[0].pairs.is_empty());
+    assert_eq!(records[0].malformed_lines.len(), 2);
+    assert_eq!(records[0].malformed_lines[0].line, 1);
+    assert_eq!(records[0].malformed_lines[1].line, 2);
+
+    let diags = rules::check_malformed_lines(&records[0], Language::default());
+    assert_eq!(diags.len(), 2);
+}
+
+#[test]
 fn shift_jis_encoded_file_is_decoded_as_fallback() {
     // 古いpak128.japan系アドオンはShift-JIS(CP932)のまま配布されていることがある。
     // UTF-8として不正でも「読み込み失敗」にせず、CP932としてデコードして継続する。

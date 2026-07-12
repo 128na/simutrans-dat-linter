@@ -387,15 +387,34 @@ fn reduce_level(tokens: Vec<Token>, op_char: char) -> Vec<Token> {
     while let Some(tok) = iter.next() {
         match tok {
             Token::Num(mut v) => {
+                // rhsが`Token::Num`でない場合（連続する演算子や式の末尾で
+                // 演算子が終わる等の不正な式）は、`op`を消費せずに済むよう
+                // `peek`で先読みしてから判定する。unconditionalに`iter.next()`で
+                // rhsを取り出すと、rhsが`Token::Num`でなかった場合にその
+                // トークン（`op`だけでなく非Numだったrhs自身も）がサイレントに
+                // 破棄されてしまう（gemini-code-assist指摘）。ここでは`out`へ
+                // `Num(v)`と`op`をそのまま戻し、以降のトークンは通常の
+                // `other => out.push(other)`経路に委ねる。
+                let mut pushed = false;
                 while matches!(iter.peek(), Some(Token::Op(op)) if *op == op_char) {
                     let Some(Token::Op(op)) = iter.next() else {
                         unreachable!()
                     };
-                    if let Some(Token::Num(rhs)) = iter.next() {
+                    if matches!(iter.peek(), Some(Token::Num(_))) {
+                        let Some(Token::Num(rhs)) = iter.next() else {
+                            unreachable!()
+                        };
                         v = apply_op(v, op, rhs);
+                    } else {
+                        out.push(Token::Num(v));
+                        out.push(Token::Op(op));
+                        pushed = true;
+                        break;
                     }
                 }
-                out.push(Token::Num(v));
+                if !pushed {
+                    out.push(Token::Num(v));
+                }
             }
             other => out.push(other),
         }
@@ -553,6 +572,38 @@ mod tests {
         assert_eq!(out.get("name"), Some(&"12".to_string()));
         let out = expand_to_map("name2", "<10%3>");
         assert_eq!(out.get("name2"), Some(&"1".to_string()));
+    }
+
+    #[test]
+    fn reduce_level_preserves_operator_when_rhs_is_not_a_number() {
+        // gemini-code-assist指摘: rhsが`Token::Num`でない場合（連続する演算子等の
+        // 不正な式）に、その`op`（および非Numだったrhs自身）がサイレントに
+        // 破棄されていた。`Num(1) Op('+') Op('*') Num(2)`という不正な形の
+        // トークン列を`op_char='+'`で畳み込んでも、4トークン全てが
+        // 失われずに出力へ残ることを確認する。
+        let tokens = vec![Token::Num(1), Token::Op('+'), Token::Op('*'), Token::Num(2)];
+        let out = reduce_level(tokens, '+');
+        assert_eq!(out.len(), 4, "不正な式でトークンが失われてはいけない");
+        assert!(matches!(out[0], Token::Num(1)));
+        assert!(matches!(out[1], Token::Op('+')));
+        assert!(matches!(out[2], Token::Op('*')));
+        assert!(matches!(out[3], Token::Num(2)));
+    }
+
+    #[test]
+    fn reduce_level_preserves_trailing_operator_with_no_rhs() {
+        // 式が演算子で終わる（rhsが存在しない）場合も、修正前の実装は
+        // `Op('+')`自体を消費した上で捨てていた（`Num(5)`のみが残り、
+        // 演算子トークンの存在が完全に消える）。
+        let tokens = vec![Token::Num(5), Token::Op('+')];
+        let out = reduce_level(tokens, '+');
+        assert_eq!(
+            out.len(),
+            2,
+            "末尾の不正な演算子トークンが失われてはいけない"
+        );
+        assert!(matches!(out[0], Token::Num(5)));
+        assert!(matches!(out[1], Token::Op('+')));
     }
 
     #[test]
