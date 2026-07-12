@@ -94,7 +94,9 @@
 //!   `.dat`側にage数を指定するキーは存在しない。従って「age数が不正」という
 //!   ルールは成立しない（そもそも検証対象のキーが無い）。
 
-use super::common::{NameAndCopyrightStringFieldRule, check_image_ref, truncate_to_unsigned};
+use super::common::{
+    NameAndCopyrightStringFieldRule, check_image_ref, parse_strtol_like, truncate_to_unsigned,
+};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
@@ -138,13 +140,19 @@ pub fn check_tree(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
 ///
 /// `common::truncate_to_unsigned`でuint8切り詰め後の値を使うよう修正した
 /// （`.max(1)`によるクランプは削除。切り詰め後の値が0ならそのまま0を使う）。
+///
+/// 第23弾: `seasons`のパースを`.trim().parse::<i64>()`（10進数のみ）から
+/// `common::parse_strtol_like`（実際の`get_int()`が使う`strtol(value, NULL, 0)`と
+/// 同じ基数自動判定）に置き換えた（gemini-code-assistのレビュー指摘）。
+/// `seasons=0x2`のような16進表記が以前はパース失敗として扱われ、意図せず
+/// seasons=1（デフォルト値）へ誤ってフォールバックしていた。
 struct AgeSeasonImageRule;
 impl Rule for AgeSeasonImageRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
         let dat = ctx.dat;
         let mut diags = Vec::new();
 
-        let seasons_raw: i64 = dat.get("seasons").unwrap_or("").trim().parse().unwrap_or(1);
+        let seasons_raw: i64 = dat.get("seasons").and_then(parse_strtol_like).unwrap_or(1);
         let seasons = truncate_to_unsigned(seasons_raw, 8);
 
         for age in 0..AGE_COUNT {

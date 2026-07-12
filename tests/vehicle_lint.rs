@@ -235,6 +235,43 @@ fn power_narrow_int_overflow_is_detected() {
 }
 
 #[test]
+fn gear_hex_prefix_is_accepted_and_not_a_parse_failure() {
+    // vehicle_writer.cc:142の`obj.get_int("gear", 100)`はstrtol相当の基数自動
+    // 判定を行うため、`gear=0x64`（10進100）のような16進表記も正しく解釈される。
+    // 以前の実装は`.parse::<i64>()`（10進数限定）を使っており、`0x64`のパースに
+    // 失敗すると`resolve_gear`が「パース失敗」（raw=0）と誤判定し、
+    // gear-parse-failureとpower-gear-mismatchの両方を偽陽性で報告していた
+    // （第23弾、gemini-code-assistのレビュー指摘）。
+    let diags = check("vehicle_gear_hex.dat");
+    assert!(
+        !has(&diags, Severity::Warning, "gear-parse-failure"),
+        "gear=0x64は正しく100として解釈されるべきでgear-parse-failureは\
+         出ないはず: {diags:?}"
+    );
+    assert!(
+        !has(&diags, Severity::Warning, "power-gear-mismatch"),
+        "gear=0x64はtruncated=64(非ゼロ)になるためpower-gear-mismatchは\
+         出ないはず: {diags:?}"
+    );
+}
+
+#[test]
+fn power_hex_prefix_is_accepted_and_mismatch_is_still_detected() {
+    // `PowerGearMismatchRule`内の`power`直接パース（vehicle_writer.cc:119-120の
+    // `const uint32 power = obj.get_int("power", 0);`相当）もstrtol基数自動判定を
+    // 再現する必要がある。以前の実装は`.parse::<i64>()`のみで、`power=0x3E8`の
+    // ような16進表記はパース失敗し`else { return diags; }`で早期returnして
+    // いたため、gear=0による実効出力ゼロ問題（power-gear-mismatch）を検出できず
+    // 見逃していた（偽陰性、第23弾、gemini-code-assistのレビュー指摘）。
+    let diags = check("vehicle_power_hex.dat");
+    assert!(
+        has(&diags, Severity::Warning, "power-gear-mismatch"),
+        "power=0x3E8(1000)は正しく解釈され、gear=0(truncated=0)との組み合わせで\
+         power-gear-mismatchが検出されるべき: {diags:?}"
+    );
+}
+
+#[test]
 fn unknown_engine_type_diagnostic_has_correct_line_number() {
     // 第2弾（行番号付与の機械的配線）: `vehicle_bad_engine_type.dat`の
     // `engine_type=elctric`は4行目。

@@ -111,6 +111,28 @@ fn seasons_overflow_wraps_to_uint8() {
 }
 
 #[test]
+fn seasons_hex_prefix_is_accepted_and_enforces_second_season() {
+    // tree_writer.cc:34の`uint8 const number_of_seasons = obj.get_int("seasons",
+    // 1);`はstrtol相当の基数自動判定を行うため、`seasons=0x2`（10進2）のような
+    // 16進表記も正しく解釈される。以前の実装は`.parse::<i64>()`（10進数限定）を
+    // 使っており、`0x2`のパースに失敗して`.unwrap_or(1)`によりseasons=1に誤って
+    // フォールバックしていた（第23弾、gemini-code-assistのレビュー指摘）ため、
+    // season 1の画像欠落を検出できなかった。このfixtureはseason 0の画像のみを
+    // 定義しているため、seasons=0x2が正しく2として解釈されればseason 1不足の
+    // missing-age-season-imageが5age分（5件）検出されるはず。
+    let diags = check("tree_seasons_hex.dat");
+    let count = diags
+        .iter()
+        .filter(|(s, c)| *s == Severity::Error && *c == "missing-age-season-image")
+        .count();
+    assert_eq!(
+        count, 5,
+        "seasons=0x2は10進2として解釈されseason1の画像（5age分）が\
+         不足として検出されるはず: {diags:?}"
+    );
+}
+
+#[test]
 fn missing_image_file_is_detected() {
     assert!(has_error(
         &check("tree_missing_image_file.dat"),

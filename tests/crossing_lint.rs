@@ -191,6 +191,27 @@ fn ribi_parameter_expansion_resolves_openimage_and_avoids_false_positive() {
 }
 
 #[test]
+fn speed_hex_prefix_is_accepted() {
+    // crossing_writer.cc:87-88の`obj.get_int("speed[N]", 0)`はstrtol相当の
+    // 基数自動判定を行うため、`speed[0]=0x50`（10進80）のような16進表記も
+    // 正しく解釈される。以前の実装は`.parse::<i64>()`（10進数限定）を使っており、
+    // 16進表記はパース失敗して`.unwrap_or(0)`によりspeed=0に誤ってフォールバック
+    // し、crossing-missing-speedを偽陽性で報告していた（第23弾、
+    // gemini-code-assistのレビュー指摘）。
+    let diags = check("crossing_speed_hex.dat");
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|(s, _)| *s == Severity::Error)
+        .collect();
+    let warnings: Vec<_> = diags
+        .iter()
+        .filter(|(s, _)| *s == Severity::Warning)
+        .collect();
+    assert!(errors.is_empty(), "予期しない error: {errors:?}");
+    assert!(warnings.is_empty(), "予期しない warning: {warnings:?}");
+}
+
+#[test]
 fn identical_waytypes_diagnostic_has_correct_line_number() {
     // 第2弾（行番号付与の機械的配線）: `crossing_identical_waytypes.dat`の
     // `waytype[0]=schiene_tram`は3行目（IdenticalWaytypesRuleが代表として

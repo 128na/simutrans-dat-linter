@@ -103,7 +103,7 @@
 
 use super::common::{
     KNOWN_WAYTYPES, NameAndCopyrightStringFieldRule, check_date_index_overflow_field,
-    check_image_ref, check_narrow_int_overflow_field, truncate_to_unsigned,
+    check_image_ref, check_narrow_int_overflow_field, parse_strtol_like, truncate_to_unsigned,
 };
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
@@ -257,18 +257,24 @@ impl Rule for IdenticalWaytypesRule {
 /// overflow Warningとして報告するだけで、実際にmakeobjがFATALにする
 /// `crossing-missing-speed`は出ていなかった）。`common::truncate_to_unsigned`で
 /// uint16切り詰め後の値を使うよう修正した。
+///
+/// 第23弾: `.parse::<i64>()`（10進数のみ）を`common::parse_strtol_like`
+/// （実際の`get_int()`が使う`strtol(value, NULL, 0)`と同じ基数自動判定）に
+/// 置き換えた（gemini-code-assistのレビュー指摘）。`speed[0]=0x10`のような
+/// 16進表記が以前はパース失敗として扱われ、意図せずspeed=0（未指定扱い）に
+/// フォールバックして`crossing-missing-speed`を偽陽性で報告していた。
 struct SpeedRequiredRule;
 impl Rule for SpeedRequiredRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
         let speed0_raw = ctx
             .dat
             .get("speed[0]")
-            .and_then(|v| v.trim().parse::<i64>().ok())
+            .and_then(parse_strtol_like)
             .unwrap_or(0);
         let speed1_raw = ctx
             .dat
             .get("speed[1]")
-            .and_then(|v| v.trim().parse::<i64>().ok())
+            .and_then(parse_strtol_like)
             .unwrap_or(0);
         let speed0 = truncate_to_unsigned(speed0_raw, 16);
         let speed1 = truncate_to_unsigned(speed1_raw, 16);

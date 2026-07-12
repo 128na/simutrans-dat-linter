@@ -24,7 +24,7 @@
 
 use super::common::{
     DIR_CODES, NameAndCopyrightStringFieldRule, check_date_index_overflow_field,
-    check_narrow_int_overflow_field,
+    check_narrow_int_overflow_field, parse_strtol_like,
 };
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
@@ -354,18 +354,27 @@ struct ResolvedGear {
 /// これは`gear=abc`のような「キーはあるが不正な値」を「未指定」に偽装してしまい、
 /// 本来検出すべき欠陥（実際には`gear`が0扱いになり`PowerGearMismatch`相当の問題を
 /// 引き起こす）を見逃す原因になっていた（`GearParseFailure`として別途報告する）。
+///
+/// 第23弾: `raw.trim().parse::<i64>()`（10進数のみ）を`common::parse_strtol_like`
+/// （実際の`strtol(value, NULL, 0)`と同じ基数自動判定）に置き換えた
+/// （gemini-code-assistのレビュー指摘）。`gear=0x64`のような16進表記が以前は
+/// パース失敗として扱われ、`GearParseFailure`を偽陽性で報告していた。
+/// `parse_strtol_like`が`None`を返すのは「有効な数字が1つも無い」場合のみ
+/// （`strtol_prefix`のdocコメント参照）であり、これは実際の`strtol`が0を返す
+/// ケース（数値として解釈できない）と正確に対応するため、`None` → `raw: 0,
+/// parse_failed: true`という既存の対応関係はそのまま維持できる。
 fn resolve_gear(dat: &DatFile) -> ResolvedGear {
     match dat.get("gear") {
         None => ResolvedGear {
             raw: 100,
             parse_failed: false,
         },
-        Some(raw) => match raw.trim().parse::<i64>() {
-            Ok(v) => ResolvedGear {
+        Some(raw) => match parse_strtol_like(raw) {
+            Some(v) => ResolvedGear {
                 raw: v,
                 parse_failed: false,
             },
-            Err(_) => ResolvedGear {
+            None => ResolvedGear {
                 raw: 0,
                 parse_failed: true,
             },
@@ -472,11 +481,12 @@ impl Rule for PowerGearMismatchRule {
             });
         }
 
-        let Some(power) = ctx
-            .dat
-            .get("power")
-            .and_then(|v| v.trim().parse::<i64>().ok())
-        else {
+        // 第23弾: `.trim().parse::<i64>()`（10進数のみ）を`common::parse_strtol_like`
+        // （実際の`get_int()`が使う`strtol(value, NULL, 0)`と同じ基数自動判定）に
+        // 置き換えた（gemini-code-assistのレビュー指摘）。`power=0x3E8`のような
+        // 16進表記が以前はパース失敗として扱われ、`power`が未指定であるかのように
+        // ここで早期returnし、本来検出すべきpower-gear-mismatchを見逃していた。
+        let Some(power) = ctx.dat.get("power").and_then(parse_strtol_like) else {
             return diags;
         };
         if power <= 0 {
