@@ -95,6 +95,22 @@
             {
               "name": "storage.type.directions.simutrans-dat",
               "match": "\\b(?i:s|w|sw|se|n|e|ne|nw)$"
+            },
+            {
+              "name": "storage.type.building-types.simutrans-dat",
+              "match": "\\b(?i:monorailstop|extension|railstop|airport|busstop|carstop|harbour|station|habour|depot|wharf|dock|hall|post|shed|stop|any|com|cur|fac|ind|mon|res|tow|hq)$"
+            },
+            {
+              "name": "storage.type.locations.simutrans-dat",
+              "match": "\\b(?i:forest|river|shore|water|city|land)$"
+            },
+            {
+              "name": "storage.type.climates.simutrans-dat",
+              "match": "\\b(?i:mediterran|temperate|arctic|desert|tropic|tundra|rocky|water|sea)$"
+            },
+            {
+              "name": "storage.type.skin-names.simutrans-dat",
+              "match": "\\b(?i:NarrowgaugeStop|ToolsBackground|ClimateTexture|fastforwardsym|MessageOptions|TunnelTexture|ColorOptions|Construction|DialogeTools|GeneralTools|LightTexture|MonorailStop|station_type|Checkbutton|Electricity|PowerSource|Roundbutton|SimpleTools|timelinesym|CompassIso|CompassMap|MaglevStop|networksym|Passagiere|ShoreTrans|SlopeTrans|Editfield|Posbutton|PowerDest|Scrollbar|TrainStop|BarTools|Basement|NewWorld|pausesym|ShipStop|Sidewalk|TramStop|AirStop|BigLogo|Borders|Builder|BusStop|CarStop|Divider|Listbox|Message|NewYear|NoRoute|Outside|Seasons|Unhappy|Button|Gadget|InTown|Marked|Marker|Slopes|Fence|Flags|Happy|Mouse|Shore|Waren|Water|Back|Logo|Post)$"
             }
           ]
         },

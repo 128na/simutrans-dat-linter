@@ -11,7 +11,7 @@
 >name=Construction
 #^^^^ source.simutrans-dat storage.type.defined-keys.simutrans-dat
 #    ^ source.simutrans-dat keyword.operator.equal.simutrans-dat
-#     ^^^^^^^^^^^^ source.simutrans-dat
+#     ^^^^^^^^^^^^ source.simutrans-dat storage.type.skin-names.simutrans-dat
 >image[0]=image.0.0
 #^^^^^ source.simutrans-dat storage.type.defined-keys.simutrans-dat
 #     ^^^ source.simutrans-dat variable.parameter.direction-and-number.simutrans-dat
