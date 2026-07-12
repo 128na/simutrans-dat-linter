@@ -114,20 +114,21 @@ fn run_keys_json() -> ExitCode {
         })
         .collect();
 
-    let flat_known_values: std::collections::BTreeMap<&'static str, Vec<&'static str>> =
-        known_values()
-            .into_iter()
-            .map(|(k, v)| (k, v.to_vec()))
-            .collect();
+    let known_vals = known_values();
+    let waytype = known_vals
+        .iter()
+        .find(|entry| entry.0 == "waytype")
+        .map(|entry| entry.1.to_vec())
+        .unwrap_or_default();
+    let direction = known_vals
+        .iter()
+        .find(|entry| entry.0 == "direction")
+        .map(|entry| entry.1.to_vec())
+        .unwrap_or_default();
+
     let known_values = JsonKnownValues {
-        waytype: flat_known_values
-            .get("waytype")
-            .cloned()
-            .unwrap_or_default(),
-        direction: flat_known_values
-            .get("direction")
-            .cloned()
-            .unwrap_or_default(),
+        waytype,
+        direction,
         per_obj_type: known_values_per_obj_type()
             .into_iter()
             .map(|e| JsonObjTypeKnownValues {
