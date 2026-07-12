@@ -1,6 +1,6 @@
 [package]
 name = "dat_linter"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "Static validator, formatter, and coupling-constraint analyzer for Simutrans .dat object definitions"
 license = "MIT"
