@@ -7,7 +7,84 @@ import { registerDatCompletionItemProvider } from "./completion";
 
 let diagnosticCollection: vscode.DiagnosticCollection;
 
+/**
+ * Tracks all in-flight lint generations, keyed by `document.uri.toString()`.
+ *
+ * `lintDocument` can be invoked multiple times for the same document without
+ * any ordering guarantee between the invocations' completions -- e.g.
+ * `onDidOpenTextDocument` and `onDidSaveTextDocument` firing close together,
+ * or two rapid saves under `files.autoSave`. Each `dat_linter lint` child
+ * process runs independently and may resolve out of call order, so without
+ * this guard a slower, *earlier* call's (now-stale) diagnostics could
+ * overwrite a faster, *later* call's fresher diagnostics, leaving the
+ * Problems panel showing results for a buffer state the user has since
+ * changed.
+ *
+ * Exported (as a standalone, pure class rather than inlined counters) so
+ * test/runner.test.ts can exercise the generation bookkeeping directly,
+ * without spawning a real dat_linter process or trying to force two real
+ * child processes to resolve out of order.
+ */
+export class LintGenerationTracker {
+  private readonly generations = new Map<string, number>();
+
+  /** Starts a new lint attempt for `key`, returning its generation number. */
+  begin(key: string): number {
+    const next = (this.generations.get(key) ?? 0) + 1;
+    this.generations.set(key, next);
+    return next;
+  }
+
+  /** True if `generation` is no longer the most recently started one for `key`. */
+  isStale(key: string, generation: number): boolean {
+    return this.generations.get(key) !== generation;
+  }
+
+  /** Forgets `key` entirely, e.g. once its document has closed. */
+  forget(key: string): void {
+    this.generations.delete(key);
+  }
+}
+
+const lintGenerations = new LintGenerationTracker();
+
+/**
+ * Gate on `vscode.workspace.isTrusted`, factored out as a pure boolean
+ * function so test/runner.test.ts can exercise the decision directly. The
+ * real guard is `package.json`'s `capabilities.untrustedWorkspaces.supported:
+ * false`, which stops VSCode from calling `activate()` at all in an
+ * untrusted workspace -- this is defense in depth in case that declaration
+ * is ever removed or VSCode's enforcement changes, since `lintDocument` /
+ * the formatter / completion all shell out to a user-configurable
+ * executable path and are unsafe to run against an untrusted workspace's
+ * `.vscode/settings.json`.
+ */
+export function shouldActivateInWorkspace(isTrusted: boolean): boolean {
+  return isTrusted;
+}
+
 export function activate(context: vscode.ExtensionContext): void {
+  if (!shouldActivateInWorkspace(vscode.workspace.isTrusted)) {
+    // Don't register any diagnostics/formatting/completion providers, and
+    // don't run dat_linter at all, until the workspace is trusted. Offer to
+    // pick things up once trust is granted without requiring a full restart.
+    context.subscriptions.push(
+      vscode.workspace.onDidGrantWorkspaceTrust(() => {
+        void vscode.window
+          .showInformationMessage(
+            "Simutrans dat_linter: this workspace is now trusted. Reload the window to enable linting, formatting, and completion.",
+            "Reload"
+          )
+          .then((selection) => {
+            if (selection === "Reload") {
+              void vscode.commands.executeCommand("workbench.action.reloadWindow");
+            }
+          });
+      })
+    );
+    return;
+  }
+
   diagnosticCollection = vscode.languages.createDiagnosticCollection("dat-linter");
   context.subscriptions.push(diagnosticCollection);
 
@@ -26,6 +103,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidOpenTextDocument(maybeLint),
     vscode.workspace.onDidCloseTextDocument((doc) => {
       diagnosticCollection.delete(doc.uri);
+      lintGenerations.forget(doc.uri.toString());
     })
   );
 
@@ -100,10 +178,21 @@ export const LINT_FORMAT_JSON_VERSION_HINT: VersionIncompatibilityHint = {
  * whitespace-only, and just clear any diagnostics left over from before
  * (e.g. the user select-all-deleted a previously-linted file's contents) so
  * stale diagnostics don't linger.
+ *
+ * Also guards against the race described on `LintGenerationTracker` above:
+ * this call's generation number is recorded at entry, and every place that
+ * would mutate `diagnosticCollection` first checks whether a *later* call for
+ * the same document has started in the meantime -- if so, this call's result
+ * is stale and is discarded instead of overwriting the newer one.
  */
 async function lintDocument(document: vscode.TextDocument): Promise<void> {
+  const key = document.uri.toString();
+  const generation = lintGenerations.begin(key);
+
   if (/^\s*$/.test(document.getText())) {
-    diagnosticCollection.delete(document.uri);
+    if (!lintGenerations.isStale(key, generation)) {
+      diagnosticCollection.delete(document.uri);
+    }
     return;
   }
 
@@ -143,10 +232,20 @@ async function lintDocument(document: vscode.TextDocument): Promise<void> {
         throw err;
       }
     }
+    if (lintGenerations.isStale(key, generation)) {
+      // A newer lintDocument() call was issued while this one was in flight;
+      // discard this now-stale result rather than clobbering the newer one.
+      // Checked before parsing so a stale response's JSON isn't parsed and
+      // converted to diagnostics for nothing.
+      return;
+    }
     const parsed = parseDatLinterJson(stdout);
     const diagnostics = toVscodeDiagnostics(parsed, document);
     diagnosticCollection.set(document.uri, diagnostics);
   } catch (err) {
+    if (lintGenerations.isStale(key, generation)) {
+      return;
+    }
     const message = err instanceof Error ? err.message : String(err);
     void vscode.window.showErrorMessage(`dat_linter: ${message}`);
   }
