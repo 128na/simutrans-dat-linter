@@ -94,7 +94,7 @@
 //!   `.dat`側にage数を指定するキーは存在しない。従って「age数が不正」という
 //!   ルールは成立しない（そもそも検証対象のキーが無い）。
 
-use super::common::{NameAndCopyrightStringFieldRule, check_image_ref};
+use super::common::{NameAndCopyrightStringFieldRule, check_image_ref, truncate_to_unsigned};
 use crate::codes::DiagnosticCode;
 use crate::diagnostics::Diagnostic;
 use crate::i18n::t;
@@ -122,20 +122,30 @@ pub fn check_tree(dat: &DatFile, dat_dir: &Path) -> Vec<Diagnostic> {
 /// 全組み合わせについて`image[<age>][<season>]`が必須。いずれか1つでも空文字列
 /// （キー欠落含む）なら`dbg->fatal( "Tree", "Missing %s!", buf)`でFATALになる。
 ///
-/// `number_of_seasons`は`get_int("seasons", 1)`（無条件フォールバック、既定値1）。
+/// `number_of_seasons`は`tree_writer.cc:34`の
+/// `uint8 const number_of_seasons = obj.get_int("seasons", 1);`が示す通り、
+/// **uint8へ切り詰められた後の値**である。
+///
+/// 第22弾: 以前の実装は`.unwrap_or(1).max(1)`で「パース失敗時は1・最低でも1」に
+/// クランプしていたが、これは実際の`uint8`切り詰めと2点で異なっていた:
+/// - `seasons=0`は実際には`number_of_seasons=0`（season方向のループ`0..0`が
+///   空になり、画像0枚で足りる）になるが、以前の実装は`.max(1)`で1に
+///   クランプしてしまい、`image[<age>][0]`が無いと本来不要なFATAL相当の
+///   errorを偽陽性で出していた。
+/// - `seasons=300`は実際には`300 mod 256=44`（uint8切り詰め）になるが、
+///   以前の実装はクランプ無しで300のまま扱っており、本来44個で足りる画像を
+///   300個要求する大量の偽陽性FATALを出していた。
+///
+/// `common::truncate_to_unsigned`でuint8切り詰め後の値を使うよう修正した
+/// （`.max(1)`によるクランプは削除。切り詰め後の値が0ならそのまま0を使う）。
 struct AgeSeasonImageRule;
 impl Rule for AgeSeasonImageRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
         let dat = ctx.dat;
         let mut diags = Vec::new();
 
-        let seasons: i64 = dat
-            .get("seasons")
-            .unwrap_or("")
-            .trim()
-            .parse()
-            .unwrap_or(1)
-            .max(1);
+        let seasons_raw: i64 = dat.get("seasons").unwrap_or("").trim().parse().unwrap_or(1);
+        let seasons = truncate_to_unsigned(seasons_raw, 8);
 
         for age in 0..AGE_COUNT {
             for season in 0..seasons {
