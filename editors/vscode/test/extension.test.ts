@@ -106,6 +106,101 @@ suite("dat_linter VSCode extension integration", () => {
     assert.strictEqual(missing!.range.start.line, 0);
   });
 
+  test("opening an empty .dat file produces no diagnostics", async function () {
+    // Regression test: dat_linter lint treats a file with no `obj=`
+    // definition at all as a batch-validation failure ("obj= は未対応です" /
+    // UnsupportedObjType, see src/commands/lint.rs's `records.is_empty()`
+    // branch) -- correct for its CLI batch-linting use case, but not
+    // something that should greet a user the instant they create a brand
+    // new, still-empty .dat file in the editor. extension.ts's lintDocument
+    // must skip invoking dat_linter entirely for an empty/whitespace-only
+    // buffer.
+    this.timeout(15000);
+
+    const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const scratchFilePath = path.join(os.tmpdir(), `dat-linter-test-empty-${uniqueSuffix}.dat`);
+    await fs.writeFile(scratchFilePath, "", "utf8");
+
+    try {
+      const uri = vscode.Uri.file(scratchFilePath);
+      const document = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(document);
+
+      // There's no "diagnostics arrived" event to wait for here (the whole
+      // point is that none should arrive) -- give the extension's
+      // onDidOpenTextDocument handler, and (if this regression resurfaces)
+      // dat_linter's child process, ample time to have run and called
+      // diagnosticCollection.set() before asserting nothing was set.
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      const diags = vscode.languages.getDiagnostics(uri);
+      assert.deepStrictEqual(
+        diags.map((d) => ({ code: d.code, message: d.message })),
+        [],
+        `expected no diagnostics for an empty .dat buffer, got: ${JSON.stringify(
+          diags.map((d) => ({ code: d.code, message: d.message }))
+        )}`
+      );
+    } finally {
+      try {
+        await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+      } catch {
+        // best-effort cleanup
+      }
+      await fs.unlink(scratchFilePath).catch(() => undefined);
+    }
+  });
+
+  test("clearing a .dat file's content and saving clears its diagnostics", async function () {
+    // Companion regression test to the one above: once a file that *did*
+    // have diagnostics gets emptied out (e.g. user selects all and deletes),
+    // extension.ts's lintDocument must clear diagnosticCollection for it
+    // instead of leaving stale diagnostics (or re-running dat_linter, which
+    // would just replace them with the "obj= は未対応です" diagnostic).
+    this.timeout(20000);
+
+    const original = await fs.readFile(path.join(TESTDATA_DIR, "duplicate_key.dat"), "utf8");
+    const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const scratchFilePath = path.join(os.tmpdir(), `dat-linter-test-clear-${uniqueSuffix}.dat`);
+    await fs.writeFile(scratchFilePath, original, "utf8");
+
+    try {
+      const uri = vscode.Uri.file(scratchFilePath);
+      const document = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(document);
+
+      // Sanity check: this file does produce a diagnostic before we clear it,
+      // so the "cleared afterward" assertion below is a real transition, not
+      // a tautology.
+      const before = await waitForDiagnostics(uri, (d) => d.length > 0);
+      assert.ok(
+        before.some((d) => d.code === "duplicate-key"),
+        `expected a duplicate-key diagnostic before clearing, got: ${JSON.stringify(
+          before.map((d) => ({ code: d.code, message: d.message }))
+        )}`
+      );
+
+      const fullRange = new vscode.Range(
+        document.positionAt(0),
+        document.positionAt(document.getText().length)
+      );
+      await editor.edit((editBuilder) => {
+        editBuilder.replace(fullRange, "");
+      });
+      await document.save();
+
+      const after = await waitForDiagnostics(uri, (d) => d.length === 0);
+      assert.strictEqual(after.length, 0);
+    } finally {
+      try {
+        await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+      } catch {
+        // best-effort cleanup
+      }
+      await fs.unlink(scratchFilePath).catch(() => undefined);
+    }
+  });
+
   test("Format Document on fmt_example.dat matches `dat_linter fmt` CLI output", async () => {
     const filePath = path.join(TESTDATA_DIR, "fmt_example.dat");
     const uri = vscode.Uri.file(filePath);

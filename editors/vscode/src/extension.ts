@@ -82,7 +82,26 @@ export const LINT_FORMAT_JSON_VERSION_HINT: VersionIncompatibilityHint = {
  * image reference's resolution base directory, turning previously-valid
  * `icon=`/image references into spurious `missing-image-file` diagnostics.
  */
+/**
+ * A brand-new (or emptied-out) `.dat` buffer has no `obj=` definition yet,
+ * which `dat_linter lint` treats as a batch-validation failure ("obj= は
+ * 未対応です" / `DiagnosticCode::UnsupportedObjType`, see
+ * `src/commands/lint.rs`'s `records.is_empty()` branch) -- correct behavior
+ * for its CLI batch-linting use case (flagging files with no obj definition
+ * at all), but not something we want to surface the instant a user creates a
+ * fresh, empty file in the editor before they've typed anything.
+ *
+ * Skip invoking dat_linter entirely when the buffer is empty or
+ * whitespace-only, and just clear any diagnostics left over from before
+ * (e.g. the user select-all-deleted a previously-linted file's contents) so
+ * stale diagnostics don't linger.
+ */
 async function lintDocument(document: vscode.TextDocument): Promise<void> {
+  if (document.getText().trim() === "") {
+    diagnosticCollection.delete(document.uri);
+    return;
+  }
+
   const filePath = document.uri.fsPath;
   const { executablePath, configPath, cwd } = resolveExecutionContext(document);
 
