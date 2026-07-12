@@ -68,6 +68,17 @@ fn private_road_sign_missing_state1_is_detected() {
 }
 
 #[test]
+fn is_signal_negative_falls_through_signal_branch_not_private() {
+    // roadsign_writer.cc:90 は `if (obj.get_int("is_signal", 0))` という
+    // C++の素の真偽判定（0以外なら真、負数も真）を使う。is_signal=-1は
+    // signal分岐（elseブロック不通過）となり、is_private=1が同時指定されていても
+    // PRIVATE_ROADフラグは立たない。よって画像キーは一般形式（n/s/w/e、state 0のみ）
+    // で検証されるべきで、private形式（ns/ew、state 0-1必須）の欠落を誤検知しては
+    // いけない。
+    assert_no_errors(&check("roadsign_signal_negative_one.dat"));
+}
+
+#[test]
 fn traffic_light_valid_has_no_errors() {
     // image[ne][0]が非空だと8方向のtraffic light扱いになる
     // （roadsign_writer.cc:31-35）。
@@ -178,7 +189,8 @@ fn embedded_nul_in_name_is_detected() {
 fn narrow_int_overflow_is_detected() {
     // min_speed=100000はuint16の範囲(0..65535)外、offset_left=200はsint8の範囲
     // (-128..127)外。roadsign_writer.cc:85,86,119,123のwrite_uint16/write_uint8
-    // （write_sint8経由）へ静かに切り詰められる。
+    // （offset_leftはsint8型だがwrite_sint8は呼ばれず、直接write_uint8へ渡される）
+    // へ静かに切り詰められる。
     let diags = check("roadsign_narrow_int_overflow.dat");
     let overflow_count = diags
         .iter()

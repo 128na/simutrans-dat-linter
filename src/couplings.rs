@@ -109,12 +109,20 @@ pub fn load_vehicles(dir: &Path, lang: Language) -> (Vec<VehicleInfo>, Vec<Diagn
     (vehicles, diags)
 }
 
+/// vehicle_writer.cc:268-301 の`do { ... } while(found)`ループを再現する。
+/// `found = !str.empty()`（`vehicle_writer.cc:275,293`）が終端条件のため、
+/// キーが未定義（`obj.get()`が空文字列を返す）だけでなく、キーは存在するが
+/// **値が空文字列**（`constraint[next][0]=`のような行）の場合もスキャンを
+/// 打ち切る必要がある。`DatFile::get()`は値が存在するキーには常に`Some`を
+/// 返すため（空値でも`Some("")`）、「キーが存在しない」だけを終端条件にすると
+/// 空値の後に続くインデックスまで読み進めてしまい、実makeobjでは書き込まれない
+/// はずの制約を誤って有効とみなしてしまう。
 fn read_constraint_side(dat: &DatFile, side: &str) -> ConstraintSide {
     let mut options = Vec::new();
     let mut i = 0;
     loop {
         let key = format!("constraint[{side}][{i}]");
-        let Some(raw) = dat.get(&key) else {
+        let Some(raw) = dat.get(&key).filter(|s| !s.is_empty()) else {
             break;
         };
         if raw.eq_ignore_ascii_case("none") {

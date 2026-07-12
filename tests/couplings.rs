@@ -53,6 +53,23 @@ fn self_referencing_loop_is_unsatisfiable() {
 }
 
 #[test]
+fn empty_constraint_value_terminates_scan() {
+    // vehicle_writer.cc:268-301 の `do { ... } while(found)` は
+    // `found = !str.empty()` で終端する。constraint[next][0]が空値の場合、
+    // それ以降の constraint[next][1] (=Wagon) は実makeobjでは一切読まれず、
+    // next側は無制約(Unconstrained) として扱われるべき。
+    // 空値以降が誤って読み進められてしまうと、存在しない "Wagon" への
+    // dangling-vehicle-constraint、または空文字列への dangling-vehicle-constraint
+    // が誤検知される。
+    let diags = analyze("couplings_empty_constraint");
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|(s, _)| *s == Severity::Error)
+        .collect();
+    assert!(errors.is_empty(), "予期しない error: {errors:?}");
+}
+
+#[test]
 fn dangling_reference_is_detected() {
     // E は存在しない車両 "Ghost" を next に参照する。
     assert!(has_error(
