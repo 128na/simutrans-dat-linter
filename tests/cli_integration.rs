@@ -575,6 +575,72 @@ fn fmt_write_keeps_crlf_line_endings() {
     );
 }
 
+// --- `fmt --write`: ファイルsymlink経由の書き込み拒否（レビュー修正3） --------------
+
+#[cfg(unix)]
+fn make_file_symlink(target: &Path, link: &Path) -> std::io::Result<()> {
+    std::os::unix::fs::symlink(target, link)
+}
+
+#[cfg(windows)]
+fn make_file_symlink(target: &Path, link: &Path) -> std::io::Result<()> {
+    std::os::windows::fs::symlink_file(target, link)
+}
+
+/// サードパーティ製の`.dat`がファイルsymlinkだった場合、`fmt -w`がそれを
+/// 辿ってリンク先の実ファイル（検証対象ディレクトリの外側にありうる）へ
+/// 書き込んでしまわないことを確認する。
+///
+/// Windowsではファイルsymlink作成に管理者権限（またはデベロッパーモード）が
+/// 必要な場合があるため、作成に失敗する環境ではテストをスキップする。
+#[test]
+fn fmt_write_refuses_to_write_through_file_symlink() {
+    let tmp = std::env::temp_dir().join("dat_linter_cli_test_fmt_write_symlink_guard");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("一時ディレクトリの作成に失敗");
+
+    // symlinkの外側（検証対象ディレクトリの外）にある「実ファイル」を模す。
+    let outside_target = tmp.join("outside_target.dat");
+    let original_content = "obj=building\nname=Original\n";
+    std::fs::write(&outside_target, original_content).expect("実ファイルの書き込みに失敗");
+
+    // symlink自体は専用のworkspaceサブディレクトリに置き、そこをcurrent_dirにする
+    // （cwd分離ガイドライン: dat_linter.toml等が無いクリーンな状態を保つ）。
+    let workspace = tmp.join("workspace");
+    std::fs::create_dir_all(&workspace).expect("workspaceディレクトリの作成に失敗");
+    let link = workspace.join("link.dat");
+
+    if make_file_symlink(&outside_target, &link).is_err() {
+        eprintln!(
+            "symlink作成に失敗したため fmt_write_refuses_to_write_through_file_symlink をスキップします\
+             （管理者権限/デベロッパーモードが無い環境の可能性）"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+        return;
+    }
+
+    let output = bin()
+        .args(["fmt", "link.dat", "--write"])
+        .current_dir(&workspace)
+        .output()
+        .expect("起動に失敗");
+
+    let after_content =
+        std::fs::read_to_string(&outside_target).expect("リンク先実ファイルの読み込みに失敗");
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    assert_eq!(
+        original_content, after_content,
+        "fmt -w がsymlinkを辿ってリンク先の実ファイルを書き換えてしまった"
+    );
+    assert!(
+        !output.status.success(),
+        "symlink経由の書き込みを拒否した場合、exit codeは非0であるべき: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 /// 既存のLF前提testdata（`fmt_example.dat`）に対する挙動が、この改行コード
 /// 保持実装の前後で変わらないこと（LF入力はLF出力のまま）の対照実験。
 #[test]
