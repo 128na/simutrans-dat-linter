@@ -2,7 +2,7 @@
   "name": "simutrans-dat-linter",
   "displayName": "Simutrans dat_linter",
   "description": "Surfaces dat_linter diagnostics for Simutrans .dat files in VSCode's Problems panel.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "128na",
   "license": "MIT",
   "icon": "icon.png",
