@@ -306,21 +306,68 @@ impl Rule for TypeOverrideRule {
     }
 }
 
+/// `tabfileobj_t::get_color()`のMAKEOBJビルド分岐（`(uint8)strtoul(value, NULL,
+/// 0)`、tabfile.cc:176-177）が持つ`strtoul`のbase=0自動判定
+/// （`0x`/`0X`接頭辞はhex、単なる先頭`0`はoctal、それ以外はdecimal）を再現する。
+/// C標準の`strtoul`は先頭の`+`/`-`符号も受理し（負号は2の補数表現になる）、
+/// 有効な基数の桁が1つも無ければ0を返す（エラーにしない、ゴミ値は0扱い）。
+///
+/// Rustの`u64::from_str_radix`は文字列全体が対象基数の妥当な桁で構成されている
+/// ことを要求するため、`strtoul`のように「先頭から有効な桁だけを消費し、
+/// 最初の無効な文字で止める（残りは無視）」動作を再現するため、有効な桁数を
+/// 手動で数えてから切り出す。戻り値は`strtoul`が返す`unsigned long`をそのまま
+/// 表現するのではなく、常に`u64`として返す（呼び出し元がさらに`uint8`へ
+/// 切り詰める。256は2^32・2^64のどちらの約数でもあるため、`unsigned long`の
+/// 実際のビット幅（32/64、プラットフォーム依存）に関わらず下位8bitは一致する）。
+fn parse_strtoul_like(raw: &str) -> u64 {
+    let trimmed = raw.trim_start();
+    let (negative, rest) = if let Some(r) = trimmed.strip_prefix('-') {
+        (true, r)
+    } else if let Some(r) = trimmed.strip_prefix('+') {
+        (false, r)
+    } else {
+        (false, trimmed)
+    };
+    let (radix, digits): (u32, &str) =
+        if let Some(hex) = rest.strip_prefix("0x").or_else(|| rest.strip_prefix("0X")) {
+            (16, hex)
+        } else if rest.len() > 1 && rest.starts_with('0') {
+            (8, &rest[1..])
+        } else {
+            (10, rest)
+        };
+    let valid_len = digits.chars().take_while(|c| c.is_digit(radix)).count();
+    let value = if valid_len == 0 {
+        0u64
+    } else {
+        u64::from_str_radix(&digits[..valid_len], radix).unwrap_or(0)
+    };
+    if negative {
+        value.wrapping_neg()
+    } else {
+        value
+    }
+}
+
 /// factory_writer.cc:168-172: `obj.get_color("mapcolor", 255)`がデフォルト値
 /// 255のままだと`dbg->fatal("Factory", "%s missing an identification color!
 /// (mapcolor)", obj_writer_t::last_name)`。`tabfileobj_t::get_color()`は
-/// MAKEOBJビルドでは`strtoul(value, NULL, 0)`を返すだけの単純な変換
-/// （tabfile.cc:175-178）で、キー欠落時は255にフォールバックする。
+/// MAKEOBJビルドでは`(uint8)strtoul(value, NULL, 0)`を返す単純な変換
+/// （tabfile.cc:176-177）で、キー欠落時は255にフォールバックする。
+///
+/// 第22弾: 以前の実装は`str::parse::<i64>()`（10進数のみ、0x/0接頭辞非対応）を
+/// 使っており、`mapcolor=0x10`のような実際のmakeobjが受理する16進表記が
+/// パース失敗として扱われ、255（未指定扱い）に誤ってフォールバックしていた
+/// （false positive）。`parse_strtoul_like`で実際の`strtoul(value, NULL, 0)`と
+/// 同じbase自動判定を再現し、`(uint8)`キャスト（`& 0xFF`ではなく`as u8`で
+/// 下位8bitを取り出す、256は2進の位取りが揃うため等価）で同じ切り詰めを行う。
 struct MapColorRule;
 impl Rule for MapColorRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        let mapcolor = ctx.dat.get("mapcolor").unwrap_or("");
-        let resolved = mapcolor
-            .trim()
-            .parse::<i64>()
-            .ok()
-            .filter(|v| (0..=255).contains(v))
-            .unwrap_or(255);
+        let resolved: u8 = match ctx.dat.get("mapcolor") {
+            None => 255,
+            Some(raw) => parse_strtoul_like(raw) as u8,
+        };
         if resolved == 255 {
             let diag = Diagnostic::error(
                 DiagnosticCode::FactoryMissingMapcolor,
@@ -462,19 +509,37 @@ impl Rule for SmokeOffsetRule {
 /// 数値比較で常に到達可能であり（tree/ground_objの`climates`警告のような
 /// デッドコードではない）、かつ固定文字列のメッセージを出力する
 /// （pedestrianの`steps_per_frame`のような完全に無言のクランプでもない）。
+///
+/// 第22弾: `probability_to_spawn`は`factory_field_group_writer_t::write_obj`
+/// （factory_writer.cc:39-98）内でのみ読まれるが、この関数自体が
+/// `factory_writer_t::write_obj`（factory_writer.cc:274-279）から
+/// `if (*obj.get("fields") || *obj.get("fields[0]")) { ... }`というガード付きで
+/// しか呼ばれない。`fields`/`fields[0]`のいずれも欠落（または空文字列）の場合、
+/// `probability_to_spawn`は実際には一切読まれずFATAL/警告分岐にも到達しない。
+/// 以前の実装はこのガードを無視して常に`probability_to_spawn`を検証しており、
+/// `fields`を持たない（`min_fields`/`max_fields`等のfield機能を使わない）
+/// 通常のfactoryで`probability_to_spawn=20000`のような値を書いても実際には
+/// 無害であるにもかかわらずfalse positiveの警告を出していた。`expand_probability`
+/// （factory_writer.cc:176-180、`write_obj`本体で無条件に読まれる）にはこの
+/// ガードは無い。
 struct ProbabilityClampRule;
 impl Rule for ProbabilityClampRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
         let dat = ctx.dat;
         let mut diags = Vec::new();
-        check_probability_field(
-            dat,
-            "probability_to_spawn",
-            10,
-            "probability_to_spawn too large, set to 10,000",
-            &mut diags,
-            ctx.language,
-        );
+
+        let has_fields = !dat.get("fields").unwrap_or("").is_empty()
+            || !dat.get("fields[0]").unwrap_or("").is_empty();
+        if has_fields {
+            check_probability_field(
+                dat,
+                "probability_to_spawn",
+                10,
+                "probability_to_spawn too large, set to 10,000",
+                &mut diags,
+                ctx.language,
+            );
+        }
         check_probability_field(
             dat,
             "expand_probability",
