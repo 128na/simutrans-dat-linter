@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import { ExecFileException } from "child_process";
 import { describeFailure } from "../src/runner";
-import { LINT_FORMAT_JSON_VERSION_HINT, shouldActivateInWorkspace } from "../src/extension";
+import { LINT_FORMAT_JSON_VERSION_HINT, LintGenerationTracker, shouldActivateInWorkspace } from "../src/extension";
 import { FMT_VERSION_HINT } from "../src/formatter";
 
 // Pure-function tests: no dat_linter binary, no extension activation, no
@@ -98,6 +98,54 @@ suite("extension.ts: shouldActivateInWorkspace (pure function)", () => {
 
   test("returns false for an untrusted workspace", () => {
     assert.strictEqual(shouldActivateInWorkspace(false), false);
+  });
+});
+
+suite("extension.ts: LintGenerationTracker (pure logic, guards the lintDocument race)", () => {
+  test("a generation is not stale immediately after being started", () => {
+    const tracker = new LintGenerationTracker();
+    const generation = tracker.begin("doc-a");
+    assert.strictEqual(tracker.isStale("doc-a", generation), false);
+  });
+
+  test("an earlier generation becomes stale once a later one starts for the same key", () => {
+    const tracker = new LintGenerationTracker();
+    const first = tracker.begin("doc-a");
+    const second = tracker.begin("doc-a");
+
+    assert.notStrictEqual(first, second);
+    assert.strictEqual(tracker.isStale("doc-a", first), true);
+    assert.strictEqual(tracker.isStale("doc-a", second), false);
+  });
+
+  test("generations for different keys don't affect each other", () => {
+    const tracker = new LintGenerationTracker();
+    const a = tracker.begin("doc-a");
+    tracker.begin("doc-b");
+    tracker.begin("doc-b");
+
+    // doc-a only ever had one begin() call, so its generation is still current
+    // even though doc-b has since moved on to its own second generation.
+    assert.strictEqual(tracker.isStale("doc-a", a), false);
+  });
+
+  test("a generation for a key that was never begun is always stale", () => {
+    const tracker = new LintGenerationTracker();
+    assert.strictEqual(tracker.isStale("never-started", 1), true);
+  });
+
+  test("forget() resets a key so its next begin() starts a fresh sequence", () => {
+    const tracker = new LintGenerationTracker();
+    const before = tracker.begin("doc-a");
+    tracker.forget("doc-a");
+    const after = tracker.begin("doc-a");
+
+    // Both calls return generation 1 (the counter restarts from scratch), but
+    // that's fine: forget() is only used when the document has closed, so
+    // there's no older in-flight call left whose staleness this could get wrong.
+    assert.strictEqual(before, 1);
+    assert.strictEqual(after, 1);
+    assert.strictEqual(tracker.isStale("doc-a", after), false);
   });
 });
 
