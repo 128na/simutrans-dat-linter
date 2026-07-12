@@ -78,10 +78,40 @@ function collectKeys(data) {
   return [...keySet].sort((a, b) => b.length - a.length || a.localeCompare(b));
 }
 
-function buildGrammar(keys, waytypes, directions) {
+// Collects every value listed under `known_values.per_obj_type` for a given
+// `key` (e.g. "type", "location", "climates", "name"), across every obj_type
+// that reports it, deduplicated. dat_linter scopes these per obj_type (e.g.
+// `{obj_type: "building", key: "type", values: [...]}`), but the grammar
+// cannot tell which obj_type a given line belongs to (see the big comment on
+// `defined_values` below), so we deliberately flatten obj_type away here and
+// treat this as "value known to be valid for this key on *some* obj_type".
+function collectPerObjTypeValues(perObjType, key) {
+  const valueSet = new Set();
+  for (const entry of perObjType ?? []) {
+    if (entry?.key !== key) continue;
+    for (const value of entry.values ?? []) {
+      if (typeof value === "string" && value.trim() !== "") {
+        valueSet.add(value);
+      }
+    }
+  }
+  // Same longest-first rationale as collectKeys.
+  return [...valueSet].sort((a, b) => b.length - a.length || a.localeCompare(b));
+}
+
+function buildGrammar(keys, waytypes, directions, buildingTypes, locations, climates, skinNames) {
   const keysAlternation = keys.map(escapeRegex).join("|");
   const waytypesAlternation = waytypes.map(escapeRegex).join("|");
   const directionsAlternation = directions.map(escapeRegex).join("|");
+  // Each of these may legitimately be empty (an older dat_linter without
+  // `known_values.per_obj_type` support, or a future obj_type dropping a
+  // category) -- unlike keys/waytypes/directions this isn't fatal, we just
+  // skip that pattern below rather than emitting `(?i:)$`, which would match
+  // an empty string at every line ending.
+  const buildingTypesAlternation = buildingTypes.map(escapeRegex).join("|");
+  const locationsAlternation = locations.map(escapeRegex).join("|");
+  const climatesAlternation = climates.map(escapeRegex).join("|");
+  const skinNamesAlternation = skinNames.map(escapeRegex).join("|");
 
   return {
     $schema: "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
@@ -128,9 +158,32 @@ function buildGrammar(keys, waytypes, directions) {
             ],
           },
           // Known enum-like values, generated from dat_linter's `known_values`.
-          // Scope intentionally limited to waytype/direction: dat_linter does not
-          // yet expose structured data for other value families (type names,
-          // location, climate, etc.), so those are left as #general_value.
+          // waytype/direction come from the flat `known_values.waytype` /
+          // `known_values.direction` lists. The remaining categories come from
+          // `known_values.per_obj_type`, which scopes each value list to a
+          // specific obj_type (e.g. `type` values differ in meaning between
+          // `building` and `factory`). TextMate grammars can't track "what
+          // obj_type is this line inside of" without a much bigger stateful
+          // rewrite (see the module-level design note in generate-grammar.mjs),
+          // so -- same as the existing waytype/direction scopes -- every
+          // obj_type's values for a given key are flattened into one alternation
+          // per category. This means a value is highlighted as "plausibly valid
+          // for this key on some obj_type", not "valid for the obj_type this
+          // particular line belongs to"; `dat_linter lint` remains the source of
+          // truth for actual per-obj_type correctness.
+          //
+          // Patterns are tried in array order and the first match wins for a
+          // given position, so this order also resolves the (few) value
+          // strings that collide across categories -- e.g. "water" appears in
+          // both `location` and `climates` (and even the existing waytype
+          // list), and building-type values like "post"/"busstop"/"carstop"/
+          // "monorailstop" collide with cursor/symbol skin names of the same
+          // spelling. Order below: waytype/direction (unchanged, existing
+          // behavior) first, then building-types/locations/climates as they
+          // apply to keys addon authors set constantly, with skin-names last
+          // since those only ever apply to the small set of built-in system
+          // obj_types (menu/cursor/symbol/misc/ground) that ordinary addons
+          // never define.
           defined_values: {
             patterns: [
               {
@@ -141,6 +194,38 @@ function buildGrammar(keys, waytypes, directions) {
                 name: "storage.type.directions.simutrans-dat",
                 match: `\\b(?i:${directionsAlternation})$`,
               },
+              ...(buildingTypesAlternation
+                ? [
+                    {
+                      name: "storage.type.building-types.simutrans-dat",
+                      match: `\\b(?i:${buildingTypesAlternation})$`,
+                    },
+                  ]
+                : []),
+              ...(locationsAlternation
+                ? [
+                    {
+                      name: "storage.type.locations.simutrans-dat",
+                      match: `\\b(?i:${locationsAlternation})$`,
+                    },
+                  ]
+                : []),
+              ...(climatesAlternation
+                ? [
+                    {
+                      name: "storage.type.climates.simutrans-dat",
+                      match: `\\b(?i:${climatesAlternation})$`,
+                    },
+                  ]
+                : []),
+              ...(skinNamesAlternation
+                ? [
+                    {
+                      name: "storage.type.skin-names.simutrans-dat",
+                      match: `\\b(?i:${skinNamesAlternation})$`,
+                    },
+                  ]
+                : []),
             ],
           },
           general_value: {
@@ -182,6 +267,11 @@ function main() {
   const keys = collectKeys(data);
   const waytypes = data.known_values?.waytype ?? [];
   const directions = data.known_values?.direction ?? [];
+  const perObjType = data.known_values?.per_obj_type ?? [];
+  const buildingTypes = collectPerObjTypeValues(perObjType, "type");
+  const locations = collectPerObjTypeValues(perObjType, "location");
+  const climates = collectPerObjTypeValues(perObjType, "climates");
+  const skinNames = collectPerObjTypeValues(perObjType, "name");
 
   if (keys.length === 0) {
     fail("dat_linter reported zero keys across all obj_types -- refusing to generate an empty grammar.");
@@ -192,11 +282,32 @@ function main() {
   if (directions.length === 0) {
     fail("dat_linter reported zero known_values.direction -- refusing to generate a grammar without directions.");
   }
+  // per_obj_type-derived categories are additive value highlighting, not a
+  // core requirement like keys/waytypes/directions above -- an older
+  // dat_linter without `known_values.per_obj_type` support (or a future one
+  // that stops reporting a given key) should still produce a working grammar,
+  // just without that category's highlighting (see the empty-alternation
+  // guards in buildGrammar).
+  for (const [label, values] of [
+    ["type", buildingTypes],
+    ["location", locations],
+    ["climates", climates],
+    ["name", skinNames],
+  ]) {
+    if (values.length === 0) {
+      console.warn(
+        `generate-grammar: dat_linter reported zero known_values.per_obj_type entries for key "${label}" -- ` +
+          `skipping that value-highlighting category (this is not fatal).`
+      );
+    }
+  }
 
-  const grammar = buildGrammar(keys, waytypes, directions);
+  const grammar = buildGrammar(keys, waytypes, directions, buildingTypes, locations, climates, skinNames);
   writeFileSync(OUT_PATH, JSON.stringify(grammar, null, 2) + "\n", "utf8");
   console.log(
-    `generate-grammar: wrote ${keys.length} keys, ${waytypes.length} waytypes, ${directions.length} directions to ${path.relative(process.cwd(), OUT_PATH)}`
+    `generate-grammar: wrote ${keys.length} keys, ${waytypes.length} waytypes, ${directions.length} directions, ` +
+      `${buildingTypes.length} building-types, ${locations.length} locations, ${climates.length} climates, ` +
+      `${skinNames.length} skin-names to ${path.relative(process.cwd(), OUT_PATH)}`
   );
 }
 

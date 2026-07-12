@@ -11,11 +11,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Syntax highlighting for `.dat` files: registers a new `simutrans-dat` language
   (`language-configuration.json` + `syntaxes/simutrans-dat.tmLanguage.json`, scope
   `source.simutrans-dat`). The grammar's key list and waytype/direction value lists are
-  generated mechanically from `dat_linter keys --format json` by the new
+  generated mechanically from `dat_linter keys --format json` by
   `scripts/generate-grammar.mjs` (`npm run generate:grammar`), so they can't drift from what
-  dat_linter itself considers valid. Value highlighting for `type`/`location`/`climate` is out
-  of scope for now (dat_linter doesn't expose structured data for those yet). CI regenerates the
-  grammar and fails on any diff against the committed file, so a stale grammar can't be merged.
+  dat_linter itself considers valid. CI regenerates the grammar and fails on any diff against
+  the committed file, so a stale grammar can't be merged.
+- Extended `scripts/generate-grammar.mjs` to also highlight the value families exposed by
+  `known_values.per_obj_type` (added in a later dat_linter release): building/factory `type`
+  values (`storage.type.building-types.simutrans-dat`), factory `location` values
+  (`storage.type.locations.simutrans-dat`), `climates` values
+  (`storage.type.climates.simutrans-dat`), and the skin `name` values used by the built-in
+  `menu`/`cursor`/`symbol`/`misc`/`ground` obj types (`storage.type.skin-names.simutrans-dat`).
+  Same design constraint as waytype/direction: the grammar can't tell which obj type a given
+  line belongs to, so each category is flattened across every obj type that reports it rather
+  than validated per obj type; `dat_linter lint` remains the source of truth for actual
+  per-obj_type correctness. A few value strings collide across categories (e.g. `water` appears
+  in `location`/`climates`/skin-names and the existing waytype list; `post`/`busstop`/`carstop`/
+  `monorailstop` appear as both building `type` values and cursor/symbol skin names) -- these are
+  resolved by pattern order in `defined_values` (see the comment above it in
+  `generate-grammar.mjs`), not by any attempt at disambiguation.
 - Snippets for `.dat` files (`snippets/snippets.json`, 50 snippets covering every obj type),
   ported from the author's earlier CC0-licensed `128na/simutrans-vscode-extention`. Verified
   against `dat_linter lint` via the new `scripts/lint-snippets.mjs` (`npm run test:snippets`),
