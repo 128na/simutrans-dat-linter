@@ -88,9 +88,11 @@ function collectKeys(data) {
 function collectPerObjTypeValues(perObjType, key) {
   const valueSet = new Set();
   for (const entry of perObjType ?? []) {
-    if (entry.key !== key) continue;
+    if (entry?.key !== key) continue;
     for (const value of entry.values ?? []) {
-      valueSet.add(value);
+      if (typeof value === "string" && value.trim() !== "") {
+        valueSet.add(value);
+      }
     }
   }
   // Same longest-first rationale as collectKeys.
