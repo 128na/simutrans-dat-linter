@@ -98,13 +98,18 @@ fn is_dat_file(path: &Path) -> bool {
 /// `.dat`ファイル一覧に含める（symlink経由の**読み取り**自体の実害は小さいため。
 /// 書き込み時の対策は`commands/fmt.rs`の`fmt_one_file`側で別途行う）。
 ///
-/// ## 権限エラー等で読めないサブディレクトリの扱い
+/// ## 権限エラー等で読めないサブディレクトリ・エントリの扱い
 /// 以前は`read_dir`の失敗を`let-else`で握り潰し、無診断でスキップしていた。
 /// このツールは「指摘が無ければ完全silent」という設計方針（第10弾）のため、
 /// 黙ってスキップすると"権限エラーで一部ファイルを見ていない"状態と
 /// "本当に全ファイルがクリーン"な状態が区別できなくなる。読めなかった場合は
 /// 標準エラー出力へ警告を出し、`had_error`を`true`にする
 /// （呼び出し側の`collect_dat_paths`経由でexit codeに反映される）。
+/// これは`read_dir`自体の失敗（ディレクトリを開けない）だけでなく、
+/// イテレータが返す個々の`Err`エントリ（ディレクトリは開けたが、特定の
+/// エントリの読み取りが権限エラー・一時的なI/Oエラー等で失敗した場合）にも
+/// 適用される。以前は`entries.flatten()`でこの種のエラーを黙って捨てていたため、
+/// 明示的に`match`して報告するよう修正した。
 fn collect_dat_files_recursive(
     dir: &Path,
     out: &mut BTreeSet<PathBuf>,
@@ -127,7 +132,22 @@ fn collect_dat_files_recursive(
             return;
         }
     };
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!(
+                    "{}",
+                    t!(lang,
+                        ja: "ディレクトリのエントリを読み取れませんでした ({e})",
+                        en: "Failed to read directory entry ({e})",
+                        e = e,
+                    )
+                );
+                *had_error = true;
+                continue;
+            }
+        };
         let path = entry.path();
         let is_real_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
         if is_real_dir {
