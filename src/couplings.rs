@@ -122,10 +122,9 @@ fn read_constraint_side(dat: &DatFile, side: &str) -> ConstraintSide {
     let mut i = 0;
     loop {
         let key = format!("constraint[{side}][{i}]");
-        let raw = dat.get(&key).unwrap_or("");
-        if raw.is_empty() {
+        let Some(raw) = dat.get(&key).filter(|s| !s.is_empty()) else {
             break;
-        }
+        };
         if raw.eq_ignore_ascii_case("none") {
             options.push(ConstraintOption::Terminal);
         } else {

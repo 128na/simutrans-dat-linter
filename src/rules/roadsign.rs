@@ -178,7 +178,12 @@ fn is_private_road(dat: &DatFile) -> bool {
         "is_longblocksignal",
     ]
     .iter()
-    .any(|k| dat.get(k).unwrap_or("0").trim().parse::<i64>().unwrap_or(0) != 0);
+    .any(|k| {
+        dat.get(k)
+            .and_then(|v| v.trim().parse::<i64>().ok())
+            .unwrap_or(0)
+            != 0
+    });
     if is_signal_family {
         return false;
     }
