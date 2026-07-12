@@ -152,6 +152,7 @@ pub enum DiagnosticCode {
     NameForbiddenFilenameCharacter,
     NarrowIntOverflow,
     EmbeddedNulInStringField,
+    UnknownSkinName,
     // --- lint: src/rules/crossing.rs ---
     CrossingIdenticalWaytypes,
     CrossingMissingSpeed,
@@ -250,6 +251,7 @@ impl DiagnosticCode {
             DiagnosticCode::NameForbiddenFilenameCharacter => "name-forbidden-filename-character",
             DiagnosticCode::NarrowIntOverflow => "narrow-int-overflow",
             DiagnosticCode::EmbeddedNulInStringField => "embedded-nul-in-string-field",
+            DiagnosticCode::UnknownSkinName => "unknown-skin-name",
             DiagnosticCode::CrossingIdenticalWaytypes => "crossing-identical-waytypes",
             DiagnosticCode::CrossingMissingSpeed => "crossing-missing-speed",
             DiagnosticCode::CrossingMissingOpenimage => "crossing-missing-openimage",
@@ -846,6 +848,34 @@ impl DiagnosticCode {
                 fix_en: "Remove the NUL byte from the name/copyright value (it is likely an \
                     accidentally embedded control character from a text editor)",
             },
+            DiagnosticCode::UnknownSkinName => CodeInfo {
+                code: *self,
+                source: CodeSource::Lint,
+                why_ja: "obj=symbol/obj=miscのトップレベルname=が、ゲーム本体が認識する既知の\
+                    特殊スキン名のいずれとも一致しません。skinverwaltung_t::register_desc()\
+                    （simskin.cc:195-227）はこの場合\"Spurious object '%s' loaded (will not be \
+                    referenced anyway)!\"というdbg->warningを出します（obj=cursor/obj=menuは\
+                    一致しなくてもextra_cursor_obj/extra_menu_objへ登録されるだけで警告が\
+                    出ないため対象外）。pak自体は正常に読み込まれますが、このオブジェクトは\
+                    ゲームのどのロジックからも一切参照されません",
+                why_en: "The top-level name= of an obj=symbol/obj=misc entry does not match any \
+                    of the known special-purpose skin names recognized by the game. \
+                    skinverwaltung_t::register_desc() (simskin.cc:195-227) emits the warning \
+                    \"Spurious object '%s' loaded (will not be referenced anyway)!\" in this case \
+                    (obj=cursor/obj=menu are excluded because a non-matching name is simply \
+                    registered into extra_cursor_obj/extra_menu_obj with no warning). The pak \
+                    still loads successfully, but this object is never referenced by any game \
+                    logic",
+                fix_ja: "name=の綴りを確認し、意図した特殊スキン名（`dat_linter describe`や\
+                    エディタの補完候補一覧を参照）と完全に一致させてください。単に独自の名前で\
+                    画像を管理したい場合は、その画像がどのゲーム機能にも紐づかないことを\
+                    理解した上で使ってください",
+                fix_en: "Check the spelling of name= and make it match one of the intended \
+                    special-purpose skin names exactly (see `dat_linter describe` or your \
+                    editor's completion suggestions). If you intend to manage the image under \
+                    your own arbitrary name, be aware that it will not be tied to any game \
+                    feature",
+            },
             DiagnosticCode::CrossingIdenticalWaytypes => CodeInfo {
                 code: *self,
                 source: CodeSource::Lint,
@@ -1433,6 +1463,7 @@ pub const ALL: &[DiagnosticCode] = &[
     DiagnosticCode::NameForbiddenFilenameCharacter,
     DiagnosticCode::NarrowIntOverflow,
     DiagnosticCode::EmbeddedNulInStringField,
+    DiagnosticCode::UnknownSkinName,
     DiagnosticCode::CrossingIdenticalWaytypes,
     DiagnosticCode::CrossingMissingSpeed,
     DiagnosticCode::CrossingMissingOpenimage,

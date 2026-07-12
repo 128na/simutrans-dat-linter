@@ -127,12 +127,22 @@ pub const KNOWN_CLIMATES: &[&str] = &[
 /// 照合されるのとは対照的に、`name=`のこの特殊値照合は**大文字小文字を区別する**
 /// 点に注意（例: `name=trainstop`は`"TrainStop"`と一致しない）。
 ///
-/// 一致しない`name=`を持つ`obj=cursor`/`obj=symbol`は、fatal/warningにはならず
-/// 単に特殊な用途に紐づかない（simskin.cc:224-227の`dbg->warning`はcursor/menu以外の
-/// obj種別（誤って別のtypeで登録しようとした場合）にのみ発生する。cursor/symbolは
-/// この分岐（215行目`type==cursor || type==menu`）に該当せず、後述の`register_desc`が
-/// 常に`true`を返すため、単に「特殊名に一致しない普通のcursor/symbol画像」として
-/// 扱われるだけである）。
+/// 一致しない`name=`を持つ`obj=cursor`/`obj=symbol`はfatalにはならないが、
+/// **`obj=cursor`と`obj=symbol`で挙動が異なる**点に注意（旧コメントはここを
+/// 誤って「両方とも問題なし」と記載していたが、`simskin.cc:195-227`の
+/// `skinverwaltung_t::register_desc()`を実際に読み直すと以下の通り）:
+/// - `obj=cursor`: `cursor_objekte`にも`fakultative_objekte`にも一致しなければ、
+///   `type==cursor || type==menu`という条件（215行目）に該当するため
+///   `extra_cursor_obj`へ登録され（`dbg->message`、**warningではない**）、
+///   単に「特殊名に一致しない普通のcursor画像」として扱われるだけで済む。
+/// - `obj=symbol`: 同じく`symbol_objekte`にも`fakultative_objekte`にも一致しなければ、
+///   `type==cursor || type==menu`（215行目）に**該当しない**（`symbol`はこの条件に
+///   含まれていない）ため`else`分岐（224-227行目）に落ち、実際に
+///   `dbg->warning("skinverwaltung_t::register_desc()","Spurious object '%s' loaded \
+///   (will not be referenced anyway)!", ...)`が出る。つまり`obj=symbol`の`name=`が
+///   この21件にもsymbol固有の一覧（`symbol.rs`の`KNOWN_SYMBOL_OWN_NAMES`）にも
+///   一致しない場合は実際に警告が発生する（`symbol.rs`の`UnknownSkinNameRule`が
+///   この警告を検出する）。
 pub const FAKULTATIVE_SKIN_NAMES: &[&str] = &[
     "BigLogo",
     "Mouse",
@@ -952,6 +962,17 @@ pub fn check_image_ref(
 /// 空文字列ではないため走査を止めない）。実際に画像を指す値（空文字列でも
 /// `"-"`でもない値）についてのみ、`check_image_ref`でファイル存在・
 /// サイズ（128の倍数か）を検証する（他の全obj種別と共有のパターン）。
+///
+/// `"-"`（画像なしセンチネル）の判定は`check_image_ref`側に一元化されている
+/// （`check_image_ref`冒頭のdocコメント参照）。以前はここに`value != "-"`という
+/// 生の値による事前ガードを個別追加していたが、`image[0]=> -`（ズーム対応接頭辞
+/// 付きの"-"）は文字列としてリテラルの`"-"`と一致しないためこのガードを
+/// すり抜けて`check_image_ref`へ渡り、その内部で接頭辞を剥がした後に`"-"`と
+/// 正しく判定される一方、`image[0]=-`（接頭辞無し）はこのガードでスキップされ
+/// `check_image_ref`まで到達せず`image-ref-empty-sentinel`（info）が出ない、
+/// という不整合を生んでいた。tunnel.rs/ground.rsが第8弾で同種のガードを撤去し
+/// `check_image_ref`に判定を一任する設計へ揃えたのと同じ理由で、ここでも
+/// 事前ガードを撤去し常に`check_image_ref`を呼ぶ。
 pub struct AllImagesRule;
 impl Rule for AllImagesRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
@@ -966,17 +987,15 @@ impl Rule for AllImagesRule {
                 // skin_writer.cc:28-30: キー欠落（空文字列）で走査終了。
                 break;
             }
-            if value != "-" {
-                check_image_ref(
-                    value,
-                    ctx.dat_dir,
-                    &key,
-                    &mut diags,
-                    ctx.language,
-                    ctx.tile_size,
-                    dat.line_of(&key),
-                );
-            }
+            check_image_ref(
+                value,
+                ctx.dat_dir,
+                &key,
+                &mut diags,
+                ctx.language,
+                ctx.tile_size,
+                dat.line_of(&key),
+            );
             i += 1;
             // 安全弁: dat構文異常でiが際限なく増え続ける事態を避ける
             // （makeobj自身は無限ループ`for (;;i++)`だが、実用上十分大きい上限で
@@ -987,6 +1006,68 @@ impl Rule for AllImagesRule {
         }
 
         diags
+    }
+}
+
+/// `skinverwaltung_t::register_desc()`（`simskin.cc:195-227`）が`obj=symbol`/`obj=misc`に
+/// ついてのみ実際に発生させる`dbg->warning("Spurious object '%s' loaded (will not be \
+/// referenced anyway)!", ...)`（simskin.cc:225）を検出する共有ルール。
+///
+/// `obj=cursor`/`obj=menu`は対象外: 両者は`type==cursor || type==menu`という分岐
+/// （simskin.cc:215）に該当し、一致しない`name=`でも`extra_cursor_obj`/`extra_menu_obj`
+/// へ登録されるだけで（`dbg->message`、**warningではない**）実害が無い
+/// （`FAKULTATIVE_SKIN_NAMES`のdocコメント参照）。`obj=smoke`/`obj=field`はそもそも
+/// `skinverwaltung_t::register_desc()`が扱う`skintyp_t`（menu/cursor/symbol/misc/nothing）
+/// に含まれず、`name=`の特殊値照合という概念自体が存在しないため対象外
+/// （`smoke.rs`/`field.rs`に`KNOWN_*_NAMES`のような定数が無いことからも分かる）。
+///
+/// `known_names`は呼び出し元（`symbol.rs`/`misc.rs`の`all()`）が、`rules/keys.rs`の
+/// `known_values_per_obj_type`が使うのと同じ組み合わせ方で渡す:
+/// - `obj=symbol`: `symbol::KNOWN_SYMBOL_OWN_NAMES`（13件）∪`FAKULTATIVE_SKIN_NAMES`
+///   （21件、`type==cursor || type==symbol`のフォールバック、simskin.cc:209-213）
+/// - `obj=misc`: `misc::KNOWN_MISC_NAMES`（5件）のみ（"currently no misc objects allowed"
+///   というsimskin.cc:214のコメント通り、misc型には`fakultative_objekte`フォールバックが
+///   適用されない）
+///
+/// 照合は`spezial_obj_tpl.h:36-50`の`register_desc<desc_t>`と同じ`strcmp`
+/// （大文字小文字を**区別する**）で行う。一致しない`name=`を持つobjectは、pakへの
+/// 書き込み・読み込みそのものは成功する（fatal/errorではない）が、ゲームの
+/// どのロジックからも一切参照されない「ロードされるだけの無意味なオブジェクト」に
+/// なる（`name=`の綴り間違いに気づけない入力ミスの可能性が高い）。
+pub struct UnknownSkinNameRule {
+    pub obj_type: &'static str,
+    pub known_names: Vec<&'static str>,
+}
+impl Rule for UnknownSkinNameRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let Some(name) = dat.get("name") else {
+            return Vec::new();
+        };
+        if self.known_names.contains(&name) {
+            return Vec::new();
+        }
+        let diag = Diagnostic::warning(
+            DiagnosticCode::UnknownSkinName,
+            t!(ctx.language,
+                ja: "obj={obj_type} の name={name} は既知の特殊スキン名のいずれとも一致しません。\
+                     skinverwaltung_t::register_desc()（simskin.cc:195-227）はこの場合\
+                     \"Spurious object '{name}' loaded (will not be referenced anyway)!\"という\
+                     警告を出します。pak自体は正常に読み込まれますが、このオブジェクトは\
+                     ゲームのどのロジックからも一切参照されません",
+                en: "name={name} on obj={obj_type} does not match any of the known \
+                     special-purpose skin names. skinverwaltung_t::register_desc() \
+                     (simskin.cc:195-227) emits the warning \"Spurious object '{name}' loaded \
+                     (will not be referenced anyway)!\" in this case. The pak still loads \
+                     successfully, but this object is never referenced by any game logic",
+                obj_type = self.obj_type,
+                name = name,
+            ),
+        );
+        vec![match dat.line_of("name") {
+            Some(line) => diag.at(line, "name".to_string()),
+            None => diag,
+        }]
     }
 }
 
@@ -1002,11 +1083,30 @@ impl Rule for AllImagesRule {
 
 /// `Dims=`を`(size_x, size_y, layouts)`へ解決する。診断は伴わない純粋な計算。
 /// `DimsRule`（診断を出す）と`TileImageRule`（値だけ必要）の両方から呼ばれる。
+///
+/// `building_writer.cc:80-94`: `koord size(1,1); uint8 layouts = 0;`のあと
+/// `vector_tpl<int> ints = obj.get_ints("dims");`の値がswitch文で
+/// `size.x`/`size.y`/`layouts`へ直接代入される。`koord`（`dataobj/koord.h:26-27`）の
+/// `x`/`y`はいずれも`sint16`、`layouts`は`uint8`であり、`obj.get_ints()`が返す`int`
+/// （実質`sint32`相当）からの代入はいずれも範囲チェック無しの無条件narrowingである。
+/// つまり`Dims=65536,3`のような値は、`size.x`へ代入された時点で2の補数切り詰めにより
+/// `65536 as sint16 == 0`という全く別の値に静かに変わる。この代入は
+/// **`layouts==0`フォールバック（`size.x==size.y ? 1 : 2`）や`size.x*size.y==0`の
+/// ゼロサイズ判定より前**に行われるため、後続の判定はすべて切り詰め後の値を見る
+/// （`building_writer.cc:92-97`）。生の`i64`値のまま`size_x*size_y==0`を判定すると、
+/// truncateされて初めてゼロになるケース（`65536,3`等）を見逃す。factoryは
+/// `building_writer_t::write_obj`をそのまま呼ぶため同じ切り詰めが適用される。
 pub fn resolve_dims(dat: &DatFile) -> (i64, i64, i64) {
     let ints = dat.get_ints("dims");
-    let size_x = ints.first().copied().unwrap_or(1);
-    let size_y = ints.get(1).copied().unwrap_or(1);
-    let mut layouts = ints.get(2).copied().unwrap_or(0);
+    let size_x_raw = ints.first().copied().unwrap_or(1);
+    let size_y_raw = ints.get(1).copied().unwrap_or(1);
+    let layouts_raw = ints.get(2).copied().unwrap_or(0);
+    // koord::x/y は sint16、layouts は uint8（上記docコメント参照）。
+    // `as i16`/`as u8`によるキャストはRustでも2の補数切り詰めとして働き、
+    // C++の暗黙変換と同じ結果になる。
+    let size_x = size_x_raw as i16 as i64;
+    let size_y = size_y_raw as i16 as i64;
+    let mut layouts = layouts_raw as u8 as i64;
     if layouts == 0 {
         layouts = if size_x == size_y { 1 } else { 2 };
     }
@@ -1016,7 +1116,8 @@ pub fn resolve_dims(dat: &DatFile) -> (i64, i64, i64) {
 /// building_writer.cc:95-97: `size.x*size.y == 0`だと
 /// `dbg->fatal("building_writer_t::write_obj", "Cannot create a building with
 /// zero size (%i,%i)", ...)`。factoryはbuilding_writer_t::write_objを
-/// そのまま呼ぶため同じ検証が適用される。
+/// そのまま呼ぶため同じ検証が適用される。`size.x`/`size.y`は既に`resolve_dims`で
+/// sint16へ切り詰め済みの値（このRule自身は切り詰めを行わない）。
 pub struct DimsRule;
 impl Rule for DimsRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {

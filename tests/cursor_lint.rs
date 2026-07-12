@@ -29,6 +29,10 @@ fn has_error(diags: &[(Severity, &str)], code: &str) -> bool {
         .any(|(s, c)| *s == Severity::Error && *c == code)
 }
 
+fn has(diags: &[(Severity, &str)], severity: Severity, code: &str) -> bool {
+    diags.iter().any(|(s, c)| *s == severity && *c == code)
+}
+
 #[test]
 fn valid_cursor_has_no_errors_or_warnings() {
     let diags = check("cursor_valid.dat");
@@ -55,6 +59,19 @@ fn dash_sentinel_is_not_an_error() {
         .filter(|(s, _)| *s == Severity::Error)
         .collect();
     assert!(errors.is_empty(), "予期しない error: {errors:?}");
+}
+
+/// `AllImagesRule`から`value != "-"`という事前ガードを撤去した
+/// （`common.rs`のdocコメント参照）ことで、`image[0]=-`が`check_image_ref`まで
+/// 到達し、`image-ref-empty-sentinel`（info）が正しく出るようになったことを
+/// 確認する回帰テスト。
+#[test]
+fn dash_sentinel_produces_image_ref_empty_sentinel_info() {
+    assert!(has(
+        &check("cursor_dash_sentinel_valid.dat"),
+        Severity::Info,
+        "image-ref-empty-sentinel"
+    ));
 }
 
 /// 画像キーが一切無い（image[0]すら未指定）ケースはmakeobj時点でFATALにならない
