@@ -258,12 +258,14 @@ export class KeysDataCache {
     const generation = ++this.generation;
     try {
       const stdout = await fetchKeysJson(executablePath, cwd);
-      const parsed = parseDatLinterKeysJson(stdout);
       if (generation !== this.generation) {
         // A newer load() call was issued while this one was in flight;
         // discard this now-stale result rather than clobbering the newer one.
+        // Checked before parsing so a stale response's JSON isn't parsed and
+        // schema-validated for nothing.
         return;
       }
+      const parsed = parseDatLinterKeysJson(stdout);
       this.data = parsed;
       outputChannel.appendLine(
         `dat_linter: loaded "keys --format json" data (${this.data.obj_types.length} obj types) for completion.`

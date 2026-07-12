@@ -70,9 +70,16 @@ export function activate(context: vscode.ExtensionContext): void {
     // pick things up once trust is granted without requiring a full restart.
     context.subscriptions.push(
       vscode.workspace.onDidGrantWorkspaceTrust(() => {
-        void vscode.window.showInformationMessage(
-          "Simutrans dat_linter: this workspace is now trusted. Reload the window to enable linting, formatting, and completion."
-        );
+        void vscode.window
+          .showInformationMessage(
+            "Simutrans dat_linter: this workspace is now trusted. Reload the window to enable linting, formatting, and completion.",
+            "Reload"
+          )
+          .then((selection) => {
+            if (selection === "Reload") {
+              void vscode.commands.executeCommand("workbench.action.reloadWindow");
+            }
+          });
       })
     );
     return;
@@ -225,11 +232,16 @@ async function lintDocument(document: vscode.TextDocument): Promise<void> {
         throw err;
       }
     }
+    if (lintGenerations.isStale(key, generation)) {
+      // A newer lintDocument() call was issued while this one was in flight;
+      // discard this now-stale result rather than clobbering the newer one.
+      // Checked before parsing so a stale response's JSON isn't parsed and
+      // converted to diagnostics for nothing.
+      return;
+    }
     const parsed = parseDatLinterJson(stdout);
     const diagnostics = toVscodeDiagnostics(parsed, document);
-    if (!lintGenerations.isStale(key, generation)) {
-      diagnosticCollection.set(document.uri, diagnostics);
-    }
+    diagnosticCollection.set(document.uri, diagnostics);
   } catch (err) {
     if (lintGenerations.isStale(key, generation)) {
       return;
