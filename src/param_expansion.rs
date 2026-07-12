@@ -23,11 +23,21 @@
 //!   その時点の`parameter_values[i]`＝連番インデックスが入る実装のため。文字列
 //!   そのものが数式に使われることはない）。
 //!
-//! ## `*`/`%`演算子について
-//! `tabfile.cc`の`calculate_internal`は`+`/`-`/`*`/`/`/`%`の5演算子全てに対応する。
-//! 実データでは単項の`$N`単体・`$N op literal`程度の単純な左結合式のみ確認できたため、
-//! 本モジュールも左結合の素朴な評価器で実装している（括弧を含む式は実データに
-//! 出現しないためサポートしない）。
+//! ## 演算子の優先順位について
+//! `tabfile.cc`の`calculate`は`add_operator_parens`（611-746行目）で式全体に
+//! 括弧を追加してから`calculate_internal`（749-841行目）で評価する。
+//! `add_operator_parens`は`operators[5] = {'%','/','*','-','+'}`という固定順序で
+//! 演算子を1種類ずつ走査し、見つけた`a op b`をその都度`(a op b)`へ括弧化していく
+//! （同一演算子内は出現順に左結合）。この処理を`%`→`/`→`*`→`-`→`+`の順に
+//! 繰り返すため、最終的な優先順位は`% > / > * > - > +`となる
+//! （通常のC言語の演算子優先順位とは異なり、`-`と`+`が別順位である点に注意。
+//! 例: `$0+$1*2`は`$0+($1*2)`ではなく素朴な左結合なら`($0+$1)*2`と誤読されるが、
+//! 実際は`*`が`+`より先に括弧化されるため`$0+($1*2)`が正しい）。
+//! 本モジュールの`evaluate_expression`はこの優先順位を、演算子ごとに
+//! 優先順位の高い順（`%`→`/`→`*`→`-`→`+`）でトークン列を畳み込むことで再現する
+//! （`reduce_level`関数）。括弧を含む式は実データに出現しないためサポートしない
+//! （`add_operator_parens`が生成する括弧のみを扱う実装のため、入力に元々`(`/`)`が
+//! 含まれるケースは対象外）。
 
 #[cfg(test)]
 use std::collections::BTreeMap;
@@ -207,6 +217,17 @@ fn match_ribi(token: &str) -> bool {
 
 /// 1つの`[...]`フィールドの中身（カンマ/ダッシュ区切り）を数値リストへ展開する。
 /// `tabfile.cc:384-428`の数値専用パスを再現する。
+///
+/// ## 既知の制限（未対応、severity: low）
+/// 実makeobj（`strtok(buffer, "-,")`、`tabfile.cc:378-424`付近）は`-`と`,`を
+/// 1つの区切り文字集合として連続トークン化し、直前の区切り文字が`-`か`,`かで
+/// 「範囲」か「リスト値」かを判定する。本実装はまずカンマで分割してから各
+/// セグメント内で`-`を`split_once`するため、範囲の開始値が負数のケース
+/// （例: `-5-3`のような、開始値自体に`-`を含む範囲表記）では実makeobjと解釈が
+/// 食い違う可能性がある。pak128実データではこのような表記は確認できておらず、
+/// 対応を見送っている（`find_bracket_params`のコメントで触れている
+/// 「`[`直後の`-`は負数表記としてパラメータ扱いしない」という別の既知の挙動とは
+/// 別の話である点に注意）。
 fn expand_numeric_field(content: &str) -> Vec<i64> {
     let mut values = Vec::new();
     // strtokは"-,"をデリミタとして扱うため、まず","で素朴に分割してから
@@ -344,23 +365,42 @@ fn evaluate_expression(expr: &str, combination: &[i64]) -> i64 {
     }
     flush_operand(&mut current, &mut tokens, combination);
 
-    // 左結合で評価する。
-    let mut iter = tokens.into_iter();
-    let Some(Token::Num(mut answer)) = iter.next() else {
-        return 0;
-    };
-    let mut pending_op: Option<char> = None;
-    for tok in iter {
+    // tabfile.cc の add_operator_parens と同じ順序（%,/,*,-,+）で、優先順位の高い
+    // 演算子から順にトークン列を畳み込む（各段の中では出現順に左結合）。
+    for &op_char in &['%', '/', '*', '-', '+'] {
+        tokens = reduce_level(tokens, op_char);
+    }
+
+    match tokens.into_iter().next() {
+        Some(Token::Num(v)) => v,
+        _ => 0,
+    }
+}
+
+/// `tokens`のうち、演算子`op_char`で結ばれた`Num op_char Num`を左結合でまとめて
+/// 1つの`Num`へ畳み込む（`op_char`以外の演算子はそのまま素通りさせ、後続の段で
+/// 処理する）。`add_operator_parens`が演算子1種類ごとに全出現箇所を括弧化してから
+/// 次の演算子へ進む処理を1回のパスとして表現したもの。
+fn reduce_level(tokens: Vec<Token>, op_char: char) -> Vec<Token> {
+    let mut out: Vec<Token> = Vec::with_capacity(tokens.len());
+    let mut iter = tokens.into_iter().peekable();
+    while let Some(tok) = iter.next() {
         match tok {
-            Token::Op(op) => pending_op = Some(op),
-            Token::Num(v) => {
-                if let Some(op) = pending_op.take() {
-                    answer = apply_op(answer, op, v);
+            Token::Num(mut v) => {
+                while matches!(iter.peek(), Some(Token::Op(op)) if *op == op_char) {
+                    let Some(Token::Op(op)) = iter.next() else {
+                        unreachable!()
+                    };
+                    if let Some(Token::Num(rhs)) = iter.next() {
+                        v = apply_op(v, op, rhs);
+                    }
                 }
+                out.push(Token::Num(v));
             }
+            other => out.push(other),
         }
     }
-    answer
+    out
 }
 
 enum Token {
@@ -513,6 +553,17 @@ mod tests {
         assert_eq!(out.get("name"), Some(&"12".to_string()));
         let out = expand_to_map("name2", "<10%3>");
         assert_eq!(out.get("name2"), Some(&"1".to_string()));
+    }
+
+    #[test]
+    fn operator_precedence_matches_add_operator_parens_order() {
+        // tabfile.cc の add_operator_parens は %,/,*,-,+ の順に演算子を括弧化するため
+        // `*`は`+`より優先される（通常のC言語と同じ優先順位だが、単純な左結合の
+        // naive foldでは($0+$1)*2=8と誤って評価してしまう。修正前の実装はこちらだった）。
+        // 2つの数値フィールド(field0=1, field1=3の組み合わせ)を使い、
+        // $0=1, $1=3 のとき、正しい優先順位評価では $0+($1*2) = 1+6 = 7 になることを確認する。
+        let out = expand_to_map("name[1,2][3,4]", "<$0+$1*2>");
+        assert_eq!(out.get("name[1][3]"), Some(&"7".to_string()));
     }
 
     // --- 第6弾: ribi(方向名)文字列パラメータ展開（pak128実データで確認済み） ---
