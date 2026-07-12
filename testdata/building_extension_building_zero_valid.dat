@@ -1,0 +1,15 @@
+obj=building
+name=test_extension_building_zero
+copyright=Test
+type=extension
+waytype=track
+extension_building=0
+Dims=1,1,4
+
+cursor=station_icon.png.0.0
+icon=station_icon.png.0.0
+
+backimage[0][0][0][0][0]=station_cube.png.0.0
+backimage[1][0][0][0][0]=station_cube.png.0.0
+backimage[2][0][0][0][0]=station_cube.png.0.0
+backimage[3][0][0][0][0]=station_cube.png.0.0
