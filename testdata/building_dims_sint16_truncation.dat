@@ -1,0 +1,9 @@
+obj=building
+name=test_dims_sint16_truncation
+copyright=Test
+type=extension
+waytype=track
+Dims=65536,3
+
+cursor=station_icon.png.0.0
+icon=station_icon.png.0.0

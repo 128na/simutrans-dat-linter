@@ -31,6 +31,10 @@ fn has_error(diags: &[(Severity, &str)], code: &str) -> bool {
         .any(|(s, c)| *s == Severity::Error && *c == code)
 }
 
+fn has(diags: &[(Severity, &str)], severity: Severity, code: &str) -> bool {
+    diags.iter().any(|(s, c)| *s == severity && *c == code)
+}
+
 #[test]
 fn valid_misc_has_no_errors_or_warnings() {
     let diags = check("misc_valid.dat");
@@ -57,6 +61,19 @@ fn dash_sentinel_is_not_an_error() {
         .filter(|(s, _)| *s == Severity::Error)
         .collect();
     assert!(errors.is_empty(), "予期しない error: {errors:?}");
+}
+
+/// `AllImagesRule`から`value != "-"`という事前ガードを撤去した
+/// （`common.rs`のdocコメント参照）ことで、`image[0]=-`が`check_image_ref`まで
+/// 到達し、`image-ref-empty-sentinel`（info）が正しく出るようになったことを
+/// 確認する回帰テスト。
+#[test]
+fn dash_sentinel_produces_image_ref_empty_sentinel_info() {
+    assert!(has(
+        &check("misc_dash_sentinel_valid.dat"),
+        Severity::Info,
+        "image-ref-empty-sentinel"
+    ));
 }
 
 /// 画像キーが一切無い（image[0]すら未指定）ケースはmakeobj時点でFATALにならない
@@ -96,4 +113,20 @@ fn zoomable_prefix_is_not_a_false_positive() {
         .filter(|(s, _)| *s == Severity::Error)
         .collect();
     assert!(errors.is_empty(), "予期しない error: {errors:?}");
+}
+
+/// `name=NotARealSkinName`は`KNOWN_MISC_NAMES`のいずれとも一致しない。
+/// `skinverwaltung_t::register_desc()`（simskin.cc:195-227）は`obj=misc`が
+/// `type==cursor || type==menu`の分岐（215行目）に該当しないため、実際に
+/// `dbg->warning("Spurious object ...")`を出す（`obj=cursor`/`obj=menu`とは異なる挙動、
+/// `common::FAKULTATIVE_SKIN_NAMES`のdocコメント参照）。`misc`は`type==cursor ||
+/// type==symbol`のfakultativeフォールバック対象にもならない
+/// （"currently no misc objects allowed"、simskin.cc:214）。
+#[test]
+fn unknown_name_is_detected() {
+    assert!(has(
+        &check("misc_unknown_name.dat"),
+        Severity::Warning,
+        "unknown-skin-name"
+    ));
 }

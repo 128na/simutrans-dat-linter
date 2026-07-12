@@ -52,6 +52,15 @@
 //! 本モジュールのルールは`menu.rs`/`cursor.rs`の`AllImagesRule`と同一のロジックを、
 //! obj_type文字列とコメントの言い回しのみ差し替えて採用する。REJECTEDの理由も
 //! 全てmenu.rs/cursor.rsと同一（詳細はmenu.rs参照）。
+//!
+//! ただし1点だけ`menu`/`cursor`と挙動が異なる: `name=`が既知の特殊名（後述の
+//! `KNOWN_SYMBOL_OWN_NAMES`∪`common::FAKULTATIVE_SKIN_NAMES`）のいずれとも
+//! 一致しない場合、ゲーム実行時の`skinverwaltung_t::register_desc()`
+//! （`simskin.cc:195-227`）は`obj=cursor`/`obj=menu`とは異なり実際に
+//! `dbg->warning("Spurious object '%s' loaded (will not be referenced anyway)!",
+//! ...)`を出す（`type==cursor || type==menu`という「警告にならない」分岐に
+//! `symbol`が含まれないため。`common::FAKULTATIVE_SKIN_NAMES`のdocコメント参照）。
+//! この警告は`common::UnknownSkinNameRule`（`obj=misc`と共有）で検出する。
 
 use super::common;
 use crate::diagnostics::Diagnostic;
@@ -92,11 +101,20 @@ pub const KNOWN_SYMBOL_OWN_NAMES: &[&str] = &[
 
 /// ルール実装本体は`menu`/`cursor`/`symbol`/`smoke`/`field`/`misc`の6種別で
 /// 共有される`common::AllImagesRule`（skin_writer_t::write_objそのもの、根拠は
-/// 上記コメント参照）。
+/// 上記コメント参照）。`common::UnknownSkinNameRule`は`obj=symbol`/`obj=misc`の
+/// みが対象（`menu`/`cursor`/`smoke`/`field`には無い。冒頭docコメント参照）。
 pub fn all() -> Vec<Box<dyn Rule>> {
     vec![
         Box::new(common::AllImagesRule),
         Box::new(common::NameAndCopyrightStringFieldRule),
+        Box::new(common::UnknownSkinNameRule {
+            obj_type: "symbol",
+            known_names: KNOWN_SYMBOL_OWN_NAMES
+                .iter()
+                .chain(common::FAKULTATIVE_SKIN_NAMES.iter())
+                .copied()
+                .collect(),
+        }),
     ]
 }
 

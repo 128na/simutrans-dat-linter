@@ -1,12 +1,20 @@
 //! `obj=building` の検証ルール。検証根拠は `rules/mod.rs` 冒頭コメント参照。
 //!
-//! `NarrowIntFieldsRule`（`capacity`）は`DateIndexOverflowRule`と同種の「静的解析」層の
+//! `CapacityNarrowIntRule`（`capacity`）は`DateIndexOverflowRule`と同種の「静的解析」層の
 //! ルール。`building_writer.cc:244` `sint32 capacity = obj.get_int("capacity", level * 32);`
 //! はローカル変数こそ`sint32`だが、実際の書き込みは`building_writer.cc:365`
 //! `node.write_uint16(fp, capacity);`であり、`sint32`→`uint16`という符号・幅の
 //! 両方が変わる narrowing が発生する（ローカル変数の型だけを見て「sint32だから
 //! 広くて安全」と判断してはいけない、という具体例。`common::check_narrow_int_overflow_field`
 //! のdocコメント参照）。
+//!
+//! 同種のnarrowingは`capacity`以外にも4フィールドあり、それぞれ専用のRuleで検出する。
+//! `ChanceNarrowIntRule`（`chance`、uint8）・`AnimationTimeNarrowIntRule`
+//! （`animation_time`、uint16）・`AllowUndergroundNarrowIntRule`
+//! （`allow_underground`、uint8）は`common::check_narrow_int_overflow_field`をそのまま
+//! 呼ぶだけの薄いラッパー。`LevelNarrowIntRule`（`level`）のみ、`obj.get_int()`で読んだ
+//! 値から`-1`した式全体がuint16へ代入されるという特殊な計算式（`level=0`のとき
+//! アンダーフローする）のため専用実装になっている（各構造体のdocコメント参照）。
 
 use super::common::{
     CursorIconPolicy, CursorIconRule, DimsRule, KNOWN_WAYTYPES, NameAndCopyrightStringFieldRule,
@@ -128,6 +136,10 @@ pub fn all(dat: &DatFile) -> Vec<Box<dyn Rule>> {
         Box::new(BooleanStyleFieldRule),
         Box::new(NameAndCopyrightStringFieldRule),
         Box::new(CapacityNarrowIntRule),
+        Box::new(ChanceNarrowIntRule),
+        Box::new(AnimationTimeNarrowIntRule),
+        Box::new(AllowUndergroundNarrowIntRule),
+        Box::new(LevelNarrowIntRule),
     ]
 }
 
@@ -273,26 +285,40 @@ fn check_type_and_waytype(
     }
 }
 
+/// `building_writer.cc:203-205`: `if (obj.get_int("extension_building", 0) > 0)`
+/// という**値の大小を見た**条件でのみfatalになる。`obj.get_int()`はキー欠落時に
+/// `default`（ここでは`0`）を返す（範囲チェック無しの無条件フォールバック、
+/// tabfile.cc:183-198）ため、`extension_building`キー自体が存在するかどうか
+/// （`.is_some()`）だけを見て判定してはならない。`extension_building=0`は
+/// このif文の条件を満たさず、実makeobjは**全く問題なくビルドする**
+/// （偽陽性の原因だった旧実装は`dat.get("extension_building").is_some()`のみを
+/// 見ており、`extension_building=0`という明示指定でもerrorを出していた）。
+/// 値のparseに失敗した場合は`tabfileobj_t::get_int()`が内部で使う`strtol`と同様
+/// （`common::check_clamped_int_field`のdocコメント参照）、`0`として扱う
+/// （非数値は0扱い、fatalにならない）。
 struct ObsoleteKeywordRule;
 impl Rule for ObsoleteKeywordRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
-        if ctx.dat.get("extension_building").is_some() {
-            let diag = Diagnostic::error(
-                DiagnosticCode::ObsoleteKeyword,
-                t!(ctx.language,
-                    ja: "extension_building は obsolete です。type=stop/extension と waytype を使ってください",
-                    en: "extension_building is obsolete. Use type=stop/extension with waytype instead",
-                ),
-            );
-            // `dat.get("extension_building")`が`Some`を返している以上、
-            // `line_of`は必ず`Some`を返す。
-            vec![match ctx.dat.line_of("extension_building") {
-                Some(line) => diag.at(line, "extension_building"),
-                None => diag,
-            }]
-        } else {
-            Vec::new()
+        let Some(raw) = ctx.dat.get("extension_building") else {
+            return Vec::new();
+        };
+        let value = raw.trim().parse::<i64>().unwrap_or(0);
+        if value <= 0 {
+            return Vec::new();
         }
+        let diag = Diagnostic::error(
+            DiagnosticCode::ObsoleteKeyword,
+            t!(ctx.language,
+                ja: "extension_building は obsolete です。type=stop/extension と waytype を使ってください",
+                en: "extension_building is obsolete. Use type=stop/extension with waytype instead",
+            ),
+        );
+        // `dat.get("extension_building")`が`Some`を返している以上、
+        // `line_of`は必ず`Some`を返す。
+        vec![match ctx.dat.line_of("extension_building") {
+            Some(line) => diag.at(line, "extension_building"),
+            None => diag,
+        }]
     }
 }
 
@@ -355,18 +381,111 @@ impl Rule for CapacityNarrowIntRule {
     }
 }
 
-/// `building_writer.cc:112-114,203,207,210,213`: `noinfo`/`noconstruction`/
-/// `needs_ground`/`extension_building`/`enables_pax`/`enables_post`/`enables_ware`は
+/// `building_writer.cc:223`: `uint8 const chance = obj.get_int("chance", 100);`。
+/// `capacity`と同種のnarrowing（`get_int()`は範囲チェック無しの無条件フォールバック、
+/// 結果は`uint8`へそのまま代入される。書き込みは`building_writer.cc:361`
+/// `node.write_uint8(fp, chance);`）。`common::check_narrow_int_overflow_field`の
+/// docコメント参照。
+struct ChanceNarrowIntRule;
+impl Rule for ChanceNarrowIntRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        check_narrow_int_overflow_field(ctx.dat, "chance", 100, 8, false, ctx.language)
+    }
+}
+
+/// `building_writer.cc:116`: `uint16 const animation_time = obj.get_int("animation_time", 300);`。
+/// `capacity`/`chance`と同種のnarrowing（書き込みは`building_writer.cc:364`
+/// `node.write_uint16(fp, animation_time);`）。
+struct AnimationTimeNarrowIntRule;
+impl Rule for AnimationTimeNarrowIntRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        check_narrow_int_overflow_field(ctx.dat, "animation_time", 300, 16, false, ctx.language)
+    }
+}
+
+/// `building_writer.cc:259`: `uint8 allow_underground = obj.get_int("allow_underground", 2);`。
+/// `capacity`/`chance`/`animation_time`と同種のnarrowing（書き込みは
+/// `building_writer.cc:368` `node.write_uint8(fp, allow_underground);`）。
+struct AllowUndergroundNarrowIntRule;
+impl Rule for AllowUndergroundNarrowIntRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        check_narrow_int_overflow_field(ctx.dat, "allow_underground", 2, 8, false, ctx.language)
+    }
+}
+
+/// `building_writer.cc:102`: `uint16 level = obj.get_int("level", 1) - 1;`。
+/// `capacity`等と同じ「狭いC++整数型への無条件代入」ファミリーだが、`level`は
+/// `get_int()`の戻り値へ`-1`する**式全体**が`uint16`のローカル変数へ代入される点が
+/// 異なる（`check_narrow_int_overflow_field`は単一フィールド値をそのまま型範囲と
+/// 比較する設計のため、この`-1`変換をそのまま流用できず専用ルールとして実装する）。
+/// `level=0`（`.dat`記述者が「レベル0」のつもりで書く、あるいはデフォルト値`1`を
+/// 明示的に上書きしようとして`0`を書く入力ミス）だと`obj.get_int("level",1)`が`0`を
+/// 返し、`0 - 1`という`uint16`への代入で`-1`が2の補数表現の`65535`へ静かに
+/// ラップアラウンドする（`level`はその後`++level`（building_writer.cc:219、
+/// stop/extension/dock/depot/factoryのみ）や`passengers`による上書き
+/// （cur/mon/tow/hq）を経ることもあるが、これらは`level`が既に`65535`に
+/// 汚染された後に作用するだけで問題を悪化させこそすれ解消はしない）。
+/// `level`が未指定の場合はデフォルト値`1`（`get_int`のデフォルト引数）を使う。
+struct LevelNarrowIntRule;
+impl Rule for LevelNarrowIntRule {
+    fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let dat = ctx.dat;
+        let Some(raw) = dat.get("level") else {
+            return Vec::new();
+        };
+        let level_raw = raw.trim().parse::<i64>().unwrap_or(0);
+        // `level_raw - 1`が範囲内(0..=65535)かどうかは、`level_raw`自体が
+        // `1..=65536`かどうかと等価。i64::MINのような極端な値でも
+        // `level_raw - 1`という引き算そのものをオーバーフローさせずに判定できる
+        // （このrust製dat_linter自体がdebugビルドのオーバーフローチェックでpanicしないよう、
+        // 診断メッセージ用の`value`計算はチェック後に`wrapping_sub`で安全に行う）。
+        if (1..=65536).contains(&level_raw) {
+            return Vec::new();
+        }
+        let value = level_raw.wrapping_sub(1);
+        let diag = Diagnostic::warning(
+            DiagnosticCode::NarrowIntOverflow,
+            t!(ctx.language,
+                ja: "level={level_raw}（building_writer.ccの計算式`obj.get_int(\"level\", 1) - 1`\
+                     により{value}）は格納先のunsigned 16bit整数の範囲(0..65535)外です。\
+                     makeobjはこの計算結果を範囲チェック無しにuint16へ無条件代入するため、\
+                     範囲外の値は2の補数による切り詰めで全く無関係な値へ静かに変わります\
+                     （makeobj自体はこれを検証しません）",
+                en: "level={level_raw} (which building_writer.cc's formula \
+                     `obj.get_int(\"level\", 1) - 1` turns into {value}) is outside the range \
+                     (0..65535) of the unsigned 16-bit integer it is stored in. makeobj \
+                     unconditionally assigns this computed value into a uint16 with no range \
+                     check, so an out-of-range value silently changes into an unrelated value \
+                     via two's-complement truncation (makeobj itself does not validate this)",
+                level_raw = level_raw,
+                value = value,
+            ),
+        );
+        vec![match dat.line_of("level") {
+            Some(line) => diag.at(line, "level".to_string()),
+            None => diag,
+        }]
+    }
+}
+
+/// `building_writer.cc:112-114,207,210,213`: `noinfo`/`noconstruction`/
+/// `needs_ground`/`enables_pax`/`enables_post`/`enables_ware`は
 /// いずれも`obj.get_int(key, 0) > 0`という比較でフラグ化されるだけで、1以外の正の値
 /// （例: `NoInfo=999`）も1と全く同じ扱いになる。makeobjにとってはバグではない
 /// （">0"の意図通りに動作する）が、`.dat`記述者が「0/1のフラグ」のつもりで
 /// 999のような値を書いてしまった入力ミスの可能性が高い。機能的なバグではないため
 /// warning（style note）に留め、"既に正しく動いている"ことを明記する。
+///
+/// `extension_building`はこの一覧に**含めない**: 同じ`obj.get_int(key, 0) > 0`という
+/// 比較式こそ使うものの（building_writer.cc:203）、`true`になった場合の帰結が
+/// この6フィールドとは全く異なる。`extension_building`は`> 0`ならその場で
+/// `dbg->fatal("extension_building is obsolete keyword for %s; ...")`となり、単なる
+/// 「1と同じ扱いになるだけ」のスタイルノートでは済まない（`ObsoleteKeywordRule`が
+/// この特別扱いを別のerror診断として検出する）。
 const BOOLEAN_STYLE_FIELDS: &[&str] = &[
     "noinfo",
     "noconstruction",
     "needs_ground",
-    "extension_building",
     "enables_pax",
     "enables_post",
     "enables_ware",

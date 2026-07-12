@@ -73,6 +73,19 @@
 //! building, 1=tourist attraction...」というインデックスごとの意味）の妥当性検証は
 //! ゲーム実行時ロジック（`skin_desc_t`側でインデックスの意味を解釈する）の領分であり
 //! makeobj側には一切登場しないため対象外。
+//!
+//! ただし`name=`の既知値照合については`menu`/`cursor`とは挙動が異なる点に注意
+//! （`symbol.rs`冒頭のdocコメントで発見した内容と同種）。`name=`が
+//! `KNOWN_MISC_NAMES`のいずれとも一致しない場合、ゲーム実行時の
+//! `skinverwaltung_t::register_desc()`（`simskin.cc:195-227`）は`obj=cursor`/
+//! `obj=menu`とは異なり実際に`dbg->warning("Spurious object '%s' loaded (will not be
+//! referenced anyway)!", ...)`を出す（`type==cursor || type==menu`という
+//! 「警告にならない」分岐に`misc`が含まれないため）。さらに`misc`は
+//! `type==cursor || type==symbol`という`fakultative_objekte`フォールバック
+//! （`simskin.cc:209-213`、`common::FAKULTATIVE_SKIN_NAMES`参照）の対象にも
+//! ならない（`simskin.cc:214`の"currently no misc objects allowed"というコメント
+//! 通り）ため、`KNOWN_MISC_NAMES`の5件のみが既知値となる。この警告は
+//! `common::UnknownSkinNameRule`（`obj=symbol`と共有）で検出する。
 
 use super::common;
 use crate::diagnostics::Diagnostic;
@@ -109,11 +122,16 @@ pub const KNOWN_MISC_NAMES: &[&str] = &[
 
 /// ルール実装本体は`menu`/`cursor`/`symbol`/`smoke`/`field`/`misc`の6種別で
 /// 共有される`common::AllImagesRule`（skin_writer_t::write_objそのもの、根拠は
-/// 上記コメント参照）。
+/// 上記コメント参照）。`common::UnknownSkinNameRule`は`obj=symbol`/`obj=misc`の
+/// みが対象（`menu`/`cursor`/`smoke`/`field`には無い。冒頭docコメント参照）。
 pub fn all() -> Vec<Box<dyn Rule>> {
     vec![
         Box::new(common::AllImagesRule),
         Box::new(common::NameAndCopyrightStringFieldRule),
+        Box::new(common::UnknownSkinNameRule {
+            obj_type: "misc",
+            known_names: KNOWN_MISC_NAMES.to_vec(),
+        }),
     ]
 }
 

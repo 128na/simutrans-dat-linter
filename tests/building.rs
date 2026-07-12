@@ -298,3 +298,100 @@ fn capacity_narrow_int_overflow_is_detected() {
         "narrow-int-overflow"
     ));
 }
+
+#[test]
+fn extension_building_zero_is_not_obsolete_keyword() {
+    // building_writer.cc:203の実際の条件は`obj.get_int("extension_building", 0) > 0`
+    // であり、`extension_building=0`はこの条件を満たさないためfatalにならない。
+    // 旧実装はキーの存在有無（.is_some()）だけを見ており、この明示的な0指定を
+    // 誤ってobsolete-keywordとして検出していた（偽陽性）。
+    assert!(
+        !has_error(
+            &check("building_extension_building_zero_valid.dat"),
+            "obsolete-keyword"
+        ),
+        "extension_building=0はobsolete-keywordを出すべきではない"
+    );
+}
+
+#[test]
+fn extension_building_positive_value_is_still_obsolete_keyword() {
+    // extension_building=5（1以外の正の値）でも`obj.get_int(...) > 0`は真になるため、
+    // 引き続きobsolete-keywordが検出されるべき（BOOLEAN_STYLE_FIELDSからの除外が
+    // 「常に問題なし」に倒れていないことの回帰テスト）。
+    assert!(has_error(
+        &check("building_extension_building_positive_is_obsolete.dat"),
+        "obsolete-keyword"
+    ));
+}
+
+#[test]
+fn dims_zero_after_sint16_truncation_is_detected() {
+    // Dims=65536,3: building_writer.cc:80-97はDimsの各値をkoord（sint16の
+    // x/y）へ範囲チェック無しに代入する。65536はsint16へ切り詰めると0になり、
+    // size.x*size.y==0でdbg->fatalになる。生のi64値(65536*3=196608)のまま
+    // 判定するとこのゼロサイズを見逃す。
+    assert!(has_error(
+        &check("building_dims_sint16_truncation.dat"),
+        "zero-size"
+    ));
+}
+
+#[test]
+fn chance_narrow_int_overflow_is_detected() {
+    // chance=300はuint8の範囲(0..255)外。building_writer.cc:223,361の
+    // `uint8 const chance = obj.get_int("chance", 100);`。
+    assert!(has(
+        &check("building_chance_narrow_int_overflow.dat"),
+        Severity::Warning,
+        "narrow-int-overflow"
+    ));
+}
+
+#[test]
+fn animation_time_narrow_int_overflow_is_detected() {
+    // animation_time=100000はuint16の範囲(0..65535)外。building_writer.cc:116,364の
+    // `uint16 const animation_time = obj.get_int("animation_time", 300);`。
+    assert!(has(
+        &check("building_animation_time_narrow_int_overflow.dat"),
+        Severity::Warning,
+        "narrow-int-overflow"
+    ));
+}
+
+#[test]
+fn allow_underground_narrow_int_overflow_is_detected() {
+    // allow_underground=300はuint8の範囲(0..255)外。building_writer.cc:259,368の
+    // `uint8 allow_underground = obj.get_int("allow_underground", 2);`。
+    assert!(has(
+        &check("building_allow_underground_narrow_int_overflow.dat"),
+        Severity::Warning,
+        "narrow-int-overflow"
+    ));
+}
+
+#[test]
+fn level_zero_underflow_is_detected() {
+    // level=0: building_writer.cc:102の`uint16 level = obj.get_int("level", 1) - 1;`
+    // により`0 - 1`が計算され、uint16への代入で65535へ静かにラップアラウンドする。
+    assert!(has(
+        &check("building_level_narrow_int_overflow.dat"),
+        Severity::Warning,
+        "narrow-int-overflow"
+    ));
+}
+
+#[test]
+fn level_extreme_negative_value_does_not_panic_and_is_detected() {
+    // PR #18でのgemini-code-assist指摘の回帰テスト: level=i64::MINのような
+    // 極端な値だと、素朴な`level_raw - 1`という引き算自体がi64の範囲を
+    // オーバーフローし、debugビルド（オーバーフローチェック有効時）でこの
+    // dat_linter自身がpanicする恐れがあった。`(1..=65536).contains(&level_raw)`で
+    // 範囲チェックしてから`wrapping_sub(1)`で計算する実装に修正済みで、
+    // panicせず正しくnarrow-int-overflow警告が出ることを確認する。
+    assert!(has(
+        &check("building_level_extreme_negative_overflow.dat"),
+        Severity::Warning,
+        "narrow-int-overflow"
+    ));
+}
