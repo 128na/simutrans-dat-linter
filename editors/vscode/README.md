@@ -24,6 +24,10 @@ Type an obj form such as `buidling=res` to generate a template for that addon.
 
 Normalizes parameter order and letter case.
 
+## Key/value completion *
+
+Suggests valid keys for the current obj type, and valid values for keys such as `waytype=`, `direction=`, `type=`, or `location=`.
+
 ## Parameter check (lint) *
 
 Flags missing parameters and value mistakes.
@@ -46,6 +50,7 @@ This extension does not bundle `dat_linter` itself. Install it separately before
 - Installation: https://github.com/128na/simutrans-dat-linter
   (download the executable for your OS from the releases page)
 - The `--format json` option requires `dat_linter 0.1.2` or later. This extension will not work with older versions.
+- Key/value completion is powered by `dat_linter keys --format json`, which requires a `dat_linter` build that includes the `known_values.per_obj_type` field (added after v0.2.0; not yet in a tagged release as of this writing). On an older version, completion is silently disabled (check the "Simutrans dat_linter" output channel for details) while syntax highlighting, formatting, and lint keep working normally.
 
 ## Migrating from the old extension (`128na/simutrans-vscode-extention`)
 
@@ -84,6 +89,10 @@ factory の `location` 値、`climates` 値、`menu`/`cursor`/`symbol`/`misc`/`g
 
 パラメーターの順序を整えたり大文字・小文字を整えます。
 
+## キー・値の入力補完 ※
+
+現在の obj 種別に応じたキー名の候補、および `waytype=`・`direction=`・`type=`・`location=` などのキーに応じた既知の値の候補を提示します。
+
 ## パラメーターチェック（lint） ※
 
 パラーメーターの不足や値のミスを指摘します。
@@ -106,6 +115,7 @@ factory の `location` 値、`climates` 値、`menu`/`cursor`/`symbol`/`misc`/`g
 - 本体・インストール方法: https://github.com/128na/simutrans-dat-linter
   （リリースページから OS にあった実行ファイルをダウンロードしてください）
 - `--format json` オプションは `dat_linter 0.1.2` 以降が対応しています。それより古いバージョンではこの拡張は動作しません。
+- キー・値の入力補完は `dat_linter keys --format json` の `known_values.per_obj_type` フィールドを利用しており、これを含むバージョン（v0.2.0以降の未リリースビルド。この文章を書いている時点ではまだタグ付きリリースはありません）が必要です。それより古いバージョンでは補完機能のみ静かに無効化されます（詳細は "Simutrans dat_linter" 出力チャンネルを参照）。シンタックスハイライト・フォーマット・lint は引き続き通常通り動作します。
 
 ## 旧拡張(`128na/simutrans-vscode-extention`)からの移行
 

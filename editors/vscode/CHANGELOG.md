@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Key/value completion for `.dat` files (`vscode.languages.registerCompletionItemProvider`,
+  triggered on `=`): suggests valid keys for the current record's obj type, and valid values for
+  `waytype=`/`direction=` and any key covered by `known_values.per_obj_type` (`type=`, `location=`,
+  `climates=`, skin-name `name=`). Data comes from `dat_linter keys --format json`, fetched once at
+  activation and cached in memory (see `src/completion.ts`); a file with no `obj=` in scope, or a
+  `dat_linter` too old to support `keys --format json`, silently disables completion (logged to the
+  new "Simutrans dat_linter" output channel) rather than showing an error. The current record's obj
+  type is resolved by scanning upward from the cursor to the nearest `-`-prefixed record separator
+  (mirroring `src/parser.rs`'s handling of multiple obj definitions concatenated in one file), so
+  completion stays correct even when several records share a `.dat` file.
 - Syntax highlighting for `.dat` files: registers a new `simutrans-dat` language
   (`language-configuration.json` + `syntaxes/simutrans-dat.tmLanguage.json`, scope
   `source.simutrans-dat`). The grammar's key list and waytype/direction value lists are
