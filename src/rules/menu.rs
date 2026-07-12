@@ -137,6 +137,37 @@ use crate::parser::DatFile;
 use crate::registry::Rule;
 use std::path::Path;
 
+/// `src/simutrans/simskin.cc`の`menu_objekte`配列（14要素、simskin.cc:98-115）。
+/// ゲーム実行時の`skinverwaltung_t::register_desc()`（simskin.cc:195-228）が
+/// `obj=menu`の`.dat`の**`name=`フィールド**（`.dat`記述側のkey/valueフィールドの1つと
+/// いうより、そのobjectを識別するトップレベルの名前）を`spezial_obj_tpl.h:36-50`の
+/// `register_desc<desc_t>`で`strcmp`（大文字小文字を**区別する**）照合し、UI要素として
+/// 個別に紐づける。他の`known_values`定数と異なり、makeobjの`descriptor/writer/`
+/// （コンパイル時）ではなくゲーム本体のランタイムコード（`simskin.cc`、pak読み込み時）が
+/// 根拠である点に注意（`common::FAKULTATIVE_SKIN_NAMES`のdocコメント参照）。
+///
+/// menuは`type==cursor || type==symbol`という`fakultative_objekte`フォールバック条件
+/// （simskin.cc:209）に該当しないため、この14件のみが対象。一致しない`name=`は
+/// fatal/warningにはならず、単に特殊なUI要素に紐づかないだけである
+/// （`extra_menu_obj`という別の仕組みで任意の名前が許容されるため、`register_desc`
+/// 自体は常に`true`を返す。simskin.cc:213-223参照）。
+pub const KNOWN_MENU_NAMES: &[&str] = &[
+    "Button",
+    "Roundbutton",
+    "Checkbutton",
+    "Posbutton",
+    "Scrollbar",
+    "Divider",
+    "Editfield",
+    "Listbox",
+    "Back",
+    "Gadget",
+    "GeneralTools",
+    "SimpleTools",
+    "DialogeTools",
+    "BarTools",
+];
+
 /// ルール実装本体は`menu`/`cursor`/`symbol`/`smoke`/`field`/`misc`の6種別で
 /// 共有される`common::AllImagesRule`（skin_writer_t::write_objそのもの、根拠は
 /// 上記コメント参照）。

@@ -123,6 +123,45 @@ use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
 
+/// `src/simutrans/descriptor/ground_desc.cc`の`grounds[]`配列（12要素、
+/// ground_desc.cc:357-370）。`obj=ground`の`.dat`の`name=`フィールドが一致しうる
+/// 特殊名で、`ground_desc_t::register_desc()`（ground_desc.cc:393-417）が
+/// `spezial_obj_tpl.h:36-50`の`register_desc<desc_t>`（`strcmp`、大文字小文字を
+/// **区別する**）を通じて照合する。他の`known_values`定数と異なり、makeobjの
+/// `descriptor/writer/`（コンパイル時）ではなくゲーム本体のランタイムコード
+/// （`ground_desc.cc`、pak読み込み時）が根拠である点は`common::FAKULTATIVE_SKIN_NAMES`
+/// のdocコメント参照。
+///
+/// `"Water"`（ground_desc.cc:368）は水面アニメーションの段階数
+/// （`water_animation_stages`）を決めるために`name=="Water"`を特別扱いする
+/// （ground_desc.cc:401-414）。この`"Water"`は`obj=ground`の**トップレベル
+/// `name=`**であり、`common::KNOWN_CLIMATES`の`climates=`**フィールド値**の
+/// `"water"`（気候ビット）とは大文字小文字も意味も無関係の同綴り異義語である点に
+/// 注意。同様に`ground_desc.cc`内には`climate_names`という別の静的配列
+/// （374-377行目、`"sea","desert",...`、GUI表示用の翻訳前climate名を返す
+/// `get_climate_name_from_bit()`専用）も存在するが、こちらはmakeobj側の
+/// `climates=`フィールド解析（`get_climate.cc`）とは無関係のランタイム専用ヘルパー
+/// であり、`KNOWN_CLIMATES`には使わない（`get_climate.cc`側の`climate_names`が
+/// makeobjの`climates=`検証の一次情報源、`common::KNOWN_CLIMATES`のdocコメント参照）。
+///
+/// 旧VSCode拡張の一覧は`"Shore"`（ground_desc.cc:358）を欠いていた
+/// （`"ShoreTrans"`は含んでいたが、無印の`"Shore"`が漏れていた）。本プロジェクトは
+/// ソースを直接確認し12件全てを含める。
+pub const KNOWN_GROUND_NAMES: &[&str] = &[
+    "Shore",
+    "ClimateTexture",
+    "LightTexture",
+    "ShoreTrans",
+    "SlopeTrans",
+    "Basement",
+    "Slopes",
+    "Fence",
+    "Marker",
+    "Borders",
+    "Water",
+    "Outside",
+];
+
 /// ground_writer.cc:23の`for (int slope = 0; slope < 128; slope++)`そのもの。
 const MAX_SLOPES: u32 = 128;
 

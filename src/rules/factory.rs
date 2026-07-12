@@ -221,6 +221,16 @@ use crate::parser::DatFile;
 use crate::registry::{Rule, RuleContext};
 use std::path::Path;
 
+/// `factory_writer.cc:156-164`のif-elseチェーン（STRICMP、大文字小文字を区別しない）が
+/// 受理する`location=`の既知6値。いずれにも一致しない場合（未指定・誤字含む）は
+/// `dbg->warning`/`dbg->fatal`を一切伴わずに黙って`factory_desc_t::Land`へフォールバック
+/// する（三項演算子チェーンの最終`:`が常に`Land`、164行目）ため、obsolete値という区分は
+/// 存在しない（6値全てが現行有効）。この非fatalフォールバックのため`location`の値検証
+/// ルールは`REJECTED`としている（本ファイル冒頭のdocコメント参照）が、シンタックス
+/// ハイライト用の既知値一覧としては引き続き有用なため`rules/keys.rs`の
+/// `known_values_per_obj_type`が`(factory, location)`としてそのまま公開する。
+pub const KNOWN_FACTORY_LOCATIONS: &[&str] = &["land", "water", "city", "river", "shore", "forest"];
+
 /// building.rsと同じく、`DimsRule`が返す(size_x, size_y, layouts)を
 /// `TileImageRule`のコンストラクタへ渡す必要があるため、ここで一度だけ
 /// `resolve_dims`を呼んで解決してから各ルールを構築する。

@@ -449,9 +449,133 @@ pub fn keys_for(obj_type: ObjType) -> Vec<&'static str> {
 /// - `direction`: `rules/common.rs`の`DIR_CODES`（vehicle/citycar/pedestrianが共有する
 ///   8方向。`.dat`上のキー名としては`emptyimage[s]`のように添字として現れるため、
 ///   `direction`という仮想的な名前で値一覧のみを提供する）
+///
+/// `waytype`/`direction`はどのobj種別でも同じ値集合（`get_waytype()`/`dir_codes`が
+/// obj種別を問わず共有される）だが、`type`/`location`/`climates`/`name`（skin系）は
+/// **obj種別ごとに意味・値集合が異なる**ため、ここには含めず`known_values_per_obj_type`
+/// （obj種別・キー名で明示的にスコープされた別関数）に分離している
+/// （`--format json`のスキーマ設計・`docs/keys.md`参照）。
 pub fn known_values() -> Vec<(&'static str, &'static [&'static str])> {
     vec![
         ("waytype", crate::rules::common::KNOWN_WAYTYPES),
         ("direction", &crate::rules::common::DIR_CODES),
+    ]
+}
+
+/// obj種別・キーの組ごとにスコープされた既知の値一覧の1エントリ。
+///
+/// `type=`（building）・`location=`（factory）・`climates=`（building/tree/groundobj/
+/// factory）・`name=`（menu/cursor/symbol/misc/ground の「特殊スキン名」照合、
+/// `common::FAKULTATIVE_SKIN_NAMES`のdocコメント参照）は、いずれも`known_values()`の
+/// `waytype`/`direction`と異なり**obj種別によって値集合の意味が変わる**
+/// （例えば`type=`はbuilding/factory/roadsign等で全く別の値集合を取りうる）ため、
+/// `(obj_type, key)`の組でスコープした`values`を持つ。`values`は`Vec`（各obj種別の
+/// `KNOWN_*`定数を実行時に結合する場合があるため、`&'static [&'static str]`という
+/// 単一の静的スライスでは表現できない。例: cursor/symbolは自身の固有名一覧と
+/// `common::FAKULTATIVE_SKIN_NAMES`を結合する）。
+pub struct ObjTypeKnownValues {
+    pub obj_type: &'static str,
+    pub key: &'static str,
+    pub values: Vec<&'static str>,
+}
+
+/// `(obj_type, key)`でスコープされた既知値一覧。`known_values()`と同じく
+/// VSCode拡張の値側補完候補データソースだが、こちらはobj種別ごとに意味の異なる
+/// キーを対象とする。各エントリの値の由来・調査根拠は参照先の定数のdocコメントに
+/// 集約されている（重複キュレーションしないという`known_values`と同じ方針）:
+///
+/// - `(building, type)`: `rules/building.rs`の`KNOWN_TYPES`（現行有効15値、空文字列
+///   含む）と`OBSOLETE_TYPES`（makeobjが認識はするがFATALにする10値）を結合したもの
+/// - `(factory, location)`: `rules/factory.rs`の`KNOWN_FACTORY_LOCATIONS`（6値、
+///   obsolete区分なし）
+/// - `(building, climates)`/`(tree, climates)`/`(ground_obj, climates)`/
+///   `(factory, climates)`: `rules/common.rs`の`KNOWN_CLIMATES`（`get_climate_bits()`が
+///   共有する9値、"water"の同義語"sea"含む）を4obj種別それぞれに対して展開したもの
+///   （`climates=`は4obj種別のいずれでも同じ値集合を取るが、`type`/`location`と
+///   同様「意味が及ぶobj種別」を明示するためにobj種別ごとのエントリとして列挙する）
+/// - `(menu, name)`: `rules/menu.rs`の`KNOWN_MENU_NAMES`（14値）
+/// - `(cursor, name)`: `rules/cursor.rs`の`KNOWN_CURSOR_OWN_NAMES`（3値）と
+///   `rules/common.rs`の`FAKULTATIVE_SKIN_NAMES`（21値、symbolと共有）を結合したもの
+/// - `(symbol, name)`: `rules/symbol.rs`の`KNOWN_SYMBOL_OWN_NAMES`（13値）と
+///   `rules/common.rs`の`FAKULTATIVE_SKIN_NAMES`（21値、cursorと共有）を結合したもの
+/// - `(misc, name)`: `rules/misc.rs`の`KNOWN_MISC_NAMES`（5値）
+/// - `(ground, name)`: `rules/ground.rs`の`KNOWN_GROUND_NAMES`（12値）
+///
+/// `name`をキーとする5エントリは、`.dat`のkey=valueフィールドではなく
+/// トップレベルの`name=`（オブジェクトの識別名）を値照合の対象にしている点、
+/// および根拠がmakeobj本体（コンパイル時）ではなくゲーム本体
+/// `src/simutrans/simskin.cc`/`ground_desc.cc`（ランタイム、pak読み込み時）である点が、
+/// `type`/`location`/`climates`（いずれもmakeobj本体の`descriptor/writer/`が根拠）とは
+/// 性質が異なる。各定数のdocコメントに詳細な根拠を記載している。
+pub fn known_values_per_obj_type() -> Vec<ObjTypeKnownValues> {
+    vec![
+        ObjTypeKnownValues {
+            obj_type: ObjType::Building.as_str(),
+            key: "type",
+            values: crate::rules::building::KNOWN_TYPES
+                .iter()
+                .chain(crate::rules::building::OBSOLETE_TYPES.iter())
+                .filter(|v| !v.is_empty())
+                .copied()
+                .collect(),
+        },
+        ObjTypeKnownValues {
+            obj_type: ObjType::Factory.as_str(),
+            key: "location",
+            values: crate::rules::factory::KNOWN_FACTORY_LOCATIONS.to_vec(),
+        },
+        ObjTypeKnownValues {
+            obj_type: ObjType::Building.as_str(),
+            key: "climates",
+            values: crate::rules::common::KNOWN_CLIMATES.to_vec(),
+        },
+        ObjTypeKnownValues {
+            obj_type: ObjType::Tree.as_str(),
+            key: "climates",
+            values: crate::rules::common::KNOWN_CLIMATES.to_vec(),
+        },
+        ObjTypeKnownValues {
+            obj_type: ObjType::GroundObj.as_str(),
+            key: "climates",
+            values: crate::rules::common::KNOWN_CLIMATES.to_vec(),
+        },
+        ObjTypeKnownValues {
+            obj_type: ObjType::Factory.as_str(),
+            key: "climates",
+            values: crate::rules::common::KNOWN_CLIMATES.to_vec(),
+        },
+        ObjTypeKnownValues {
+            obj_type: ObjType::Menu.as_str(),
+            key: "name",
+            values: crate::rules::menu::KNOWN_MENU_NAMES.to_vec(),
+        },
+        ObjTypeKnownValues {
+            obj_type: ObjType::Cursor.as_str(),
+            key: "name",
+            values: crate::rules::cursor::KNOWN_CURSOR_OWN_NAMES
+                .iter()
+                .chain(crate::rules::common::FAKULTATIVE_SKIN_NAMES.iter())
+                .copied()
+                .collect(),
+        },
+        ObjTypeKnownValues {
+            obj_type: ObjType::Symbol.as_str(),
+            key: "name",
+            values: crate::rules::symbol::KNOWN_SYMBOL_OWN_NAMES
+                .iter()
+                .chain(crate::rules::common::FAKULTATIVE_SKIN_NAMES.iter())
+                .copied()
+                .collect(),
+        },
+        ObjTypeKnownValues {
+            obj_type: ObjType::Misc.as_str(),
+            key: "name",
+            values: crate::rules::misc::KNOWN_MISC_NAMES.to_vec(),
+        },
+        ObjTypeKnownValues {
+            obj_type: ObjType::Ground.as_str(),
+            key: "name",
+            values: crate::rules::ground::KNOWN_GROUND_NAMES.to_vec(),
+        },
     ]
 }
