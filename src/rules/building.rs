@@ -434,10 +434,15 @@ impl Rule for LevelNarrowIntRule {
             return Vec::new();
         };
         let level_raw = raw.trim().parse::<i64>().unwrap_or(0);
-        let value = level_raw - 1;
-        if (0..=65535).contains(&value) {
+        // `level_raw - 1`が範囲内(0..=65535)かどうかは、`level_raw`自体が
+        // `1..=65536`かどうかと等価。i64::MINのような極端な値でも
+        // `level_raw - 1`という引き算そのものをオーバーフローさせずに判定できる
+        // （このrust製dat_linter自体がdebugビルドのオーバーフローチェックでpanicしないよう、
+        // 診断メッセージ用の`value`計算はチェック後に`wrapping_sub`で安全に行う）。
+        if (1..=65536).contains(&level_raw) {
             return Vec::new();
         }
+        let value = level_raw.wrapping_sub(1);
         let diag = Diagnostic::warning(
             DiagnosticCode::NarrowIntOverflow,
             t!(ctx.language,

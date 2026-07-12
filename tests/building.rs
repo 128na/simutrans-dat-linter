@@ -380,3 +380,18 @@ fn level_zero_underflow_is_detected() {
         "narrow-int-overflow"
     ));
 }
+
+#[test]
+fn level_extreme_negative_value_does_not_panic_and_is_detected() {
+    // PR #18でのgemini-code-assist指摘の回帰テスト: level=i64::MINのような
+    // 極端な値だと、素朴な`level_raw - 1`という引き算自体がi64の範囲を
+    // オーバーフローし、debugビルド（オーバーフローチェック有効時）でこの
+    // dat_linter自身がpanicする恐れがあった。`(1..=65536).contains(&level_raw)`で
+    // 範囲チェックしてから`wrapping_sub(1)`で計算する実装に修正済みで、
+    // panicせず正しくnarrow-int-overflow警告が出ることを確認する。
+    assert!(has(
+        &check("building_level_extreme_negative_overflow.dat"),
+        Severity::Warning,
+        "narrow-int-overflow"
+    ));
+}
