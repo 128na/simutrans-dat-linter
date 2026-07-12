@@ -1,3 +1,57 @@
+# Simutrans dat_linter (VSCode Extension)
+
+Syntax highlighting, formatting, and parameter validation for Simutrans addon `.dat` files.
+
+![syntax highlighting, formatting](./docs/img1.png)
+
+# Features
+
+## Syntax highlighting
+
+Highlights keys such as `obj=building` for readability.
+
+## Snippets
+
+Type an obj form such as `buidling=res` to generate a template for that addon.
+
+## Formatting *
+
+Normalizes parameter order and letter case.
+
+## Parameter check (lint) *
+
+Flags missing parameters and value mistakes.
+
+![linter](./docs/img4.png)
+
+## Language switching *
+
+Switch between English and Japanese messages.
+
+![english message](./docs/img2.png)
+![japanase message](./docs/img3.png)
+
+## Dependency
+
+Features marked with * require [`dat_linter`](https://github.com/128na/simutrans-dat-linter) to be installed.
+
+This extension does not bundle `dat_linter` itself. Install it separately beforehand and make sure it's on your PATH.
+
+- Installation: https://github.com/128na/simutrans-dat-linter
+  (download the executable for your OS from the releases page)
+- The `--format json` option requires `dat_linter 0.1.2` or later. This extension will not work with older versions.
+
+## Migrating from the old extension (`128na/simutrans-vscode-extention`)
+
+The author (128na) previously published a separate VSCode extension,
+[`128na/simutrans-vscode-extention`](https://github.com/128na/simutrans-vscode-extention) (CC0), which also provides syntax highlighting and snippets for `.dat` files.
+Since both extensions contribute a language definition/grammar for `.dat`, **having both installed at the same time can make highlighting unstable**, as which language ID/grammar actually applies depends on VSCode's resolution order.
+
+As the successor from the same publisher (128na), we recommend uninstalling the old extension once you've adopted this one.
+The lint (Problems panel) and Document Formatting features are implemented independently of language ID (a filename-based selector, `{pattern: "**/*.dat"}`), so they work the same whether or not the old extension is still installed.
+
+---
+
 # Simutrans dat_linter (VSCode 拡張)
 
 Simutrans アドオンの `.dat` を色分けして見やすくしたり、フォーマット、パラメーターの不備をチェックできる拡張です。
