@@ -33,14 +33,22 @@ pub fn run_fmt(args: &FmtArgs, language: Language) -> ExitCode {
     // 優先順位: --no-reorder指定 > config設定（excludeに無ければ有効＝デフォルトtrue相当）。
     let should_reorder = !args.no_reorder && config.is_enabled(DiagnosticCode::FmtReorderApplied);
 
-    let paths = match resolve_paths_or_exit(&args.path, language) {
+    let (paths, had_unreadable_dir) = match resolve_paths_or_exit(&args.path, language) {
         Ok(p) => p,
         Err(code) => return code,
     };
 
     // 単一ファイル指定時は従来通りの出力・終了コードのみ（サマリ行を追加しない）。
+    // ただし、走査中に読み取れなかったサブディレクトリが1件でもあれば
+    // （権限エラー等で一部を見ていない状態）、個々のファイル結果に関わらず
+    // 失敗扱いにする（fs_walk.rs::collect_dat_files_recursiveのdocコメント参照）。
     if paths.len() == 1 {
-        return fmt_one_file(&paths[0], should_reorder, args.write, &config, language).0;
+        let code = fmt_one_file(&paths[0], should_reorder, args.write, &config, language).0;
+        return if had_unreadable_dir && code == ExitCode::SUCCESS {
+            ExitCode::FAILURE
+        } else {
+            code
+        };
     }
 
     // 複数ファイルに解決された場合、`--write`が無いと整形結果をどのstdoutへ
@@ -87,7 +95,7 @@ pub fn run_fmt(args: &FmtArgs, language: Language) -> ExitCode {
         );
     }
 
-    exit_code_for(counts.any_failure)
+    exit_code_for(counts.any_failure || had_unreadable_dir)
 }
 
 /// 1ファイルを整形する。`(ExitCode, warning_count)`を返す
@@ -176,6 +184,30 @@ fn fmt_one_file(
     };
 
     if write {
+        // 修正3: `path`がシンボリックリンク（Windowsのjunction/ファイルsymlink含む）
+        // であれば、`std::fs::write`はリンクを解決してリンク先の実ファイルへ
+        // 書き込んでしまう。検証対象ディレクトリの外側にある任意ファイルが
+        // 書き換わりうるため、書き込み**直前**に`symlink_metadata`
+        // （symlinkを解決しないstat相当）で判定し、symlinkなら書き込みを
+        // スキップして失敗として報告する。読み取りのみの`lint`側は対象外
+        // （`fs_walk.rs::collect_dat_files_recursive`のdocコメント参照）。
+        let is_symlink = std::fs::symlink_metadata(path)
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false);
+        if is_symlink {
+            eprintln!(
+                "{}",
+                t!(language,
+                    ja: "{p}: シンボリックリンクのため書き込みをスキップしました\
+                         （fmt -w はシンボリックリンク経由の書き込みを許可しません）",
+                    en: "{p}: Skipped writing because the path is a symlink \
+                         (fmt -w does not write through symlinks)",
+                    p = path.display(),
+                )
+            );
+            return (ExitCode::FAILURE, warning_count);
+        }
+
         if let Err(e) = std::fs::write(path, &formatted) {
             eprintln!(
                 "{}",
