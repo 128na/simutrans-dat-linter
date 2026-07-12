@@ -97,7 +97,7 @@ export const LINT_FORMAT_JSON_VERSION_HINT: VersionIncompatibilityHint = {
  * stale diagnostics don't linger.
  */
 async function lintDocument(document: vscode.TextDocument): Promise<void> {
-  if (document.getText().trim() === "") {
+  if (/^\s*$/.test(document.getText())) {
     diagnosticCollection.delete(document.uri);
     return;
   }
