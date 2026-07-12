@@ -37,6 +37,28 @@ pub fn check_duplicate_keys(dat: &DatFile, lang: Language) -> Vec<Diagnostic> {
         .collect()
 }
 
+/// obj種別を問わず、パーサレベルで検出した「`=`の無い行」を警告として出す。
+/// real makeobj（`tabfile_t::read()`、`dataobj/tabfile.cc:505-507`）はこの行を
+/// fatalにはせず`dbg->warning("tabfile_t::read", "No data in \"%s\"", line)`を
+/// 出した上で無視するだけなので、Warning severityとする（`src/formatter/mod.rs`の
+/// `fmt-malformed-line`と同じ判定条件を`lint`側でも再現するもの）。
+pub fn check_malformed_lines(dat: &DatFile, lang: Language) -> Vec<Diagnostic> {
+    dat.malformed_lines
+        .iter()
+        .map(|m| {
+            Diagnostic::warning(
+                DiagnosticCode::MalformedLine,
+                t!(lang,
+                    ja: "行に\"=\"が含まれていません（makeobjは\"No data in ...\"として無視します）: \"{text}\"",
+                    en: "The line contains no \"=\" (makeobj ignores it as \"No data in ...\"): \"{text}\"",
+                    text = m.text,
+                ),
+            )
+            .at(m.line, m.text.clone())
+        })
+        .collect()
+}
+
 /// 各obj種別モジュールの`check_<objtype>`関数（22個、`tests/*_lint.rs`専用）が
 /// 共有するディスパッチ経路。
 ///

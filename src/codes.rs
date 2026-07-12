@@ -138,6 +138,7 @@ pub enum DiagnosticCode {
     ImageOmitted,
     // --- lint: src/rules/common.rs ---
     DuplicateKey,
+    MalformedLine,
     MissingWaytype,
     UnknownWaytype,
     WaytypeOk,
@@ -236,6 +237,7 @@ impl DiagnosticCode {
             DiagnosticCode::BooleanStyleFieldNotZeroOrOne => "boolean-style-field-not-zero-or-one",
             DiagnosticCode::ImageOmitted => "image-omitted",
             DiagnosticCode::DuplicateKey => "duplicate-key",
+            DiagnosticCode::MalformedLine => "malformed-line",
             DiagnosticCode::MissingWaytype => "missing-waytype",
             DiagnosticCode::UnknownWaytype => "unknown-waytype",
             DiagnosticCode::WaytypeOk => "waytype-ok",
@@ -599,6 +601,23 @@ impl DiagnosticCode {
                     修正してください",
                 fix_en: "Remove the unnecessary duplicate, or make sure the intended value is on the \
                     first occurrence of the key",
+            },
+            DiagnosticCode::MalformedLine => CodeInfo {
+                code: *self,
+                source: CodeSource::Lint,
+                // fmt-malformed-line（src/formatter/mod.rs）のlint版。同じ判定条件
+                // （`=`を含まない非空行、区切り行`-`・コメント`#`・行頭スペース行を除く）を
+                // src/parser.rsのDatFile::parse/parse_all側でも検出する（以前はparser.rs側が
+                // この種の行を無診断でスキップしていた）。
+                why_ja: "行に`=`が含まれていません（区切り行`-`・コメント`#`・行頭スペース行を除く）。\
+                    real makeobj（tabfile_t::read()、dataobj/tabfile.cc:505-507）はこの行を\
+                    \"No data in ...\"としてdbg->warningを出した上で無視します。fatalにはなりません",
+                why_en: "The line contains no `=` (excluding separator lines starting with `-`, comments \
+                    starting with `#`, and leading-space lines). Real makeobj (tabfile_t::read(), \
+                    dataobj/tabfile.cc:505-507) warns \"No data in ...\" and ignores this line. This is \
+                    not fatal",
+                fix_ja: "key=value形式に修正するか、意図しない行であれば削除してください",
+                fix_en: "Fix the line to key=value form, or remove it if it was not intended",
             },
             DiagnosticCode::MissingWaytype => CodeInfo {
                 code: *self,
@@ -1419,6 +1438,7 @@ pub const ALL: &[DiagnosticCode] = &[
     DiagnosticCode::BooleanStyleFieldNotZeroOrOne,
     DiagnosticCode::ImageOmitted,
     DiagnosticCode::DuplicateKey,
+    DiagnosticCode::MalformedLine,
     DiagnosticCode::MissingWaytype,
     DiagnosticCode::UnknownWaytype,
     DiagnosticCode::WaytypeOk,

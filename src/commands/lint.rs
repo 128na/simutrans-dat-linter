@@ -189,6 +189,7 @@ fn lint_one_file_counts(
             tile_size,
         };
         let mut record_diags = rules::check_duplicate_keys(dat, language);
+        record_diags.extend(rules::check_malformed_lines(dat, language));
         record_diags.extend(rule_set.run(&ctx));
         record_diags.retain(|d| config.is_enabled(d.code));
 
@@ -407,6 +408,7 @@ fn lint_one_file_json(
             tile_size,
         };
         let mut record_diags = rules::check_duplicate_keys(dat, language);
+        record_diags.extend(rules::check_malformed_lines(dat, language));
         record_diags.extend(rule_set.run(&ctx));
         record_diags.retain(|d| config.is_enabled(d.code));
 

@@ -92,6 +92,42 @@ fn parse_returns_only_first_record_for_backward_compat() {
 }
 
 #[test]
+fn bom_prefixed_utf8_file_is_parsed_without_false_positive() {
+    // 修正前は先頭行の`obj`キーが`"\u{feff}obj"`として解釈され、`obj`キーの照合が
+    // 全て失敗する（"obj= は未対応です"という偽陽性エラーになる）バグがあった。
+    let path = testdata_dir().join("bom_utf8.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    assert_eq!(dat.get("obj"), Some("building"));
+    assert_eq!(dat.get("name"), Some("BomName"));
+}
+
+#[test]
+fn malformed_line_without_equals_is_recorded_with_line_number() {
+    // real makeobj (tabfile_t::read(): `else if(*line) { dbg->warning(...) }`) は
+    // `=`の無い非空行を"No data in ..."として警告するだけで読み飛ばす。
+    // 以前のparser.rsはこの行を完全に無診断でスキップしていた。
+    let path = testdata_dir().join("malformed_line.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    assert_eq!(dat.malformed_lines.len(), 1);
+    let m = &dat.malformed_lines[0];
+    assert_eq!(m.line, 3);
+    assert_eq!(m.text, "this line has no equals sign");
+}
+
+#[test]
+fn check_malformed_lines_reports_warning_with_location() {
+    let path = testdata_dir().join("malformed_line.dat");
+    let dat = DatFile::parse(&path).expect("パースに失敗");
+    let diags = rules::check_malformed_lines(&dat, Language::default());
+    assert_eq!(diags.len(), 1);
+    let d = &diags[0];
+    assert_eq!(d.severity, Severity::Warning);
+    assert_eq!(d.code, dat_linter::codes::DiagnosticCode::MalformedLine);
+    let loc = d.location.as_ref().expect("locationが付与されているべき");
+    assert_eq!(loc.line, 3);
+}
+
+#[test]
 fn shift_jis_encoded_file_is_decoded_as_fallback() {
     // 古いpak128.japan系アドオンはShift-JIS(CP932)のまま配布されていることがある。
     // UTF-8として不正でも「読み込み失敗」にせず、CP932としてデコードして継続する。
