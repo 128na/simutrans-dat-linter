@@ -26,7 +26,7 @@
 | `keys --format json`の`known_values.waytype`/`direction`後方互換性維持 | Preventive | JSONスキーマを`BTreeMap`から明示的構造体へ変更しつつ既存2フィールドの形は維持、`per_obj_type`は同階層への追加のみ | Strong | 🟢 |
 | BOM付き`.dat`ファイルで`obj`キー照合が誤って全滅しない | Preventive | `parser.rs`のBOM除去回帰テスト（`bom_utf8.dat`） | Strong | 🟢 |
 | `=`の無い不正な行の検知（`MalformedLine`診断） | Detective | `parser.rs`/`malformed_line.dat`・末尾/冒頭の不正行を取りこぼさないエッジケーステスト | Strong | 🟢 |
-| `<...>`算術評価の演算子優先順位（`%>/>*>-> +`）再現 | Preventive | `param_expansion.rs`の優先順位依存ケーステスト（`$0+$1*2`） | Strong | 🟢 |
+| `<...>`算術評価の演算子優先順位（`% > / > * > - > +`）再現 | Preventive | `param_expansion.rs`の優先順位依存ケーステスト（`$0+$1*2`） | Strong | 🟢 |
 | roadsignのis_signal系フラグ判定（C++の素の真偽判定と一致） | Preventive | `roadsign_signal_negative_one.dat` | Strong | 🟢 |
 | couplings制約スキャンの空値終端一致（`str.empty()`相当） | Preventive | `couplings_empty_constraint/EmptyNextConstraint.dat` | Strong | 🟢 |
 | building `extension_building`の`>0`判定一致 | Preventive | `extension_building=0/positive`各fixture | Strong | 🟢 |
@@ -58,7 +58,7 @@
 | グラマー生成のCI drift検知 | Detective、CI組込済み | `git diff --exit-code`、実バイナリ出力とコミット済みファイルを直接比較 | Strong | 🟢 |
 | `package.json` contributes（language/grammar/snippets）の実機登録検証 | Detective | `test/extension.test.ts`に2件追加: `vscode.languages.getLanguages()`に`"simutrans-dat"`が含まれること、`.dat`ファイルを開いた際に`document.languageId`が`"simutrans-dat"`になることをassert（grammar/snippetsは既存の`test:grammar`/`test:snippets`が別途カバー） | Strong | 🟢 |
 | 空/空白のみのバッファでlintを実行しない（誤った"obj=未対応"表示防止） | Preventive | `test/extension.test.ts`の空ファイル/全消去テスト2件 | Strong | 🟢 |
-| `known_values.per_obj_type`（type/location/climates/skin名）のシンタックスハイライト反映 | Detective、CI drift検知組込済み | `test/grammar`3fixture・`generate:grammar`再実行でdrift無し確認 | Strong | 🟢 |
+| `known_values.per_obj_type`（type/location/climates/skin名）のシンタックスハイライト反映 | Detective、CI drift検知組込済み | `test/grammar`の3つのfixture・`generate:grammar`再実行でdrift無し確認 | Strong | 🟢 |
 | 入力補完のobj種別判定（`-`区切りレコード境界を跨がない） | Preventive | `test/completion.test.ts`の`findObjTypeAtLine`複数レコードテスト12件 | Strong | 🟢 |
 | Workspace Trust未対応（未信頼ワークスペースでの任意コード実行リスク） | Preventive（`package.json`の`capabilities.untrustedWorkspaces.supported:false`＋`activate()`内多層防御ガード） | `shouldActivateInWorkspace`単体テスト | Strong | 🟢 |
 | `KeysDataCache.load()`の非同期呼び出しレース（古い設定変更の結果が新しい結果を上書き） | Preventive（世代カウンタ） | `test/completion.test.ts`のレース再現テスト（遅い方が先に発行され後から解決するケース3パターン） | Strong | 🟢 |
