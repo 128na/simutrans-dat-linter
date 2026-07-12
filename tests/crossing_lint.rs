@@ -80,6 +80,26 @@ fn missing_speed_is_detected() {
 }
 
 #[test]
+fn speed_truncated_to_zero_is_detected_as_missing_speed() {
+    // speed[0]=65536はuint16へ切り詰めると65536 mod 65536=0になり、
+    // crossing_writer.cc:87-92の`const uint16 speed0 = obj.get_int(...)`が
+    // 実際に0として扱われるため`A maxspeed MUST be given for both ways!`で
+    // FATALになる。以前の実装はi64の生値（非ゼロ）で判定していたため、この
+    // ケースをcrossing-missing-speedとして検出できず、単なるnarrow-int-overflow
+    // Warningとしてしか報告していなかった。
+    let diags = check("crossing_speed_truncates_to_zero.dat");
+    assert!(
+        has_error(&diags, "crossing-missing-speed"),
+        "uint16切り詰め後に0になるspeed[0]=65536はcrossing-missing-speedとして\
+         検出されるべき: {diags:?}"
+    );
+    assert!(
+        has(&diags, Severity::Warning, "narrow-int-overflow"),
+        "speed[0]=65536自体は範囲外の生値としてnarrow-int-overflowも出るはず: {diags:?}"
+    );
+}
+
+#[test]
 fn missing_openimage_is_detected() {
     assert!(has_error(
         &check("crossing_missing_openimage.dat"),

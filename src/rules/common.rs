@@ -656,6 +656,21 @@ pub fn check_narrow_int_overflow_field(
     }
 }
 
+/// C++の「値の広い整数型から狭い符号なし整数型への暗黙変換」（2の補数によるmod
+/// 2^bit_width、C++標準[conv.integral]により未定義動作ではなく明確に定義された
+/// 挙動）を再現する。`check_narrow_int_overflow_field`は「範囲外なら警告するだけ」
+/// だが、こちらは**切り詰め後の値そのもの**を返す。呼び出し元がその値を使って
+/// 後続の分岐（例: crossingの`speed[N]==0`判定、groundobjの`speed==0`による
+/// 固定物/移動物の分岐選択）を行う必要がある場合に使う（範囲チェックだけでは
+/// 「切り詰め後にたまたま0になり、本来FATALになるべきケースを見逃す」問題を
+/// 解決できないため）。
+///
+/// `i64::rem_euclid`は負数に対しても常に`0..2^bit_width`の非負の結果を返すため、
+/// 符号なし整数への変換（mod 2^N）の定義と一致する。
+pub fn truncate_to_unsigned(value: i64, bit_width: u32) -> i64 {
+    value.rem_euclid(1i64 << bit_width)
+}
+
 /// 画像参照からファイル名を取り出す。`image_writer_t::write_obj`
 /// （image_writer.cc:372-388）は次の2段階でファイル名の幹を取り出し、
 /// 無条件で`".png"`を付与する:

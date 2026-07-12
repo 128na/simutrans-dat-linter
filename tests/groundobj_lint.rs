@@ -80,6 +80,26 @@ fn missing_waytype_and_images_is_not_an_error() {
 }
 
 #[test]
+fn speed_truncated_to_zero_uses_fixed_branch() {
+    // speed=65536はuint16へ切り詰めると65536 mod 65536=0になり、
+    // groundobj_writer.cc:39の`uint16 const speed = obj.get_int("speed", 0);`が
+    // 実際には固定物分岐（speed==0）に入る。以前の実装はi64の生値（非ゼロ）で
+    // 分岐を選んでいたため、誤って移動物分岐（8方向必須）に入り、image[0][0]
+    // しか定義していないこのfixtureで8件の偽陽性missing-season-imageを
+    // 出していた。
+    let diags = check("groundobj_speed_truncates_to_fixed.dat");
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|(s, _)| *s == Severity::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "uint16切り詰め後に0になるspeed=65536は固定物分岐に入り、image[0][0]のみで\
+         足りるはず: {errors:?}"
+    );
+}
+
+#[test]
 fn missing_season_image_is_detected() {
     assert!(has_error(
         &check("groundobj_missing_season_image.dat"),
