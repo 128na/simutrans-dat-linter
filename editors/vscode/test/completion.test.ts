@@ -109,6 +109,19 @@ suite("completion: findObjTypeAtLine (pure function)", () => {
     assert.strictEqual(findObjTypeAtLine(lines, 4), "building");
   });
 
+  test("a tab-indented line is NOT treated as a skippable continuation (matches src/parser.rs and real makeobj's tabfile_t::read_line, which only skip '#' and ' ')", () => {
+    // "\tobj=vehicle" is not skipped, but its extracted key is "\tobj" (tab
+    // preserved, since only trailing whitespace is trimmed), which never
+    // equals "obj" -- so it's simply ignored as an unrecognized key, and the
+    // real "obj=building" line above still governs. This exercises the same
+    // "unrecognized key gets skipped without affecting obj type" codepath
+    // that a tab-conscious isSkippableLine would use for a *different*
+    // reason (treating it as a skippable continuation) -- but the outcome
+    // for the current cursor line must remain "building" either way.
+    const lines = ["obj=building", "\tobj=vehicle", "name=Foo"];
+    assert.strictEqual(findObjTypeAtLine(lines, 2), "building");
+  });
+
   test("a record separator is any line starting with '-', not only an all-dashes line", () => {
     const lines = ["obj=building", "name=StageA", "-- not a full dash rule --", "obj=vehicle", "name=Loco"];
     assert.strictEqual(findObjTypeAtLine(lines, 4), "vehicle");
@@ -258,6 +271,81 @@ suite("completion: createCompletionItemProvider (pure logic, canned keys data)",
     assert.strictEqual(items, undefined);
   });
 
+  test("offers every obj type name for an 'obj=' value", async () => {
+    const document = await vscode.workspace.openTextDocument({
+      content: "obj=",
+      language: "simutrans-dat",
+    });
+    const position = new vscode.Position(0, "obj=".length);
+    const items = provider.provideCompletionItems!(
+      document,
+      position,
+      new vscode.CancellationTokenSource().token,
+      { triggerKind: vscode.CompletionTriggerKind.TriggerCharacter, triggerCharacter: "=" }
+    ) as vscode.CompletionItem[];
+
+    assert.ok(items, "expected completion items, got none");
+    assert.deepStrictEqual(
+      items.map((i) => i.label),
+      ["building", "vehicle"]
+    );
+  });
+
+  test("key extraction trims leading whitespace, not just trailing", async () => {
+    // Regression test: the key slice used to only trim trailing whitespace
+    // (`.replace(/\s+$/, "")`), so a value line with leading whitespace
+    // before the key (e.g. "  type=") would fail to match "type" and offer
+    // no completions. `.trim()` fixes this symmetrically.
+    const document = await vscode.workspace.openTextDocument({
+      content: "obj=building\n  type=",
+      language: "simutrans-dat",
+    });
+    const position = new vscode.Position(1, "  type=".length);
+    const items = provider.provideCompletionItems!(
+      document,
+      position,
+      new vscode.CancellationTokenSource().token,
+      { triggerKind: vscode.CompletionTriggerKind.TriggerCharacter, triggerCharacter: "=" }
+    ) as vscode.CompletionItem[];
+
+    assert.ok(items, "expected completion items, got none");
+    assert.deepStrictEqual(
+      items.map((i) => i.label),
+      ["res", "com", "ind", "station", "extension"]
+    );
+  });
+
+  test("returns no completions when the cursor's line is a '#' comment", async () => {
+    const document = await vscode.workspace.openTextDocument({
+      content: "obj=building\n# waytype=",
+      language: "simutrans-dat",
+    });
+    const position = new vscode.Position(1, "# waytype=".length);
+    const items = provider.provideCompletionItems!(
+      document,
+      position,
+      new vscode.CancellationTokenSource().token,
+      { triggerKind: vscode.CompletionTriggerKind.TriggerCharacter, triggerCharacter: "=" }
+    );
+    assert.strictEqual(items, undefined);
+  });
+
+  test("returns no completions when the cursor's line is a '-' record separator", async () => {
+    const document = await vscode.workspace.openTextDocument({
+      content: "obj=building\n-------------------------------------------------------------------------------",
+      language: "simutrans-dat",
+    });
+    const line1 = document.lineAt(1).text;
+    const position = new vscode.Position(1, line1.length);
+    const items = provider.provideCompletionItems!(
+      document,
+      position,
+      new vscode.CancellationTokenSource().token,
+      { triggerKind: vscode.CompletionTriggerKind.Invoke, triggerCharacter: undefined }
+    );
+    assert.strictEqual(items, undefined);
+  });
+
   test("returns undefined when no keys data is cached (e.g. dat_linter failed to load)", async () => {
     const noDataProvider = createCompletionItemProvider(() => undefined);
     const document = await vscode.workspace.openTextDocument({
@@ -342,5 +430,79 @@ suite("dat_linter VSCode extension completion integration (real dat_linter, real
       labels.includes("track"),
       `expected a known waytype value among real dat_linter-backed completions, got: ${JSON.stringify(labels)}`
     );
+  });
+
+  test("changing simutransDatLinter.executablePath reloads the keys cache without a window reload", async function () {
+    // Regression test: registerDatCompletionItemProvider used to load the
+    // keys cache exactly once, at activation. Pointing executablePath at a
+    // nonexistent binary *after* activation used to have no effect on
+    // completions (the stale, still-valid cache kept serving them) -- now it
+    // must re-load and clear the cache, and pointing it back must restore
+    // completions again, all without reactivating the extension.
+    this.timeout(30000);
+
+    const waytypeDocument = async (): Promise<vscode.CompletionList> => {
+      const document = await vscode.workspace.openTextDocument({
+        content: "obj=building\nwaytype=",
+        language: "simutrans-dat",
+      });
+      await vscode.window.showTextDocument(document);
+      const position = new vscode.Position(1, document.lineAt(1).text.length);
+      return vscode.commands.executeCommand<vscode.CompletionList>(
+        "vscode.executeCompletionItemProvider",
+        document.uri,
+        position
+      );
+    };
+
+    const pollUntil = async (check: () => Promise<boolean>, deadlineMs: number): Promise<boolean> => {
+      const deadline = Date.now() + deadlineMs;
+      for (;;) {
+        if (await check()) {
+          return true;
+        }
+        if (Date.now() > deadline) {
+          return false;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    };
+
+    const config = vscode.workspace.getConfiguration("simutransDatLinter");
+    const originalExecutablePath = config.get<string>("executablePath");
+
+    try {
+      await config.update(
+        "executablePath",
+        "dat_linter_does_not_exist_xyz",
+        vscode.ConfigurationTarget.Global
+      );
+
+      const brokenCacheTakesEffect = await pollUntil(async () => {
+        const list = await waytypeDocument();
+        // Don't assert `list.items.length === 0`: VSCode's built-in
+        // word-based suggestions can still populate the list from words
+        // already in the document, independent of our provider. What must
+        // disappear is specifically our known-waytype-value completions.
+        return !list.items.some((i) => i.label === "track");
+      }, 15000);
+      assert.ok(
+        brokenCacheTakesEffect,
+        "expected the known-waytype-value completion ('track') to disappear after pointing executablePath at a nonexistent binary"
+      );
+
+      await config.update("executablePath", originalExecutablePath, vscode.ConfigurationTarget.Global);
+
+      const restoredCacheTakesEffect = await pollUntil(async () => {
+        const list = await waytypeDocument();
+        return list.items.some((i) => i.label === "track");
+      }, 15000);
+      assert.ok(
+        restoredCacheTakesEffect,
+        "expected completions to come back after restoring the original executablePath"
+      );
+    } finally {
+      await config.update("executablePath", originalExecutablePath, vscode.ConfigurationTarget.Global);
+    }
   });
 });

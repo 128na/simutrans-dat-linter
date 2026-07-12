@@ -126,9 +126,15 @@ export function parseDatLinterKeysJson(stdout: string): DatLinterKeysJson {
 }
 
 function isSkippableLine(line: string): boolean {
-  // Mirrors src/parser.rs `parse_records`: blank lines, `#` comments, and
-  // lines that start with a space (continuation-style indentation) are
-  // skipped without affecting record boundaries or key/value state.
+  // Mirrors src/parser.rs `parse_records` (`line.is_empty() || line.starts_with('#') ||
+  // line.starts_with(' ')`), which in turn mirrors real makeobj's
+  // `tabfile_t::read_line()` (`dataobj/tabfile.cc`: the read loop skips a line only
+  // when `*dest == '#' || *dest == ' '`). Deliberately does NOT skip tab
+  // (`\t`)-indented lines: neither the Rust parser nor real makeobj treats a
+  // tab-led line as a skippable comment/continuation, so this must not either
+  // (checked against both sources before writing this comment; a prior
+  // suggestion to add `line.startsWith("\t")` here was rejected precisely
+  // because it would have diverged from actual parser/makeobj behavior).
   return line.length === 0 || line.startsWith("#") || line.startsWith(" ");
 }
 
@@ -244,13 +250,14 @@ export class KeysDataCache {
 /**
  * Builds the document's lines as a plain string array, for feeding into the
  * pure `findObjTypeAtLine` helper.
+ *
+ * Uses a single `getText()` call + split rather than looping
+ * `document.lineAt(i)` per line: each `lineAt` call is a bridge call into the
+ * VSCode extension host, so looping it over every line in the document is
+ * needlessly slow for large .dat files.
  */
 function documentLines(document: vscode.TextDocument): string[] {
-  const lines: string[] = new Array(document.lineCount);
-  for (let i = 0; i < document.lineCount; i++) {
-    lines[i] = document.lineAt(i).text;
-  }
-  return lines;
+  return document.getText().split(/\r?\n/);
 }
 
 /**
@@ -259,14 +266,21 @@ function documentLines(document: vscode.TextDocument): string[] {
  * `() => cache.get()`, injected here so `test/completion.test.ts` can supply
  * canned data without spawning a real dat_linter process).
  *
- * Decides between the two completion modes (see CLAUDE.md task description)
- * purely from whether the text before the cursor on the current line
- * already contains a `=`:
+ * Returns no items when the cursor's line, trimmed, starts with `#` (comment)
+ * or `-` (record separator) -- neither is a place a key or value belongs, so
+ * offering completions there would just be noise.
+ *
+ * Otherwise decides between the two completion modes (see CLAUDE.md task
+ * description) purely from whether the text before the cursor on the current
+ * line already contains a `=`:
  *   - no `=` yet: still typing the key name -> offer the current record's
  *     obj type's valid keys (`obj_types[].keys`).
  *   - `=` already present: typing the value -> offer known values for that
- *     specific key. `waytype`/`direction` are looked up directly in
- *     `known_values` (obj-type-independent); any other key is looked up in
+ *     specific key. `obj` is special-cased to offer every obj type name
+ *     (`obj_types[].obj_type`), since it's the key that determines what
+ *     "current record's obj type" even means for every other key.
+ *     `waytype`/`direction` are looked up directly in `known_values`
+ *     (obj-type-independent); any other key is looked up in
  *     `known_values.per_obj_type` scoped to (current obj type, key).
  */
 export function createCompletionItemProvider(
@@ -282,9 +296,15 @@ export function createCompletionItemProvider(
         return undefined;
       }
 
+      const lineText = document.lineAt(position.line).text;
+      const trimmedLine = lineText.trim();
+      if (trimmedLine.startsWith("#") || trimmedLine.startsWith("-")) {
+        return undefined;
+      }
+
       const objType = findObjTypeAtLine(documentLines(document), position.line);
 
-      const linePrefix = document.lineAt(position.line).text.slice(0, position.character);
+      const linePrefix = lineText.slice(0, position.character);
       const eqIndex = linePrefix.indexOf("=");
 
       if (eqIndex === -1) {
@@ -300,9 +320,11 @@ export function createCompletionItemProvider(
         );
       }
 
-      const key = linePrefix.slice(0, eqIndex).replace(/\s+$/, "").toLowerCase();
+      const key = linePrefix.slice(0, eqIndex).trim().toLowerCase();
       let values: string[] | undefined;
-      if (key === "waytype") {
+      if (key === "obj") {
+        values = data.obj_types.map((o) => o.obj_type);
+      } else if (key === "waytype") {
         values = data.known_values.waytype;
       } else if (key === "direction") {
         values = data.known_values.direction;
@@ -331,6 +353,12 @@ export function createCompletionItemProvider(
  * return no items (see `KeysDataCache`'s doc comment) until it resolves,
  * rather than activation blocking on a child process before VSCode
  * considers the extension started.
+ *
+ * Also watches for changes to the `simutransDatLinter.executablePath` setting
+ * and re-runs `cache.load(...)` with the updated path when it changes, so a
+ * user who edits the setting after activation (e.g. because they only just
+ * installed dat_linter, or switched to a different binary) doesn't have to
+ * reload the whole window to get completions working.
  */
 export function registerDatCompletionItemProvider(
   context: vscode.ExtensionContext,
@@ -345,6 +373,13 @@ export function registerDatCompletionItemProvider(
   void cache.load(executablePath, cwd, outputChannel);
 
   context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("simutransDatLinter.executablePath")) {
+        const updatedConfig = vscode.workspace.getConfiguration("simutransDatLinter");
+        const updatedExecutablePath = updatedConfig.get<string>("executablePath", "dat_linter");
+        void cache.load(updatedExecutablePath, cwd, outputChannel);
+      }
+    }),
     vscode.languages.registerCompletionItemProvider(
       { language: "simutrans-dat" },
       createCompletionItemProvider(() => cache.get()),
