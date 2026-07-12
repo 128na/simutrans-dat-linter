@@ -182,6 +182,59 @@ fn narrow_int_overflow_is_detected() {
 }
 
 #[test]
+fn gear_parse_failure_is_detected_and_not_treated_as_default() {
+    // gear=abc は数値として解釈できない。以前の実装はこれを「未指定」
+    // （default=100）として扱ってしまい、実際のmakeobj（strtolが0を返す）が
+    // gear=(0*64)/100=0になり power-gear-mismatch 相当の欠陥を引き起こす
+    // ケースを見逃していた。gear-parse-failure と power-gear-mismatch の
+    // 両方が検出されるべき。
+    let diags = check("vehicle_gear_parse_failure.dat");
+    assert!(
+        has(&diags, Severity::Warning, "gear-parse-failure"),
+        "gear-parse-failure が検出されるべき: {diags:?}"
+    );
+    assert!(
+        has(&diags, Severity::Warning, "power-gear-mismatch"),
+        "gear=abc は実際には0扱いになりpower-gear-mismatchも引き起こすはず: {diags:?}"
+    );
+}
+
+#[test]
+fn gear_narrow_int_overflow_is_detected() {
+    // gear=200000 -> gear*64/100=128000。uint16の範囲(0..65535)外。
+    // vehicle_writer.cc:142のuint16へ切り詰め代入される不具合。
+    // power=0のためpower-gear-mismatchは対象外（gear単体のoverflowのみ検出）。
+    let diags = check("vehicle_gear_narrow_int_overflow.dat");
+    assert!(
+        has(&diags, Severity::Warning, "narrow-int-overflow"),
+        "narrow-int-overflow が検出されるべき: {diags:?}"
+    );
+    assert!(
+        !has(&diags, Severity::Warning, "power-gear-mismatch"),
+        "power=0 のため power-gear-mismatch は対象外のはず: {diags:?}"
+    );
+    assert!(
+        !has(&diags, Severity::Warning, "gear-parse-failure"),
+        "gear=200000 は数値として解釈できるためgear-parse-failureは出ないはず: {diags:?}"
+    );
+}
+
+#[test]
+fn power_narrow_int_overflow_is_detected() {
+    // power=-1 はvehicle_writer.cc:119の`const uint32 power = obj.get_int(...)`
+    // へ代入される際に負数がuint32の巨大な正の値へ2の補数で切り詰められる不具合。
+    let diags = check("vehicle_power_narrow_int_overflow.dat");
+    assert!(
+        has(&diags, Severity::Warning, "narrow-int-overflow"),
+        "narrow-int-overflow が検出されるべき: {diags:?}"
+    );
+    assert!(
+        !has(&diags, Severity::Warning, "power-gear-mismatch"),
+        "power<=0 のため power-gear-mismatch は対象外のはず: {diags:?}"
+    );
+}
+
+#[test]
 fn unknown_engine_type_diagnostic_has_correct_line_number() {
     // 第2弾（行番号付与の機械的配線）: `vehicle_bad_engine_type.dat`の
     // `engine_type=elctric`は4行目。

@@ -182,6 +182,7 @@ pub enum DiagnosticCode {
     MissingFreightimagetype,
     ExtraFreightimagetype,
     PowerGearMismatch,
+    GearParseFailure,
     // --- lint: src/rules/way.rs ---
     MissingBaseImage,
     BaseImageOk,
@@ -276,6 +277,7 @@ impl DiagnosticCode {
             DiagnosticCode::MissingFreightimagetype => "missing-freightimagetype",
             DiagnosticCode::ExtraFreightimagetype => "extra-freightimagetype",
             DiagnosticCode::PowerGearMismatch => "power-gear-mismatch",
+            DiagnosticCode::GearParseFailure => "gear-parse-failure",
             DiagnosticCode::MissingBaseImage => "missing-base-image",
             DiagnosticCode::BaseImageOk => "base-image-ok",
             DiagnosticCode::ClipBelowOutOfRange => "clip-below-out-of-range",
@@ -1163,6 +1165,24 @@ impl DiagnosticCode {
                 fix_en: "Increase gear (2 or more makes gear*64/100 non-zero), or set power to 0 if a \
                     non-powered vehicle is intended",
             },
+            DiagnosticCode::GearParseFailure => CodeInfo {
+                code: *self,
+                source: CodeSource::Lint,
+                why_ja: "gear の値を数値として解釈できません。makeobjのtabfileobj_t::get_int()は\
+                    strtol(value, NULL, 0)を使うため、キー自体が無い場合の既定値100とは異なり、\
+                    数値として解釈できない値は0として扱われます。gear=0は変換後(0*64/100=0)になり、\
+                    power-gear-mismatchと同じ問題（この車両の実効出力寄与が常に0になる）を\
+                    引き起こします",
+                why_en: "gear's value cannot be interpreted as a number. makeobj's \
+                    tabfileobj_t::get_int() uses strtol(value, NULL, 0), so unlike the default of \
+                    100 used when the key is entirely absent, a non-numeric value is treated as 0. \
+                    gear=0 becomes 0 after conversion (0*64/100=0), causing the same problem as \
+                    power-gear-mismatch (this vehicle's effective power contribution is always 0)",
+                fix_ja: "gearに有効な整数値を指定してください（0を意図する場合は明示的にgear=0と\
+                    書くことを推奨します）",
+                fix_en: "Specify a valid integer value for gear (if 0 is intended, writing gear=0 \
+                    explicitly is recommended)",
+            },
             DiagnosticCode::MissingBaseImage => CodeInfo {
                 code: *self,
                 source: CodeSource::Lint,
@@ -1457,6 +1477,7 @@ pub const ALL: &[DiagnosticCode] = &[
     DiagnosticCode::MissingFreightimagetype,
     DiagnosticCode::ExtraFreightimagetype,
     DiagnosticCode::PowerGearMismatch,
+    DiagnosticCode::GearParseFailure,
     DiagnosticCode::MissingBaseImage,
     DiagnosticCode::BaseImageOk,
     DiagnosticCode::ClipBelowOutOfRange,

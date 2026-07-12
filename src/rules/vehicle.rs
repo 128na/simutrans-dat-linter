@@ -10,12 +10,17 @@
 //! makeobj自体（コンパイル時、`descriptor/writer/`）の`dbg->fatal`/`dbg->warning`を
 //! 根拠とするが、このルールはゲームエンジンのランタイムコード（`src/simutrans/simconvoi.cc`）
 //! を根拠とする「静的解析」層のルールである（`couplings`サブコマンドと同種の位置づけ）。
-//! makeobj自身はこのフィールドの組み合わせを一切検証しない。
+//! makeobj自身はこのフィールドの組み合わせを一切検証しない。このルールは`gear`
+//! フィールドに関する3つの懸念（`GearParseFailure`/`PowerGearMismatch`/
+//! `NarrowIntOverflow`）をまとめて扱う（詳細は`PowerGearMismatchRule`のdocコメント
+//! 参照）。特に`gear`キーが存在するのに数値として解釈できない値は、実際の
+//! makeobj（`strtol`）では「未指定」（default=100）ではなく0として扱われるため、
+//! この区別を誤ると本来検出すべき欠陥を見逃す（第22弾で修正）。
 //!
-//! `NarrowIntFieldsRule`（`payload`/`speed`/`axle_load`/`length`）も同じ「静的解析」層
-//! のルールで、`DateIndexOverflowRule`と同種（common.rsの`check_narrow_int_overflow_field`
-//! 参照）。`NameAndCopyrightStringFieldRule`はobj種別を問わず共有される
-//! `name`/`copyright`フィールドの検証（common.rs参照）。
+//! `NarrowIntFieldsRule`（`payload`/`speed`/`axle_load`/`power`/`length`）も同じ
+//! 「静的解析」層のルールで、`DateIndexOverflowRule`と同種
+//! （common.rsの`check_narrow_int_overflow_field`参照）。`NameAndCopyrightStringFieldRule`は
+//! obj種別を問わず共有される`name`/`copyright`フィールドの検証（common.rs参照）。
 
 use super::common::{
     DIR_CODES, NameAndCopyrightStringFieldRule, check_date_index_overflow_field,
@@ -326,64 +331,184 @@ impl Rule for FreightImageTypeRule {
     }
 }
 
-/// 根拠: `vehicle_writer.cc:142` `uint16 gear = (obj.get_int("gear", 100) * 64) / 100;`
-/// （整数除算）。`simconvoi.cc`（例: 1698, 1704, 1755, 1763, 2365行目）で
-/// `sum_gear_and_power += info->get_power() * info->get_gear();` として編成全体の
-/// 実効出力に積算され、これが`calc_max_speed()`（simconvoi.cc:834-）の`total_power`
-/// になる。変換後`gear`が0だと、`power`をいくら宣言していてもその車両の出力寄与は
-/// 常に0になる（`power`自体が無視されるわけではなく、`gear`という別フィールドが
-/// 出力を無効化する）。整数除算`(raw*64)/100`は`raw`が0または1のとき0になる
-/// （`raw=2`なら`(2*64)/100=1`で非ゼロ）。makeobj自体はこの組み合わせを一切
-/// 検証しない（`dbg->fatal`/`dbg->warning`なし）。他のルールと異なり、
-/// 根拠はコンパイル時のmakeobjソースではなくランタイムコード（`simconvoi.cc`）。
+/// `vehicle_writer.cc:142`の`obj.get_int("gear", 100)`が返す生値の解決結果。
+struct ResolvedGear {
+    /// `raw*64/100`の計算に使う値。キー欠落時は100（`get_int`のdefault）、
+    /// キーは存在するが数値として解釈できない場合は0
+    /// （`tabfileobj_t::get_int()`が内部で使う`strtol`は解釈できない文字列に
+    /// 対して0を返すため）。
+    raw: i64,
+    /// `gear`キーは存在するが数値として解釈できなかった場合に`true`。
+    parse_failed: bool,
+}
+
+/// `vehicle_writer.cc:142`: `obj.get_int("gear", 100)`を再現する。
+///
+/// `tabfileobj_t::get_int()`（tabfile.cc:183-198）は次の2択で全く異なる値を返す:
+/// - キー自体が無い（`get_string`がNULLを返す） → `def`（100）をそのまま返す。
+/// - キーは存在する（値がどんな文字列であっても、空文字列を含む） →
+///   `strtol(value, NULL, 0)`を返す（数値として解釈できない文字列なら0）。
+///
+/// 以前の実装は`ctx.dat.get("gear").and_then(|v| v.parse().ok()).unwrap_or(100)`
+/// という形で、この2択を区別せず両方とも「未指定」（100）として扱っていた。
+/// これは`gear=abc`のような「キーはあるが不正な値」を「未指定」に偽装してしまい、
+/// 本来検出すべき欠陥（実際には`gear`が0扱いになり`PowerGearMismatch`相当の問題を
+/// 引き起こす）を見逃す原因になっていた（`GearParseFailure`として別途報告する）。
+fn resolve_gear(dat: &DatFile) -> ResolvedGear {
+    match dat.get("gear") {
+        None => ResolvedGear {
+            raw: 100,
+            parse_failed: false,
+        },
+        Some(raw) => match raw.trim().parse::<i64>() {
+            Ok(v) => ResolvedGear {
+                raw: v,
+                parse_failed: false,
+            },
+            Err(_) => ResolvedGear {
+                raw: 0,
+                parse_failed: true,
+            },
+        },
+    }
+}
+
+/// `raw*64/100`（vehicle_writer.cc:142の右辺）を計算する。`raw`が極端に大きい/
+/// 小さい値でも`i64`同士の乗算でオーバーフローしてpanicしないよう、`i128`で
+/// 計算する（`raw`は`.dat`のテキストをそのままパースした値であり、`i64`の
+/// 範囲一杯までの値が来ても`*64`はオーバーフローしうる）。
+///
+/// 戻り値は`(切り詰め前の値, uint16へ切り詰めた後の値)`のペア。切り詰めは
+/// `common::truncate_to_unsigned`（2の補数によるmod 65536）で行う。
+fn gear_transformed(raw: i64) -> (i128, i64) {
+    let raw_transformed = (raw as i128 * 64) / 100;
+    // `i128`の範囲であれば`rem_euclid`は`i64`版と全く同じ考え方で使えるが、
+    // 既存の`common::truncate_to_unsigned`は`i64`シグネチャのため、まず`i64`の
+    // 範囲に収まるよう`% 65536`相当の演算をi128側で行ってから渡す。
+    let modulo = raw_transformed.rem_euclid(65536) as i64;
+    (raw_transformed, modulo)
+}
+
+/// `gear`フィールドにまつわる3つの懸念をまとめて扱う（いずれも同じ
+/// `resolve_gear`/`gear_transformed`の結果から導出されるため、パースを1箇所に
+/// 集約している）:
+///
+/// 1. `gear`キーが存在するのに数値として解釈できない値（例: `gear=abc`）は、
+///    実際のmakeobjでは`strtol`が0を返すため`gear=(0*64)/100=0`になる。以前の
+///    実装はこのケースを「未指定」（default=100、非ゼロ）と誤って同一視し、
+///    本来検出すべき2.の欠陥を見逃していた（`GearParseFailure`として報告）。
+/// 2. 根拠: `vehicle_writer.cc:142` `uint16 gear = (obj.get_int("gear", 100) *
+///    64) / 100;`（整数除算）。`simconvoi.cc`（例: 1698, 1704, 1755, 1763,
+///    2365行目）で`sum_gear_and_power += info->get_power() * info->get_gear();`
+///    として編成全体の実効出力に積算され、これが`calc_max_speed()`
+///    （simconvoi.cc:834-）の`total_power`になる。変換後（uint16切り詰め後）の
+///    `gear`が0だと、`power`をいくら宣言していてもその車両の出力寄与は常に0に
+///    なる。makeobj自体はこの組み合わせを一切検証しない
+///    （`PowerGearMismatch`、根拠はコンパイル時のmakeobjソースではなく
+///    ランタイムコード`simconvoi.cc`）。
+/// 3. `raw*64/100`（切り詰め前）がuint16の範囲(0..65535)外になると、2の補数の
+///    切り詰めで全く無関係な値へ静かに変わる（`NarrowIntOverflow`、
+///    `common::check_narrow_int_overflow_field`と同種の懸念だが、`gear`は
+///    単一フィールドではなく計算式のため専用ロジックで扱う）。
 struct PowerGearMismatchRule;
 impl Rule for PowerGearMismatchRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        let resolved = resolve_gear(ctx.dat);
+
+        if resolved.parse_failed {
+            let diag = Diagnostic::warning(
+                DiagnosticCode::GearParseFailure,
+                t!(ctx.language,
+                    ja: "gear の値を数値として解釈できません。makeobjのtabfileobj_t::get_int()は\
+                         strtol(value, NULL, 0)を使うため、数値として解釈できない値は\
+                         （未指定時のデフォルト100ではなく）0として扱われます。gear=0は変換後\
+                         (0*64/100=0)になり、power-gear-mismatchと同じ問題（この車両の\
+                         実効出力寄与が常に0になる）を引き起こします",
+                    en: "gear's value cannot be interpreted as a number. makeobj's \
+                         tabfileobj_t::get_int() uses strtol(value, NULL, 0), so a non-numeric \
+                         value is treated as 0 (not the unspecified-default of 100). gear=0 \
+                         becomes 0 after conversion (0*64/100=0), causing the same problem as \
+                         power-gear-mismatch (this vehicle's effective power contribution is \
+                         always 0)",
+                ),
+            );
+            // `resolved.parse_failed`が真である以上、`gear`キーは非空の値を持って
+            // 存在する（`resolve_gear`の分岐参照）ため`line_of`は必ず`Some`を返す。
+            diags.push(match ctx.dat.line_of("gear") {
+                Some(line) => diag.at(line, "gear"),
+                None => diag,
+            });
+        }
+
+        let (raw_transformed, truncated) = gear_transformed(resolved.raw);
+        let gear_raw = resolved.raw;
+
+        if !(0..=65535).contains(&raw_transformed) {
+            let diag = Diagnostic::warning(
+                DiagnosticCode::NarrowIntOverflow,
+                t!(ctx.language,
+                    ja: "gear={gear_raw} から計算される値(gear*64/100={raw_transformed})が\
+                         格納先のunsigned 16bit整数の範囲(0..65535)外です。vehicle_writer.cc:142は\
+                         この計算結果を範囲チェック無しにuint16へ無条件代入するため、\
+                         2の補数による切り詰めで無関係な値（{truncated}）に静かに変わります",
+                    en: "The value computed from gear={gear_raw} (gear*64/100={raw_transformed}) \
+                         is outside the range (0..65535) of the unsigned 16-bit integer it is \
+                         stored in. vehicle_writer.cc:142 unconditionally assigns this result into \
+                         a uint16 with no range check, so it silently changes into an unrelated \
+                         value ({truncated}) via two's-complement truncation",
+                    gear_raw = gear_raw,
+                    raw_transformed = raw_transformed,
+                    truncated = truncated,
+                ),
+            );
+            // `gear`が未指定（default=100）でこの分岐に到達することは無い
+            // （100*64/100=64で常に範囲内）ため、到達するのは`gear`キーが実在する
+            // 場合のみ。ただし`resolved.parse_failed`（raw=0固定）でもこの分岐には
+            // 到達しない（0は範囲内）ため、常に`line_of`は`Some`を返す。
+            diags.push(match ctx.dat.line_of("gear") {
+                Some(line) => diag.at(line, "gear"),
+                None => diag,
+            });
+        }
+
         let Some(power) = ctx
             .dat
             .get("power")
             .and_then(|v| v.trim().parse::<i64>().ok())
         else {
-            return Vec::new();
+            return diags;
         };
         if power <= 0 {
-            return Vec::new();
+            return diags;
         }
 
-        let gear_raw = ctx
-            .dat
-            .get("gear")
-            .and_then(|v| v.trim().parse::<i64>().ok())
-            .unwrap_or(100);
-        let gear_transformed = (gear_raw * 64) / 100;
-        if gear_transformed == 0 {
+        if truncated == 0 {
             let diag = Diagnostic::warning(
                 DiagnosticCode::PowerGearMismatch,
                 t!(ctx.language,
                     ja: "power={power} を宣言していますが gear={gear_raw} は変換後 \
-                         (gear*64/100={gear_transformed}) になり、編成内でのこの車両の\
+                         (gear*64/100を切り詰めた値={truncated}) になり、編成内でのこの車両の\
                          実効出力寄与が常に0になります（simconvoi.cc: sum_gear_and_power \
                          += get_power() * get_gear()）。makeobjはこれを検証しません",
                     en: "power={power} is declared, but gear={gear_raw} becomes \
-                         (gear*64/100={gear_transformed}) after conversion, so this vehicle's \
+                         (gear*64/100 truncated={truncated}) after conversion, so this vehicle's \
                          effective power contribution in a convoy is always 0 \
                          (simconvoi.cc: sum_gear_and_power += get_power() * get_gear()). \
                          makeobj does not validate this",
                     power = power,
                     gear_raw = gear_raw,
-                    gear_transformed = gear_transformed,
+                    truncated = truncated,
                 ),
             );
-            // gear_transformed==0に到達するのは`gear`が明示的に小さい値
-            // （0または1）で指定されている場合のみ（未指定時のdefault=100なら
-            // (100*64)/100=64で非ゼロになるため）。`gear`キーを指す。
-            vec![match ctx.dat.line_of("gear") {
+            // 上と同じ理由で`gear`キーが実在する場合のみこの分岐に到達しうる。
+            diags.push(match ctx.dat.line_of("gear") {
                 Some(line) => diag.at(line, "gear"),
                 None => diag,
-            }]
-        } else {
-            Vec::new()
+            });
         }
+
+        diags
     }
 }
 
@@ -414,12 +539,17 @@ impl Rule for DateIndexOverflowRule {
     }
 }
 
-/// vehicle_writer.cc:98,99 / 106,107 / 115,116 / 166,167: `payload`/`speed`/
-/// `axle_load`/`length`はいずれも`tabfileobj_t::get_int()`（範囲チェック無しの
-/// 無条件フォールバック）で読まれた後、無条件に狭いC++整数型へ代入・書き込み
-/// される（`payload`/`speed`/`axle_load`は`uint16`、`length`は`uint8`）。
-/// 根拠・設計は`common::check_narrow_int_overflow_field`のdocコメント参照
-/// （`DateIndexOverflowRule`/`PowerGearMismatchRule`と同種の静的解析ルール）。
+/// vehicle_writer.cc:98,99 / 106,107 / 115,116 / 119,120 / 166,167: `payload`/
+/// `speed`/`axle_load`/`power`/`length`はいずれも`tabfileobj_t::get_int()`
+/// （範囲チェック無しの無条件フォールバック）で読まれた後、無条件に狭いC++整数型へ
+/// 代入・書き込みされる（`payload`/`speed`/`axle_load`は`uint16`、`power`は
+/// `uint32`（`const uint32 power = obj.get_int("power", 0);
+/// node.write_uint32(fp, power);`、vehicle_writer.cc:119-120）、`length`は
+/// `uint8`）。`power`は負値を指定すると`get_int()`が返す符号付き`int`から
+/// `uint32`への暗黙変換で2の補数の巨大な正の値へ静かに変わる（`power<=0`を
+/// ガードとする`PowerGearMismatchRule`とは別に、この桁溢れ・負数自体を単独でも
+/// 検出する）。根拠・設計は`common::check_narrow_int_overflow_field`のdocコメント
+/// 参照（`DateIndexOverflowRule`/`PowerGearMismatchRule`と同種の静的解析ルール）。
 struct NarrowIntFieldsRule;
 impl Rule for NarrowIntFieldsRule {
     fn check(&self, ctx: &RuleContext) -> Vec<Diagnostic> {
@@ -446,6 +576,14 @@ impl Rule for NarrowIntFieldsRule {
             "axle_load",
             0,
             16,
+            false,
+            ctx.language,
+        ));
+        diags.extend(check_narrow_int_overflow_field(
+            dat,
+            "power",
+            0,
+            32,
             false,
             ctx.language,
         ));
