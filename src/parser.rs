@@ -16,6 +16,15 @@ pub struct DuplicateKey {
     pub duplicate_line: usize,
 }
 
+/// `=`を含まない非空行（空行・`#`コメント・行頭スペース行・区切り行`-`を除く）の記録。
+/// real makeobj（`tabfile_t::read()`, `dataobj/tabfile.cc:505-507`）はこの場合
+/// `dbg->warning("tabfile_t::read", "No data in \"%s\"", line)`という警告を出す
+/// （読み捨てられるだけでfatalにはならない）。
+pub struct MalformedLine {
+    pub line: usize,
+    pub text: String,
+}
+
 /// 簡易 .dat パーサ。makeobj の tabfile_t::read() を模倣する:
 /// キーは前後空白をトリムして小文字化、'['と']'の間の空白は除去する。
 /// 値は tabfile.cc と同様に**一切トリムしない**（`name= Hoge`のような書き方で
@@ -27,6 +36,7 @@ pub struct DuplicateKey {
 pub struct DatFile {
     pub pairs: BTreeMap<String, Entry>,
     pub duplicates: Vec<DuplicateKey>,
+    pub malformed_lines: Vec<MalformedLine>,
 }
 
 /// .dat のテキストを読み込む。UTF-8として不正な場合はShift-JIS(CP932)として
@@ -34,16 +44,26 @@ pub struct DatFile {
 /// 保存されたまま配布されているケースへの対応。makeobj自体は文字コードを
 /// 検証しないため、実際に読み込めるファイルをlinterが「読み込み失敗」で
 /// 弾いてしまわないようにする）。
+///
+/// デコード後、テキスト先頭にUTF-8 BOM（U+FEFF）が残っていれば除去する。
+/// BOM付きUTF-8ファイル（Windowsのメモ帳等で保存されたもの）はmakeobj自身は
+/// 特に気にせず読み込めるが、除去しないと1行目の最初のキー（通常`obj`）が
+/// `"\u{feff}obj"`として解釈され、`format_key`後も一致せず`obj`キーの照合が
+/// 全て失敗する（「obj= は未対応です」という偽陽性エラーになる）。
 pub fn read_dat_text(path: &Path) -> std::io::Result<String> {
     let bytes = fs::read(path)?;
-    match String::from_utf8(bytes) {
-        Ok(text) => Ok(text),
+    let text = match String::from_utf8(bytes) {
+        Ok(text) => text,
         Err(e) => {
             let bytes = e.into_bytes();
             let (text, _, _had_errors) = encoding_rs::SHIFT_JIS.decode(&bytes);
-            Ok(text.into_owned())
+            text.into_owned()
         }
-    }
+    };
+    Ok(match text.strip_prefix('\u{feff}') {
+        Some(rest) => rest.to_string(),
+        None => text,
+    })
 }
 
 impl DatFile {
@@ -59,6 +79,7 @@ impl DatFile {
             .unwrap_or_else(|| DatFile {
                 pairs: BTreeMap::new(),
                 duplicates: Vec::new(),
+                malformed_lines: Vec::new(),
             }))
     }
 
@@ -115,6 +136,7 @@ fn parse_records(text: &str) -> Vec<DatFile> {
     let mut records = Vec::new();
     let mut pairs: BTreeMap<String, Entry> = BTreeMap::new();
     let mut duplicates: Vec<DuplicateKey> = Vec::new();
+    let mut malformed_lines: Vec<MalformedLine> = Vec::new();
 
     for (i, raw_line) in text.lines().enumerate() {
         let lineno = i + 1;
@@ -127,11 +149,18 @@ fn parse_records(text: &str) -> Vec<DatFile> {
                 records.push(DatFile {
                     pairs: std::mem::take(&mut pairs),
                     duplicates: std::mem::take(&mut duplicates),
+                    malformed_lines: std::mem::take(&mut malformed_lines),
                 });
             }
             continue;
         }
         let Some((key_raw, value)) = line.split_once('=') else {
+            // real makeobj (tabfile_t::read(): `else if(*line) { dbg->warning(...) }`)
+            // はここでfatalにはせず「No data in ...」という警告を出すだけで読み飛ばす。
+            malformed_lines.push(MalformedLine {
+                line: lineno,
+                text: line.to_string(),
+            });
             continue;
         };
         let key = format_key(key_raw);
@@ -161,7 +190,33 @@ fn parse_records(text: &str) -> Vec<DatFile> {
         }
     }
     if !pairs.is_empty() {
-        records.push(DatFile { pairs, duplicates });
+        records.push(DatFile {
+            pairs,
+            duplicates,
+            malformed_lines,
+        });
+    } else if !malformed_lines.is_empty() {
+        // ファイル末尾が区切り行`-`の後、`=`の無い不正な行だけで終わる場合
+        // （pairsが空のまま）、この時点でmalformed_linesを素通りさせると
+        // どのレコードにも属さないままDatFile化されず、check_malformed_lines
+        // 経由の警告がサイレントに失われる（gemini-code-assist指摘）。
+        // 直前に確定済みのレコードがあれば、その末尾の不正行として追記する。
+        if let Some(last) = records.last_mut() {
+            last.malformed_lines.extend(malformed_lines);
+        } else {
+            // records自体が空（ファイル冒頭からいきなり不正な行のみで始まり、
+            // 区切り行も`obj=`も一度も現れない）場合は、malformed_linesだけを
+            // 持つ空レコードを1件確定させる。commands/lint.rsの
+            // `records.is_empty()`早期リターン経路はこの場合も従来通り
+            // 「obj= は未対応です」を報告して即終了するため出力は変わらないが、
+            // parse_all()自体がmalformed_linesを取りこぼさないようにしておく
+            // （check_malformed_lines等、DatFileを直接扱う他の呼び出し元のため）。
+            records.push(DatFile {
+                pairs,
+                duplicates,
+                malformed_lines,
+            });
+        }
     }
 
     records

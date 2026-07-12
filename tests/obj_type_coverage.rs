@@ -22,6 +22,7 @@ fn empty_dat() -> DatFile {
     DatFile {
         pairs: BTreeMap::new(),
         duplicates: Vec::new(),
+        malformed_lines: Vec::new(),
     }
 }
 

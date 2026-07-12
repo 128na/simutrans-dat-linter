@@ -35,6 +35,7 @@ pub use bridge::check_bridge;
 pub use building::check_building;
 pub use citycar::check_citycar;
 pub use common::check_duplicate_keys;
+pub use common::check_malformed_lines;
 pub use crossing::check_crossing;
 pub use cursor::check_cursor;
 pub use factory::check_factory;

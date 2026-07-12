@@ -1,0 +1,9 @@
+obj=building
+name=StageA
+copyright=test
+type=extension
+waytype=track
+
+-------------------------------------------------------------------------------
+this line has no equals sign
+another malformed line after the record already closed
