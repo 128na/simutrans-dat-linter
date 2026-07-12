@@ -24,8 +24,18 @@ use std::process::ExitCode;
 /// `collect_dat_paths`を呼び、空だった場合は共通のエラーメッセージを表示して
 /// `Err(ExitCode::FAILURE)`を返す。`lint`/`fmt`双方の冒頭（config読み込み後・
 /// pathの引数名は`arg_path`として渡す）で全く同じだった分岐。
-pub fn resolve_paths_or_exit(arg_path: &str, language: Language) -> Result<Vec<PathBuf>, ExitCode> {
-    let paths = collect_dat_paths(arg_path, language).map_err(|e| {
+///
+/// 戻り値の`bool`（`had_unreadable_dir`）は、再帰走査中に読み取れなかった
+/// サブディレクトリが1件以上あったか。呼び出し側（`lint.rs`/`fmt.rs`）は、
+/// 個々のファイル処理結果に指摘が無くてもこれが`true`ならexit codeを
+/// 失敗扱いにする必要がある（「指摘が無ければ完全silent/成功」という
+/// 既存方針の下で、"権限エラーで一部を見ていない"状態を"クリーン"と
+/// 区別するため）。
+pub fn resolve_paths_or_exit(
+    arg_path: &str,
+    language: Language,
+) -> Result<(Vec<PathBuf>, bool), ExitCode> {
+    let (paths, had_unreadable_dir) = collect_dat_paths(arg_path, language).map_err(|e| {
         eprintln!("{arg_path}: {e}");
         ExitCode::FAILURE
     })?;
@@ -42,7 +52,7 @@ pub fn resolve_paths_or_exit(arg_path: &str, language: Language) -> Result<Vec<P
         return Err(ExitCode::FAILURE);
     }
 
-    Ok(paths)
+    Ok((paths, had_unreadable_dir))
 }
 
 /// 複数ファイル処理時の集計結果。`error_count`/`warning_count`は全ファイル分の

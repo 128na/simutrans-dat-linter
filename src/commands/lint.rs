@@ -43,18 +43,31 @@ pub fn run_lint(args: &LintArgs, language: Language) -> ExitCode {
         }
     };
 
-    let paths = match resolve_paths_or_exit(&args.path, language) {
+    let (paths, had_unreadable_dir) = match resolve_paths_or_exit(&args.path, language) {
         Ok(p) => p,
         Err(code) => return code,
     };
 
     if args.format == LintFormat::Json {
-        return run_lint_json(&paths, level, &config, language, args.tile_size);
+        let code = run_lint_json(&paths, level, &config, language, args.tile_size);
+        return if had_unreadable_dir && code == ExitCode::SUCCESS {
+            ExitCode::FAILURE
+        } else {
+            code
+        };
     }
 
     // 単一ファイル指定時は従来通りの出力・終了コードのみ（サマリ行を追加しない）。
+    // ただし、走査中に読み取れなかったサブディレクトリが1件でもあれば
+    // （権限エラー等で一部を見ていない状態）、個々のファイル結果に関わらず
+    // 失敗扱いにする（fs_walk.rs::collect_dat_files_recursiveのdocコメント参照）。
     if paths.len() == 1 {
-        return lint_one_file(&paths[0], level, &config, language, args.tile_size);
+        let code = lint_one_file(&paths[0], level, &config, language, args.tile_size);
+        return if had_unreadable_dir && code == ExitCode::SUCCESS {
+            ExitCode::FAILURE
+        } else {
+            code
+        };
     }
 
     let counts = aggregate_multi_file(&paths, |path| {
@@ -63,6 +76,9 @@ pub fn run_lint(args: &LintArgs, language: Language) -> ExitCode {
 
     // 第10弾（項目1）: 指摘が一切無い（合計error/warningが共に0、かつ個々のファイルで
     // unsupported等の失敗も無い）場合は合計行も出力しない（サイレント成功）。
+    // ただし読み取れなかったサブディレクトリがあった場合は「サイレント成功」を
+    // 名乗れないため、合計行自体は出さなくてもexit codeは失敗にする
+    // （`exit_code_for`呼び出し側で`had_unreadable_dir`を畳み込む）。
     if counts.error_count > 0 || counts.warning_count > 0 || counts.any_failure {
         println!(
             "{}",
@@ -76,7 +92,7 @@ pub fn run_lint(args: &LintArgs, language: Language) -> ExitCode {
         );
     }
 
-    exit_code_for(counts.any_failure)
+    exit_code_for(counts.any_failure || had_unreadable_dir)
 }
 
 /// 1ファイルを検証し、`ExitCode`を返す（単一ファイル指定時の従来どおりの
