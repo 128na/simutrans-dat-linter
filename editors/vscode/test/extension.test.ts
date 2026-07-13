@@ -201,6 +201,90 @@ suite("dat_linter VSCode extension integration", () => {
     }
   });
 
+  test("simutransDatLinter.lint.enable=false suppresses diagnostics, and re-enabling restores them", async function () {
+    // Regression/behavior test for the lint.enable setting (extension.ts's
+    // isLintEnabled() guard in lintDocument, plus the onDidChangeConfiguration
+    // handler in activate() that clears/re-lints on toggle). Covers both
+    // directions: flipping to false must clear an existing diagnostic
+    // immediately (not just suppress future ones), and flipping back to true
+    // must re-lint already-open documents without requiring a reload.
+    this.timeout(30000);
+
+    const config = vscode.workspace.getConfiguration("simutransDatLinter");
+    const filePath = path.join(TESTDATA_DIR, "duplicate_key.dat");
+    const uri = vscode.Uri.file(filePath);
+
+    try {
+      const document = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(document);
+
+      // Sanity check: this file does produce a diagnostic while lint is
+      // enabled, so the assertions below are real transitions.
+      const before = await waitForDiagnostics(uri, (d) => d.length > 0);
+      assert.ok(
+        before.some((d) => d.code === "duplicate-key"),
+        `expected a duplicate-key diagnostic before disabling lint, got: ${JSON.stringify(
+          before.map((d) => ({ code: d.code, message: d.message }))
+        )}`
+      );
+
+      await config.update("lint.enable", false, vscode.ConfigurationTarget.Global);
+      const afterDisable = await waitForDiagnostics(uri, (d) => d.length === 0);
+      assert.strictEqual(afterDisable.length, 0);
+
+      // Re-saving while disabled must not produce new diagnostics either.
+      await document.save();
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      assert.deepStrictEqual(vscode.languages.getDiagnostics(uri), []);
+
+      await config.update("lint.enable", true, vscode.ConfigurationTarget.Global);
+      const afterReenable = await waitForDiagnostics(uri, (d) => d.length > 0);
+      assert.ok(
+        afterReenable.some((d) => d.code === "duplicate-key"),
+        `expected a duplicate-key diagnostic after re-enabling lint, got: ${JSON.stringify(
+          afterReenable.map((d) => ({ code: d.code, message: d.message }))
+        )}`
+      );
+    } finally {
+      await config.update("lint.enable", undefined, vscode.ConfigurationTarget.Global);
+      try {
+        await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+      } catch {
+        // best-effort cleanup
+      }
+    }
+  });
+
+  test("simutransDatLinter.format.enable=false makes Format Document a no-op", async () => {
+    // Regression/behavior test for the format.enable setting
+    // (formatter.ts's isFormatEnabled() guard in
+    // provideDocumentFormattingEdits). With the provider still registered
+    // but disabled, "Format Document" must leave the buffer untouched
+    // instead of erroring or applying an edit.
+    const config = vscode.workspace.getConfiguration("simutransDatLinter");
+    const filePath = path.join(TESTDATA_DIR, "fmt_example.dat");
+    const uri = vscode.Uri.file(filePath);
+
+    try {
+      const document = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(document);
+      const before = document.getText();
+
+      await config.update("format.enable", false, vscode.ConfigurationTarget.Global);
+      await vscode.commands.executeCommand("editor.action.formatDocument");
+
+      assert.strictEqual(document.getText(), before);
+      assert.strictEqual(document.isDirty, false);
+    } finally {
+      await config.update("format.enable", undefined, vscode.ConfigurationTarget.Global);
+      try {
+        await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+      } catch {
+        // best-effort cleanup
+      }
+    }
+  });
+
   test("Format Document on fmt_example.dat matches `dat_linter fmt` CLI output", async () => {
     const filePath = path.join(TESTDATA_DIR, "fmt_example.dat");
     const uri = vscode.Uri.file(filePath);

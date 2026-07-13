@@ -1,0 +1,4 @@
+{
+  "simutransDatLinter.lint.enable": true,
+  "simutransDatLinter.format.enable": true
+}

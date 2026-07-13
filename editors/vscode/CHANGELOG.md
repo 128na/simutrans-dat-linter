@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- New settings `simutransDatLinter.lint.enable` and `simutransDatLinter.format.enable` (both
+  default `true`, scoped per-resource), letting users who don't have `dat_linter` installed and
+  only want syntax highlighting/snippets disable diagnostics and/or Document Formatting
+  independently, instead of getting an error popup every time a `.dat` file is opened, saved, or
+  formatted. Turning `lint.enable` off clears any diagnostics already shown immediately (not just
+  on the next open/save); turning it back on re-lints every currently open `.dat` document without
+  requiring a window reload. Both settings can be set differently per folder in a multi-root
+  workspace, and are always resolved against the document being linted/formatted rather than
+  whichever folder's value VSCode happens to return for an unscoped lookup.
+
 ## [0.2.0] - 2026-07-13
 
 Everything below accumulated in "Unreleased" since the extension's initial 0.1.0 Marketplace

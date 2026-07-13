@@ -1,8 +1,8 @@
 import * as assert from "assert";
 import { ExecFileException } from "child_process";
 import { describeFailure } from "../src/runner";
-import { LINT_FORMAT_JSON_VERSION_HINT, LintGenerationTracker, shouldActivateInWorkspace } from "../src/extension";
-import { FMT_VERSION_HINT } from "../src/formatter";
+import { LINT_FORMAT_JSON_VERSION_HINT, LintGenerationTracker, shouldActivateInWorkspace, shouldLint } from "../src/extension";
+import { FMT_VERSION_HINT, shouldFormat } from "../src/formatter";
 
 // Pure-function tests: no dat_linter binary, no extension activation, no
 // vscode workspace/document APIs. Mirrors test/parser.test.ts's pattern for
@@ -98,6 +98,26 @@ suite("extension.ts: shouldActivateInWorkspace (pure function)", () => {
 
   test("returns false for an untrusted workspace", () => {
     assert.strictEqual(shouldActivateInWorkspace(false), false);
+  });
+});
+
+suite("extension.ts: shouldLint (pure function)", () => {
+  test("returns true when simutransDatLinter.lint.enable is true (the default)", () => {
+    assert.strictEqual(shouldLint(true), true);
+  });
+
+  test("returns false when simutransDatLinter.lint.enable is false", () => {
+    assert.strictEqual(shouldLint(false), false);
+  });
+});
+
+suite("formatter.ts: shouldFormat (pure function)", () => {
+  test("returns true when simutransDatLinter.format.enable is true (the default)", () => {
+    assert.strictEqual(shouldFormat(true), true);
+  });
+
+  test("returns false when simutransDatLinter.format.enable is false", () => {
+    assert.strictEqual(shouldFormat(false), false);
   });
 });
 
