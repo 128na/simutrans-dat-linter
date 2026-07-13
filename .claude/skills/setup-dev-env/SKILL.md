@@ -194,12 +194,18 @@ dat_linterがPATHに通っていれば、`simutransDatLinter.executablePath`は
 ファイル編集の手順を踏む。JSONを機械的に上書きしない）。ディレクトリが無ければ
 作成する。
 
+**VSCodeの統合ターミナルの既定シェルはユーザー環境依存**（PowerShellとは限らず、
+cmd.exeやGit Bash等の場合もある）で、そのまま`if (...) { ... }`のようなPowerShell
+構文を`command`に書くと既定シェルによっては構文エラーになる。既定シェルに関わらず
+確実にPowerShellで実行されるよう、`powershell -NoProfile -ExecutionPolicy Bypass
+-Command "..."`経由で呼び出すこと。
+
 `tasks.json`に追加する内容:
 ```json
 {
   "label": "makeobj: 現在の.datをpak化",
   "type": "shell",
-  "command": "if ('${fileExtname}' -ne '.dat') { Write-Host \"F5: '${file}' は.datファイルではないため何もしません\"; exit 1 } else { makeobj pak128 '${fileBasenameNoExtension}.pak' '${fileBasename}' }",
+  "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if ('${fileExtname}' -ne '.dat') { Write-Host 'F5: ${fileBasename} は.datファイルではないため何もしません'; exit 1 } else { makeobj pak128 '${fileBasenameNoExtension}.pak' '${fileBasename}' }\"",
   "options": { "cwd": "${fileDirname}" },
   "problemMatcher": [],
   "presentation": { "reveal": "always", "panel": "shared", "clear": true }
@@ -207,7 +213,7 @@ dat_linterがPATHに通っていれば、`simutransDatLinter.executablePath`は
 {
   "label": "makeobj: 現在の.datをpak化（詳細ログ）",
   "type": "shell",
-  "command": "if ('${fileExtname}' -ne '.dat') { Write-Host \"F5: '${file}' は.datファイルではないため何もしません\"; exit 1 } else { makeobj VERBOSE DEBUG pak128 '${fileBasenameNoExtension}.pak' '${fileBasename}' }",
+  "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if ('${fileExtname}' -ne '.dat') { Write-Host 'F5: ${fileBasename} は.datファイルではないため何もしません'; exit 1 } else { makeobj VERBOSE DEBUG pak128 '${fileBasenameNoExtension}.pak' '${fileBasename}' }\"",
   "options": { "cwd": "${fileDirname}" },
   "problemMatcher": [],
   "presentation": { "reveal": "always", "panel": "shared", "clear": true }
@@ -220,22 +226,23 @@ dat_linterがPATHに通っていれば、`simutransDatLinter.executablePath`は
   "type": "node-terminal",
   "request": "launch",
   "name": "F5: 開いている.datをmakeobjでpak化",
-  "command": "if ('${fileExtname}' -ne '.dat') { Write-Host \"F5: '${file}' は.datファイルではないため何もしません\" } else { makeobj pak128 '${fileBasenameNoExtension}.pak' '${fileBasename}' }",
+  "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if ('${fileExtname}' -ne '.dat') { Write-Host 'F5: ${fileBasename} は.datファイルではないため何もしません' } else { makeobj pak128 '${fileBasenameNoExtension}.pak' '${fileBasename}' }\"",
   "cwd": "${fileDirname}"
 },
 {
   "type": "node-terminal",
   "request": "launch",
   "name": "F5: 開いている.datをmakeobjでpak化（詳細ログ）",
-  "command": "if ('${fileExtname}' -ne '.dat') { Write-Host \"F5: '${file}' は.datファイルではないため何もしません\" } else { makeobj VERBOSE DEBUG pak128 '${fileBasenameNoExtension}.pak' '${fileBasename}' }",
+  "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if ('${fileExtname}' -ne '.dat') { Write-Host 'F5: ${fileBasename} は.datファイルではないため何もしません' } else { makeobj VERBOSE DEBUG pak128 '${fileBasenameNoExtension}.pak' '${fileBasename}' }\"",
   "cwd": "${fileDirname}"
 }
 ```
 
 `${fileExtname}`によるガード（`.dat`以外のファイルがアクティブな状態でF5を押しても
 誤動作しないようにする）は`try-out/vscode-f5-pakify/README.md`（`simutrans_addon`
-リポジトリ）で実機検証済みの内容そのもの。`node-terminal`タイプはVSCode組み込み
-（Node.js Debugging拡張が提供）のため追加の拡張機能インストールは不要。
+リポジトリ）で実機検証済みの内容がベース（PowerShell明示呼び出しは今回のレビューで
+追加）。`node-terminal`タイプはVSCode組み込み（Node.js Debugging拡張が提供）のため
+追加の拡張機能インストールは不要。
 
 導入後、対象ディレクトリで`.dat`ファイルを開きF5を押すと、統合ターミナルで
 `makeobj pak128`が実行されることをユーザーに案内すること（このスキルからは
