@@ -20,6 +20,11 @@ const CLI_ABOUT_JA: &str = "Simutrans アドオンの .dat を静的検証・整
 const CLI_ABOUT_EN: &str =
     "Static validator, formatter, and coupling analyzer for Simutrans .dat files";
 
+/// `-v`/`-V`/`--version`用の`help`（JA/EN）。`apply_language_to_help`から参照する。
+/// 他の全オプション（`config_help`/`verbose_help`等）と同じくJA/EN切り替え対象。
+const VERSION_HELP_JA: &str = "バージョン情報を表示する";
+const VERSION_HELP_EN: &str = "Print version";
+
 #[derive(Parser)]
 #[command(
     name = "dat_linter",
@@ -169,13 +174,17 @@ const KEYS_FORMAT_HELP_EN: &str = "Output format. text is a human-readable listi
 /// `Command`の`version`メタデータ（`env!("CARGO_PKG_VERSION")`由来）から
 /// 変わらず解決される（Argそのものはトリガーに過ぎない）。
 pub fn apply_language_to_help(cmd: clap::Command, lang: Language) -> clap::Command {
+    let version_help = match lang {
+        Language::Japanese => VERSION_HELP_JA,
+        Language::English => VERSION_HELP_EN,
+    };
     let cmd = cmd.disable_version_flag(true).arg(
         clap::Arg::new("version")
             .short('v')
             .visible_short_alias('V')
             .long("version")
             .action(ArgAction::Version)
-            .help("Print version"),
+            .help(version_help),
     );
     let top_about = match lang {
         Language::Japanese => CLI_ABOUT_JA,
