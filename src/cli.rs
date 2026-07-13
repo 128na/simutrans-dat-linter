@@ -20,8 +20,18 @@ const CLI_ABOUT_JA: &str = "Simutrans アドオンの .dat を静的検証・整
 const CLI_ABOUT_EN: &str =
     "Static validator, formatter, and coupling analyzer for Simutrans .dat files";
 
+/// `-v`/`-V`/`--version`用の`help`（JA/EN）。`apply_language_to_help`から参照する。
+/// 他の全オプション（`config_help`/`verbose_help`等）と同じくJA/EN切り替え対象。
+const VERSION_HELP_JA: &str = "バージョン情報を表示する";
+const VERSION_HELP_EN: &str = "Print version";
+
 #[derive(Parser)]
-#[command(name = "dat_linter", version, about)]
+#[command(
+    name = "dat_linter",
+    version,
+    about,
+    help_template = "{name} {version}\n{before-help}{about-with-newline}\n{usage-heading} {usage}\n\n{all-args}{after-help}"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -136,7 +146,46 @@ const KEYS_FORMAT_HELP_EN: &str = "Output format. text is a human-readable listi
 /// 各引数のhelpも`mut_arg`で上書きするよう拡張した。引数IDは`clap::Args`の
 /// フィールド名（スネークケース）がそのまま使われる（`#[arg(long = "...")]`で
 /// 明示的にlong名を変えていても、`mut_arg`が参照するIDはフィールド名のまま）。
+///
+/// バージョン短縮フラグ`-v`追加時の注意（実機確認済みの2段階のハマりどころ）:
+///
+/// 1. `#[command(version)]`が生成する`--version`/`-V`のArgは、`derive`直後の
+///    `Command`にはまだ存在しない（clap_builderが`_build_self`実行時＝
+///    `Command::build()`や`get_matches()`呼び出し時に遅延生成するため）。
+///    そのため`mut_arg("version", ...)`をそのまま呼ぶと
+///    `Argument \`version\` is undefined`でpanicする。
+/// 2. では先に`cmd.build()`を呼んで`_build_self`を強制実行すれば`mut_arg`
+///    できる…と思いきや、それも罠だった。`Command::build()`は`AppSettings::Built`
+///    フラグを立てて`--version`/`-V`のArgおよび短縮フラグの内部索引
+///    （`MKeyMap`のビルド）を確定させる。`mut_arg`はArgオブジェクト自体は
+///    差し替えられるが、この索引までは再構築しない。その後`main()`側の
+///    `get_matches()`が`_build_self`を再度呼んでも`Built`フラグが立っている
+///    ため索引の再構築はスキップされる。結果、`--help`表示には追加した
+///    `-v`エイリアスが見えるのに、実際の引数パースでは`-v`が
+///    `unexpected argument`として弾かれる（`--help`のレンダリングはArgの
+///    生データを都度舐めるのに対し、パースは事前構築済みの索引を見るため
+///    表示と実際の挙動が乖離する）。
+///
+/// 正しい対処は`clap::Command::disable_version_flag`のドキュメント例
+/// （clap_builder 4.6.0 `src/builder/command.rs`）が示す通り、自動生成される
+/// `--version`/`-V`を`disable_version_flag(true)`で無効化した上で、
+/// `-v`/`-V`両方を持つ独自の`ArgAction::Version`のArgを明示的に追加すること。
+/// 独自Argでも表示されるバージョン文字列は`#[command(version)]`が設定した
+/// `Command`の`version`メタデータ（`env!("CARGO_PKG_VERSION")`由来）から
+/// 変わらず解決される（Argそのものはトリガーに過ぎない）。
 pub fn apply_language_to_help(cmd: clap::Command, lang: Language) -> clap::Command {
+    let version_help = match lang {
+        Language::Japanese => VERSION_HELP_JA,
+        Language::English => VERSION_HELP_EN,
+    };
+    let cmd = cmd.disable_version_flag(true).arg(
+        clap::Arg::new("version")
+            .short('v')
+            .visible_short_alias('V')
+            .long("version")
+            .action(ArgAction::Version)
+            .help(version_help),
+    );
     let top_about = match lang {
         Language::Japanese => CLI_ABOUT_JA,
         Language::English => CLI_ABOUT_EN,

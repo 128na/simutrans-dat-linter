@@ -984,3 +984,89 @@ fn keys_format_json_emits_valid_json_with_expected_shape() {
         "(ground, name) に \"Shore\" が含まれていません: {ground_name_values:?}"
     );
 }
+
+// --- トップレベル`-v`をversionのショートエイリアスとして追加 --------------------
+//
+// `lint`サブコマンドには既に`-v`/`--verbose`という別スコープの短縮フラグが
+// 存在する（`LintArgs::verbose`、上記`LINT_VERBOSE_HELP_*`参照）。トップレベル
+// `Cli`に`-v`（version用）を追加しても、clapの引数解析ではスコープが異なる
+// （親コマンド vs サブコマンド）ため衝突しないはず、という設計意図を実機で検証する。
+//
+// 実装時のハマりどころ（`src/cli.rs`の`apply_language_to_help`ドキュメント参照）:
+// clapが自動生成する`--version`/`-V`のArgは`derive`直後にはまだ存在せず、
+// `mut_arg("version", ...)`は単純には使えない（`Command::build()`で強制的に
+// 構築させても、内部の短縮フラグ索引が更新されないため`-v`が実際には
+// パースされない）。最終的に`disable_version_flag(true)` + 独自の
+// `ArgAction::Version`なArgを`-v`/`-V`両方のショートフラグ付きで追加する
+// 方式に落ち着いた。
+
+#[test]
+fn top_level_short_v_prints_version_like_long_flag() {
+    let short_v = run_in_clean_dir(&["-v"], "version_short_v");
+    let long_version = run_in_clean_dir(&["--version"], "version_long");
+    let short_cap_v = run_in_clean_dir(&["-V"], "version_short_cap_v");
+
+    let short_v_stdout = String::from_utf8_lossy(&short_v.stdout).into_owned();
+    let long_version_stdout = String::from_utf8_lossy(&long_version.stdout).into_owned();
+    let short_cap_v_stdout = String::from_utf8_lossy(&short_cap_v.stdout).into_owned();
+
+    assert!(short_v.status.success(), "-v はexit code 0であるべき");
+    assert!(
+        long_version.status.success(),
+        "--version はexit code 0であるべき"
+    );
+    assert!(short_cap_v.status.success(), "-V はexit code 0であるべき");
+
+    assert_eq!(
+        short_v_stdout, long_version_stdout,
+        "-v と --version の出力は一致するべき"
+    );
+    assert_eq!(
+        short_v_stdout, short_cap_v_stdout,
+        "-v と -V の出力は一致するべき"
+    );
+
+    let expected_version = format!("dat_linter {}", env!("CARGO_PKG_VERSION"));
+    assert!(
+        short_v_stdout.trim() == expected_version,
+        "-v の出力は \"{expected_version}\" と一致するべき: {short_v_stdout:?}"
+    );
+}
+
+#[test]
+fn lint_subcommand_short_v_still_means_verbose_not_version() {
+    // トップレベルに-v(version)を追加しても、`lint -v`は従来通り
+    // --verboseとして機能し、バージョン表示にはならないことを確認する
+    // （lintサブコマンドのスコープはトップレベルとは独立しているはず）。
+    let dat_path = testdata_dir().join("bom_utf8.dat");
+    let output = run_in_clean_dir(
+        &["lint", "-v", dat_path.to_str().unwrap()],
+        "lint_verbose_short_v",
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        !stdout.contains(&format!("dat_linter {}", env!("CARGO_PKG_VERSION"))),
+        "lint -v はバージョン表示になるべきではない: stdout={stdout}"
+    );
+    assert!(
+        stderr.contains("[info]"),
+        "lint -v は--verbose(infoレベル表示)として機能するべき: stderr={stderr}"
+    );
+}
+
+#[test]
+fn top_level_help_includes_version_number() {
+    let output = run_in_clean_dir(&["--help"], "help_includes_version");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let expected = format!("dat_linter {}", env!("CARGO_PKG_VERSION"));
+    assert!(
+        stdout.contains(&expected),
+        "--help の出力冒頭に \"{expected}\" が含まれるべき: {stdout}"
+    );
+    assert!(
+        stdout.contains("-v, --version") || stdout.contains("--version"),
+        "--help のOptions一覧に--versionが表示されるべき: {stdout}"
+    );
+}
