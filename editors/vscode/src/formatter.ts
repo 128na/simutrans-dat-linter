@@ -24,8 +24,8 @@ export function shouldFormat(enabled: boolean): boolean {
   return enabled;
 }
 
-function isFormatEnabled(): boolean {
-  return shouldFormat(vscode.workspace.getConfiguration("simutransDatLinter").get<boolean>("format.enable", true));
+function isFormatEnabled(uri?: vscode.Uri): boolean {
+  return shouldFormat(vscode.workspace.getConfiguration("simutransDatLinter", uri).get<boolean>("format.enable", true));
 }
 
 export const FMT_VERSION_HINT: VersionIncompatibilityHint = {
@@ -62,7 +62,7 @@ export const FMT_VERSION_HINT: VersionIncompatibilityHint = {
 export async function provideDocumentFormattingEdits(
   document: vscode.TextDocument
 ): Promise<vscode.TextEdit[] | undefined> {
-  if (!isFormatEnabled()) {
+  if (!isFormatEnabled(document.uri)) {
     // No dat_linter invocation, no error popup: formatting is simply
     // unavailable, same as if no formatter were registered at all. The
     // provider itself stays registered (see registerDatFormattingEditProvider

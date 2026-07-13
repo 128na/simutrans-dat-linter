@@ -54,12 +54,14 @@
         "simutransDatLinter.lint.enable": {
           "type": "boolean",
           "default": true,
-          "description": "Enable dat_linter-backed diagnostics (Problems panel). Disable this if you don't have dat_linter installed and only want syntax highlighting/snippets."
+          "scope": "resource",
+          "description": "Enable dat_linter-backed diagnostics (Problems panel). Disable this if you don't have dat_linter installed and only want syntax highlighting/snippets. Scoped per-resource so it can be set differently per folder in a multi-root workspace."
         },
         "simutransDatLinter.format.enable": {
           "type": "boolean",
           "default": true,
-          "description": "Enable dat_linter-backed document formatting."
+          "scope": "resource",
+          "description": "Enable dat_linter-backed document formatting. Scoped per-resource so it can be set differently per folder in a multi-root workspace."
         }
       }
     },
