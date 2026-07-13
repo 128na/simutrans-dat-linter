@@ -53,6 +53,10 @@ This extension does not bundle `dat_linter` itself. Install it separately before
 - Key/value completion is powered by `dat_linter keys --format json`, which requires a `dat_linter` build that includes the `known_values.per_obj_type` field (added after v0.2.0; not yet in a tagged release as of this writing). On an older version, completion is silently disabled (check the "Simutrans dat_linter" output channel for details) while syntax highlighting, formatting, and lint keep working normally.
 - If you don't want to install `dat_linter` at all and only want syntax highlighting/snippets, set `simutransDatLinter.lint.enable` and `simutransDatLinter.format.enable` to `false` in your settings. This stops the extension from invoking `dat_linter` (and from popping up an error message every time a `.dat` file is opened, saved, or formatted) while leaving highlighting and snippets fully functional. Both default to `true`.
 
+### Set up everything at once with Claude Code (Windows)
+
+If you use Claude Code, the [`simutrans-dat-linter`](https://github.com/128na/simutrans-dat-linter) repository bundles a skill (`.claude/skills/setup-dev-env/SKILL.md`, Windows only) that installs `dat_linter`, `makeobj`, this extension (and offers to remove the old one), and a VSCode F5 task to pak addons with `makeobj` -- checking what's already installed first and only acting on what you choose. Copy `SKILL.md` into your global skills folder (`%USERPROFILE%\.claude\skills\setup-dev-env\`) once, then ask Claude Code to "set up the dev environment" in your addon project.
+
 ## Migrating from the old extension (`128na/simutrans-vscode-extention`)
 
 The author (128na) previously published a separate VSCode extension,
@@ -118,6 +122,10 @@ factory の `location` 値、`climates` 値、`menu`/`cursor`/`symbol`/`misc`/`g
 - `--format json` オプションは `dat_linter 0.1.2` 以降が対応しています。それより古いバージョンではこの拡張は動作しません。
 - キー・値の入力補完は `dat_linter keys --format json` の `known_values.per_obj_type` フィールドを利用しており、これを含むバージョン（v0.2.0以降の未リリースビルド。この文章を書いている時点ではまだタグ付きリリースはありません）が必要です。それより古いバージョンでは補完機能のみ静かに無効化されます（詳細は "Simutrans dat_linter" 出力チャンネルを参照）。シンタックスハイライト・フォーマット・lint は引き続き通常通り動作します。
 - `dat_linter` を導入せず、シンタックスハイライト・スニペットだけを使いたい場合は、設定で `simutransDatLinter.lint.enable` と `simutransDatLinter.format.enable` を `false` にしてください。`.dat` ファイルを開く・保存する・フォーマットするたびに出ていたエラーポップアップが出なくなり、`dat_linter` は一切呼び出されなくなります（シンタックスハイライト・スニペットは影響を受けず引き続き使えます）。どちらもデフォルトは `true` です。
+
+### Claude Codeでまとめてセットアップ（Windows）
+
+Claude Code を使っている場合、[`simutrans-dat-linter`](https://github.com/128na/simutrans-dat-linter) リポジトリに同梱されているスキル（`.claude/skills/setup-dev-env/SKILL.md`、Windows専用）で、`dat_linter` 本体・`makeobj`・この拡張（旧拡張のアンインストールも含む）・VSCode上でF5からmakeobjでpak化するタスク設定を、現在の導入状況を確認した上でまとめて導入できます。`SKILL.md` を自分のグローバルスキルフォルダ（`%USERPROFILE%\.claude\skills\setup-dev-env\`）へ1回コピーしてから、自分のアドオンプロジェクトでClaude Codeに「開発環境をセットアップして」と頼んでください。
 
 ## 旧拡張(`128na/simutrans-vscode-extention`)からの移行
 
