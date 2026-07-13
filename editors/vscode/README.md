@@ -2,7 +2,7 @@
 
 Syntax highlighting, formatting, and parameter validation for Simutrans addon `.dat` files.
 
-![syntax highlighting, formatting](./docs/img1.png)
+![syntax highlighting, formatting](https://raw.githubusercontent.com/128na/simutrans-dat-linter/refs/heads/main/editors/vscode/docs/img1.png)
 
 # Features
 
@@ -20,30 +20,30 @@ remains the source of truth for whether a value is actually valid where it's use
 
 Type an obj form such as `buidling=res` to generate a template for that addon.
 
-## Formatting *
+## Formatting \*
 
 Normalizes parameter order and letter case.
 
-## Key/value completion *
+## Key/value completion \*
 
 Suggests valid keys for the current obj type, and valid values for keys such as `waytype=`, `direction=`, `type=`, or `location=`.
 
-## Parameter check (lint) *
+## Parameter check (lint) \*
 
 Flags missing parameters and value mistakes.
 
-![linter](./docs/img4.png)
+![linter](https://raw.githubusercontent.com/128na/simutrans-dat-linter/refs/heads/main/editors/vscode/docs/img4.png)
 
-## Language switching *
+## Language switching \*
 
 Switch between English and Japanese messages.
 
-![english message](./docs/img2.png)
-![japanase message](./docs/img3.png)
+![english message](https://raw.githubusercontent.com/128na/simutrans-dat-linter/refs/heads/main/editors/vscode/docs/img2.png)
+![japanase message](https://raw.githubusercontent.com/128na/simutrans-dat-linter/refs/heads/main/editors/vscode/docs/img3.png)
 
 ## Dependency
 
-Features marked with * require [`dat_linter`](https://github.com/128na/simutrans-dat-linter) to be installed.
+Features marked with \* require [`dat_linter`](https://github.com/128na/simutrans-dat-linter) to be installed.
 
 This extension does not bundle `dat_linter` itself. Install it separately beforehand and make sure it's on your PATH.
 
@@ -68,7 +68,7 @@ The lint (Problems panel) and Document Formatting features are implemented indep
 
 Simutrans アドオンの `.dat` を色分けして見やすくしたり、フォーマット、パラメーターの不備をチェックできる拡張です。
 
-![syntax highlighting, formatting](./docs/img1.png)
+![syntax highlighting, formatting](https://raw.githubusercontent.com/128na/simutrans-dat-linter/refs/heads/main/editors/vscode/docs/img1.png)
 
 # 機能
 
@@ -98,14 +98,14 @@ factory の `location` 値、`climates` 値、`menu`/`cursor`/`symbol`/`misc`/`g
 
 パラーメーターの不足や値のミスを指摘します。
 
-![linter](./docs/img4.png)
+![linter](https://raw.githubusercontent.com/128na/simutrans-dat-linter/refs/heads/main/editors/vscode/docs/img4.png)
 
 ## 言語切り替え ※
 
 英語・日本語表示の切り替えができます。
 
-![english message](./docs/img2.png)
-![japanase message](./docs/img3.png)
+![english message](https://raw.githubusercontent.com/128na/simutrans-dat-linter/refs/heads/main/editors/vscode/docs/img2.png)
+![japanase message](https://raw.githubusercontent.com/128na/simutrans-dat-linter/refs/heads/main/editors/vscode/docs/img3.png)
 
 ## 依存ツール
 
