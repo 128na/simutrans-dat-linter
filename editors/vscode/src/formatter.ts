@@ -11,6 +11,23 @@ import { resolveExecutionContext, runDatLinter, VersionIncompatibilityHint, with
  * Exported so `test/runner.test.ts` can exercise the regex directly as a
  * pure function, without needing a real dat_linter binary.
  */
+/**
+ * Gate on the `simutransDatLinter.format.enable` setting, factored out as a
+ * pure boolean function -- mirroring `shouldActivateInWorkspace` in
+ * extension.ts -- so test/runner.test.ts can exercise the decision directly.
+ * Lets users who don't have `dat_linter` installed and only want syntax
+ * highlighting/snippets turn off Document Formatting entirely, instead of
+ * getting an error popup every time they run "Format Document" or save with
+ * `editor.formatOnSave` enabled.
+ */
+export function shouldFormat(enabled: boolean): boolean {
+  return enabled;
+}
+
+function isFormatEnabled(): boolean {
+  return shouldFormat(vscode.workspace.getConfiguration("simutransDatLinter").get<boolean>("format.enable", true));
+}
+
 export const FMT_VERSION_HINT: VersionIncompatibilityHint = {
   test: (stderr: string): boolean => /unrecognized subcommand|unexpected argument|unrecognized/i.test(stderr),
   message:
@@ -45,6 +62,15 @@ export const FMT_VERSION_HINT: VersionIncompatibilityHint = {
 export async function provideDocumentFormattingEdits(
   document: vscode.TextDocument
 ): Promise<vscode.TextEdit[] | undefined> {
+  if (!isFormatEnabled()) {
+    // No dat_linter invocation, no error popup: formatting is simply
+    // unavailable, same as if no formatter were registered at all. The
+    // provider itself stays registered (see registerDatFormattingEditProvider
+    // below) so VSCode's formatter-selection UI is unaffected by this
+    // per-call guard.
+    return undefined;
+  }
+
   const { executablePath, configPath, cwd } = resolveExecutionContext(document);
 
   try {

@@ -63,6 +63,24 @@ export function shouldActivateInWorkspace(isTrusted: boolean): boolean {
   return isTrusted;
 }
 
+/**
+ * Gate on the `simutransDatLinter.lint.enable` setting, factored out as a
+ * pure boolean function -- mirroring `shouldActivateInWorkspace` above -- so
+ * test/runner.test.ts can exercise the decision directly. Lets users who
+ * don't have `dat_linter` installed and only want syntax
+ * highlighting/snippets turn off diagnostics entirely, instead of getting an
+ * error popup (`describeFailure` in runner.ts, surfaced via
+ * `vscode.window.showErrorMessage`) every time a `.dat` file is opened or
+ * saved.
+ */
+export function shouldLint(enabled: boolean): boolean {
+  return enabled;
+}
+
+function isLintEnabled(): boolean {
+  return shouldLint(vscode.workspace.getConfiguration("simutransDatLinter").get<boolean>("lint.enable", true));
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   if (!shouldActivateInWorkspace(vscode.workspace.isTrusted)) {
     // Don't register any diagnostics/formatting/completion providers, and
@@ -104,6 +122,22 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidCloseTextDocument((doc) => {
       diagnosticCollection.delete(doc.uri);
       lintGenerations.forget(doc.uri.toString());
+    }),
+    // Toggling `simutransDatLinter.lint.enable` at runtime must take effect
+    // immediately, not just for the next open/save: flipping it to false
+    // clears every currently-shown diagnostic right away (instead of leaving
+    // stale ones visible until the next save), and flipping it back to true
+    // re-lints every open .dat document, mirroring the "lint anything already
+    // open at activation" pass below.
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration("simutransDatLinter.lint.enable")) {
+        return;
+      }
+      if (isLintEnabled()) {
+        vscode.workspace.textDocuments.forEach(maybeLint);
+      } else {
+        diagnosticCollection.clear();
+      }
     })
   );
 
@@ -186,6 +220,14 @@ export const LINT_FORMAT_JSON_VERSION_HINT: VersionIncompatibilityHint = {
  * is stale and is discarded instead of overwriting the newer one.
  */
 async function lintDocument(document: vscode.TextDocument): Promise<void> {
+  if (!isLintEnabled()) {
+    // Don't touch diagnosticCollection here: the onDidChangeConfiguration
+    // handler in activate() is what clears any pre-existing diagnostics the
+    // instant the setting flips to false. A no-op here just means a
+    // subsequent open/save while disabled doesn't produce new ones.
+    return;
+  }
+
   const key = document.uri.toString();
   const generation = lintGenerations.begin(key);
 
