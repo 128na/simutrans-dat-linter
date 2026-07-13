@@ -19,6 +19,17 @@ makeobj が認識する全 22 obj 種別を検証します。
 リリースページから OS にあった実行ファイルをダウンロードしてください。
 上級者向け: パスを通しておくとどこからでも呼び出せます。
 
+### Claude Codeでまとめてセットアップ（Windows）
+
+Claude Code を使っている場合、`dat_linter` 本体・`makeobj`・VSCode拡張
+（新旧）・VSCode の F5 pak 化設定をまとめて導入するスキルを同梱しています
+（`.claude/skills/setup-dev-env/SKILL.md`、Windows専用）。導入状況を確認した上で、
+必要なものだけをユーザーが選んで導入する設計です。
+
+このスキルを自分のアドオン開発プロジェクトで使うには、`SKILL.md` を自分のグローバル
+スキルフォルダ（`%USERPROFILE%\.claude\skills\setup-dev-env\`）へ1回コピーしてから、
+Claude Code に「開発環境をセットアップして」と頼んでください。
+
 ## クイックスタート
 
 ```
